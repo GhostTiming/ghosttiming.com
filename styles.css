@@ -149,7 +149,7 @@ body {
   background:
     linear-gradient(95deg, rgba(8, 7, 9, 0.93) 18%, rgba(8, 7, 9, 0.72) 58%, rgba(8, 7, 9, 0.94) 100%),
     radial-gradient(circle at 75% 15%, rgba(221, 174, 203, 0.22), transparent 35%),
-    url("./assets/hero-bg.png");
+    url("/hero-bg.png");
   background-size: cover;
   background-position: center;
   filter: grayscale(18%);
@@ -633,7 +633,7 @@ label {
     background:
       linear-gradient(95deg, rgba(8, 7, 9, 0.95) 20%, rgba(8, 7, 9, 0.8) 60%, rgba(8, 7, 9, 0.95) 100%),
       radial-gradient(circle at 75% 15%, rgba(221, 174, 203, 0.2), transparent 35%),
-      url("./assets/hero-bg.png");
+      url("/hero-bg.png");
   }
 }
 
