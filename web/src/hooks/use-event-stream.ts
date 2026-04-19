@@ -6,6 +6,67 @@ import { RateBuffers } from "@/lib/rate-buffer";
 
 type Conn = "idle" | "connecting" | "live" | "error";
 
+/** Extend aggregated MAC/port rows when live reads arrive (initial snapshot can be empty). */
+function patchSnapshotMetaFromReads(
+  prev: SnapshotApi,
+  newReads: Array<{ mac: string; port: number; ts: string }>,
+): SnapshotApi {
+  const macsMap = new Map(
+    prev.macs.map((m) => [m.mac.toUpperCase(), { ...m }]),
+  );
+  const portsList = [...prev.ports];
+
+  const findPortIdx = (mac: string, port: number) =>
+    portsList.findIndex(
+      (p) =>
+        p.mac.toUpperCase() === mac.toUpperCase() && p.port === port,
+    );
+
+  for (const r of newReads) {
+    const mac = r.mac.toUpperCase();
+    const tsStr = r.ts;
+
+    const existing = macsMap.get(mac);
+    if (!existing) {
+      macsMap.set(mac, {
+        mac,
+        friendlyName: null,
+        firstSeen: tsStr,
+        lastSeen: tsStr,
+        totalReads: 1,
+      });
+    } else {
+      macsMap.set(mac, {
+        ...existing,
+        lastSeen: tsStr,
+        totalReads: existing.totalReads + 1,
+      });
+    }
+
+    const pci = findPortIdx(mac, r.port);
+    if (pci < 0) {
+      portsList.push({
+        mac,
+        port: r.port,
+        lastSeen: tsStr,
+        totalReads: 1,
+      });
+    } else {
+      const cur = portsList[pci];
+      portsList[pci] = {
+        ...cur,
+        lastSeen: tsStr,
+        totalReads: cur.totalReads + 1,
+      };
+    }
+  }
+
+  const macs = [...macsMap.values()].sort((a, b) =>
+    a.mac.localeCompare(b.mac),
+  );
+  return { ...prev, macs, ports: portsList };
+}
+
 export function useEventStream(
   shortId: string,
   enabled: boolean,
@@ -52,7 +113,11 @@ export function useEventStream(
         const merged = [...prev.recentReads, ...add];
         const cutoff = Date.now() - 610_000;
         const pruned = merged.filter((x) => new Date(x.ts).getTime() >= cutoff);
-        return { ...prev, recentReads: pruned.slice(-50000) };
+        const withMeta = patchSnapshotMetaFromReads(prev, add);
+        return {
+          ...withMeta,
+          recentReads: pruned.slice(-50000),
+        };
       });
     },
     [],
