@@ -1,4 +1,4 @@
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { macsEvent, portsEvent, reads, timerWorkspaces, events } from "@/db/schema";
 
@@ -46,15 +46,60 @@ export async function buildSnapshot(
     .limit(1);
   const name = ev?.name ?? "Untitled event";
 
-  const macRows = await db
+  let macRows = await db
     .select()
     .from(macsEvent)
     .where(eq(macsEvent.eventId, eventId));
 
-  const portRows = await db
+  let portRows = await db
     .select()
     .from(portsEvent)
     .where(eq(portsEvent.eventId, eventId));
+
+  // Fallback: if aggregate tables are empty/stale, derive mats from raw reads so
+  // the viewer still shows live rows instead of "No antenna rows yet".
+  if (portRows.length === 0) {
+    const portAgg = await db
+      .select({
+        mac: reads.mac,
+        port: reads.port,
+        lastSeen: sql<Date>`max(${reads.ts})`,
+        totalReads: sql<number>`count(*)`,
+      })
+      .from(reads)
+      .where(eq(reads.eventId, eventId))
+      .groupBy(reads.mac, reads.port);
+
+    portRows = portAgg.map((p) => ({
+      eventId,
+      mac: p.mac,
+      port: Number(p.port),
+      lastSeen: p.lastSeen instanceof Date ? p.lastSeen : new Date(p.lastSeen),
+      totalReads: Number(p.totalReads),
+    }));
+  }
+
+  if (macRows.length === 0) {
+    const macAgg = await db
+      .select({
+        mac: reads.mac,
+        firstSeen: sql<Date>`min(${reads.ts})`,
+        lastSeen: sql<Date>`max(${reads.ts})`,
+        totalReads: sql<number>`count(*)`,
+      })
+      .from(reads)
+      .where(eq(reads.eventId, eventId))
+      .groupBy(reads.mac);
+
+    macRows = macAgg.map((m) => ({
+      eventId,
+      mac: m.mac,
+      friendlyName: null,
+      firstSeen: m.firstSeen instanceof Date ? m.firstSeen : new Date(m.firstSeen),
+      lastSeen: m.lastSeen instanceof Date ? m.lastSeen : new Date(m.lastSeen),
+      totalReads: Number(m.totalReads),
+    }));
+  }
 
   const wsRows = await db
     .select()
