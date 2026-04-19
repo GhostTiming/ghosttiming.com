@@ -1,5 +1,4 @@
 import bcrypt from "bcryptjs";
-import { nanoid } from "nanoid";
 import { eq, sql } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -69,7 +68,6 @@ export async function POST(
   const portTotals = new Map<string, number>();
 
   const rows: Array<{
-    id: string;
     eventId: string;
     mac: string;
     port: number;
@@ -90,7 +88,6 @@ export async function POST(
     macTotals.set(mac, (macTotals.get(mac) ?? 0) + 1);
     portTotals.set(pk, (portTotals.get(pk) ?? 0) + 1);
     rows.push({
-      id: nanoid(),
       eventId: ev.id,
       mac,
       port,
@@ -103,53 +100,66 @@ export async function POST(
     return NextResponse.json({ inserted: 0 });
   }
 
-  await db.insert(reads).values(rows);
+  try {
+    await db.insert(reads).values(rows);
 
-  for (const [mac, delta] of macTotals) {
+    await Promise.all(
+      [...macTotals.entries()].map(([mac, delta]) =>
+        db
+          .insert(macsEvent)
+          .values({
+            eventId: ev.id,
+            mac,
+            firstSeen: now,
+            lastSeen: now,
+            totalReads: delta,
+            friendlyName: null,
+          })
+          .onConflictDoUpdate({
+            target: [macsEvent.eventId, macsEvent.mac],
+            set: {
+              lastSeen: now,
+              totalReads: sql`${macsEvent.totalReads} + ${delta}`,
+            },
+          }),
+      ),
+    );
+
+    await Promise.all(
+      [...portTotals.entries()].map(([pk, delta]) => {
+        const [mac, portStr] = pk.split(":");
+        const port = parseInt(portStr, 10);
+        return db
+          .insert(portsEvent)
+          .values({
+            eventId: ev.id,
+            mac,
+            port,
+            lastSeen: now,
+            totalReads: delta,
+          })
+          .onConflictDoUpdate({
+            target: [
+              portsEvent.eventId,
+              portsEvent.mac,
+              portsEvent.port,
+            ],
+            set: {
+              lastSeen: now,
+              totalReads: sql`${portsEvent.totalReads} + ${delta}`,
+            },
+          });
+      }),
+    );
+
     await db
-      .insert(macsEvent)
-      .values({
-        eventId: ev.id,
-        mac,
-        firstSeen: now,
-        lastSeen: now,
-        totalReads: delta,
-        friendlyName: null,
-      })
-      .onConflictDoUpdate({
-        target: [macsEvent.eventId, macsEvent.mac],
-        set: {
-          lastSeen: now,
-          totalReads: sql`${macsEvent.totalReads} + ${delta}`,
-        },
-      });
+      .update(events)
+      .set({ lastIngestAt: now })
+      .where(eq(events.id, ev.id));
+  } catch (e) {
+    console.error("[ingest/reads]", e);
+    return NextResponse.json({ error: "Ingest failed" }, { status: 500 });
   }
-
-  for (const [pk, delta] of portTotals) {
-    const [mac, portStr] = pk.split(":");
-    const port = parseInt(portStr, 10);
-    await db
-      .insert(portsEvent)
-      .values({
-        eventId: ev.id,
-        mac,
-        port,
-        lastSeen: now,
-        totalReads: delta,
-      })
-      .onConflictDoUpdate({
-        target: [portsEvent.eventId, portsEvent.mac, portsEvent.port],
-        set: {
-          lastSeen: now,
-          totalReads: sql`${portsEvent.totalReads} + ${delta}`,
-        },
-      });
-  }
-
-  await db
-    .update(events)
-    .set({ lastIngestAt: now })
-    .where(eq(events.id, ev.id));
 
   return NextResponse.json({ inserted: rows.length });
 }
