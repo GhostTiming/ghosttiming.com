@@ -151,6 +151,27 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   const sortedPorts = useMemo(() => {
     if (!snapshot) return [];
     const rows = [...snapshot.ports];
+    // Safety net: if aggregate port rows are missing, derive mats from recent
+    // reads so the viewer still renders live data.
+    if (rows.length === 0 && snapshot.recentReads.length > 0) {
+      const agg = new Map<string, { mac: string; port: number; totalReads: number; lastSeen: string }>();
+      for (const r of snapshot.recentReads) {
+        const mac = String(r.mac || "").toUpperCase();
+        const port = Number(r.port);
+        if (!mac || !Number.isFinite(port)) continue;
+        const key = `${mac}:${port}`;
+        const cur = agg.get(key);
+        if (!cur) {
+          agg.set(key, { mac, port, totalReads: 1, lastSeen: r.ts });
+          continue;
+        }
+        cur.totalReads += 1;
+        if (new Date(r.ts).getTime() > new Date(cur.lastSeen).getTime()) {
+          cur.lastSeen = r.ts;
+        }
+      }
+      rows.push(...agg.values());
+    }
     rows.sort((a, b) => {
       const ma = a.mac.toUpperCase().localeCompare(b.mac.toUpperCase());
       if (ma !== 0) return ma;
