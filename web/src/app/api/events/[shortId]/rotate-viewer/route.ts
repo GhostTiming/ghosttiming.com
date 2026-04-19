@@ -32,7 +32,19 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const viewerPassword = nanoid(10);
+  const body = (await req.json().catch(() => ({}))) as {
+    viewerPassword?: string;
+  };
+  const custom = (body?.viewerPassword ?? "").trim();
+  if (custom.length > 0) {
+    if (custom.length < 4 || custom.length > 256) {
+      return NextResponse.json(
+        { error: "viewerPassword must be 4–256 characters, or omit for a random one" },
+        { status: 400 },
+      );
+    }
+  }
+  const viewerPassword = custom.length > 0 ? custom : nanoid(10);
   const viewerPasswordHash = await bcrypt.hash(viewerPassword, BCRYPT_ROUNDS);
 
   await db

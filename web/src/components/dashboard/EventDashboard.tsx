@@ -151,7 +151,8 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   const [personal, setPersonal] = useState<WorkspacePayload>(() =>
     defaultWorkspace(),
   );
-  const [activeTab, setActiveTab] = useState<"shared" | "personal">("personal");
+  /** Default to timer “Shared layout” so heatmap/chart match the desktop publish. */
+  const [activeTab, setActiveTab] = useState<"shared" | "personal">("shared");
   const [sharedId, setSharedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -177,6 +178,12 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     const first = snapshot.workspaces[0]?.workspaceId;
     if (first && !sharedId) setSharedId(first);
   }, [snapshot?.workspaces, sharedId]);
+
+  useEffect(() => {
+    if (snapshot && !snapshot.workspaces?.length) {
+      setActiveTab("personal");
+    }
+  }, [shortId, snapshot?.workspaces?.length]);
 
   const sharedPayload = useMemo(() => {
     if (!snapshot?.workspaces?.length) return null;
