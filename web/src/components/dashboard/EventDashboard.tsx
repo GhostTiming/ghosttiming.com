@@ -1,132 +1,116 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useEventStream } from "@/hooks/use-event-stream";
 import { useToast } from "@/hooks/use-toast";
-import { LiveChart, type SeriesSpec } from "@/components/dashboard/LiveChart";
-import { HeatmapCanvas } from "@/components/dashboard/HeatmapCanvas";
-import {
-  antennaShade,
-  MAC_BASE_PALETTE_RGB,
-  portSortKey,
-  rgbToHex,
-} from "@/lib/colors";
-import {
-  autoWorkspaceFromSnapshot,
-  countFilledSlots,
-  parseWorkspacePayload,
-  rebuildHeatmapSlots,
-} from "@/lib/workspace";
+import { MAC_BASE_PALETTE_RGB, portSortKey, rgbToHex } from "@/lib/colors";
 import type { SnapshotApi } from "@/types/snapshot";
 
 type Gate = "checking" | "login" | "live";
 
+const POLL_MS = 1500;
+
+function formatRelative(iso: string, nowMs: number): string {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "—";
+  const sec = Math.max(0, Math.floor((nowMs - t) / 1000));
+  if (sec < 5) return "just now";
+  if (sec < 90) return `${sec}s ago`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m < 60) return `${m}m ${s}s ago`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `${h}h ${mm}m ago`;
+}
+
+function formatClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  });
+}
+
 /**
- * Viewer dashboard.
- *
- * Deliberately minimal: no controls, no tabs, no filter editing. Viewers see
- * a read-only mirror of the timer's published workspace (or an auto-generated
- * fallback when nothing has been published yet).
+ * Live viewer: polls `/snapshot` on a fixed interval. Counts and timestamps
+ * come only from the API (DB aggregates) — no SSE merge or client-side totals,
+ * so refresh never shows inconsistent “fuzzy” numbers.
  */
 export function EventDashboard({ shortId }: { shortId: string }) {
   const toast = useToast();
   const [gate, setGate] = useState<Gate>("checking");
   const [password, setPassword] = useState("");
-  const [eventTitle, setEventTitle] = useState("");
+  const [snapshot, setSnapshot] = useState<SnapshotApi | null>(null);
+  const [lastPollOkAt, setLastPollOkAt] = useState<number | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+  /** Bumps once per second so “Xs ago” updates without new fetches. */
+  const [tick, setTick] = useState(0);
 
-  const [portTotals, setPortTotals] = useState(() => new Map<string, number>());
-  const [lastSeenWall, setLastSeenWall] = useState(
-    () => new Map<string, number>(),
-  );
-
-  const onReads = useCallback(
-    (batch: Array<{ id: string; mac: string; port: number; ts: string }>) => {
-      setPortTotals((prev) => {
-        const n = new Map(prev);
-        for (const r of batch) {
-          const k = `${r.mac.toUpperCase()}:${r.port}`;
-          n.set(k, (n.get(k) ?? 0) + 1);
-        }
-        return n;
-      });
-      setLastSeenWall((prev) => {
-        const n = new Map(prev);
-        for (const r of batch) {
-          const k = `${r.mac.toUpperCase()}:${r.port}`;
-          n.set(k, new Date(r.ts).getTime());
-        }
-        return n;
-      });
-    },
-    [],
-  );
-
-  const { snapshot, buffers, status, reconnects, lastReadAt, applySnapshot } =
-    useEventStream(shortId, gate === "live", onReads);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const loadSnapshot = useCallback(async () => {
+    try {
       const r = await fetch(
         `/api/events/${encodeURIComponent(shortId)}/snapshot`,
-        { credentials: "include" },
+        { credentials: "include", cache: "no-store" },
       );
-      if (cancelled) return;
       if (r.ok) {
-        try {
-          const body = (await r.json()) as SnapshotApi;
-          applySnapshot(body);
-        } catch {
-          /* fall through to SSE */
-        }
+        const body = (await r.json()) as SnapshotApi;
+        setSnapshot(body);
         setGate("live");
-      } else if (r.status === 401) {
+        setLastPollOkAt(Date.now());
+        setPollError(null);
+        return;
+      }
+      if (r.status === 401) {
         setGate("login");
-      } else if (r.status === 410) {
+        setSnapshot(null);
+        return;
+      }
+      if (r.status === 410) {
         toast({
           title: "This event is closed.",
           variant: "destructive",
         });
         setGate("login");
-      } else {
-        toast({ title: "Could not load event.", variant: "destructive" });
-        setGate("login");
+        setSnapshot(null);
+        return;
+      }
+      setPollError(`Could not load snapshot (HTTP ${r.status})`);
+    } catch {
+      setPollError("Network error — retrying…");
+    }
+  }, [shortId, toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setGate("checking");
+      try {
+        await loadSnapshot();
+      } catch {
+        if (!cancelled) setPollError("Network error");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [shortId, toast, applySnapshot]);
+  }, [shortId, loadSnapshot]);
 
   useEffect(() => {
-    if (snapshot?.name) setEventTitle(snapshot.name);
-  }, [snapshot?.name]);
+    if (gate !== "live") return;
+    const id = window.setInterval(() => {
+      void loadSnapshot();
+    }, POLL_MS);
+    return () => window.clearInterval(id);
+  }, [gate, loadSnapshot]);
 
   useEffect(() => {
-    if (!snapshot) return;
-    const pt = new Map<string, number>();
-    const ls = new Map<string, number>();
-    for (const p of snapshot.ports) {
-      const k = `${p.mac.toUpperCase()}:${p.port}`;
-      pt.set(k, p.totalReads);
-      ls.set(k, new Date(p.lastSeen).getTime());
-    }
-    setPortTotals(pt);
-    setLastSeenWall(ls);
-  }, [snapshot]);
+    if (gate !== "live") return;
+    const id = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [gate]);
 
-  const orderedMacs = useMemo(() => {
-    if (!snapshot) return [];
-    return [...snapshot.macs]
-      .sort((a, b) => a.mac.localeCompare(b.mac))
-      .map((m) => m.mac.toUpperCase());
-  }, [snapshot]);
-
-  const macIndex = useMemo(() => {
-    const m = new Map<string, number>();
-    orderedMacs.forEach((mac, i) => m.set(mac, i));
-    return m;
-  }, [orderedMacs]);
+  const eventTitle = snapshot?.name ?? "";
 
   const friendly = useMemo(() => {
     const m = new Map<string, string>();
@@ -134,6 +118,16 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     for (const row of snapshot.macs) {
       if (row.friendlyName) m.set(row.mac.toUpperCase(), row.friendlyName);
     }
+    return m;
+  }, [snapshot]);
+
+  const macIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!snapshot) return m;
+    const macs = [...snapshot.macs]
+      .map((x) => x.mac.toUpperCase())
+      .sort((a, b) => a.localeCompare(b));
+    macs.forEach((mac, i) => m.set(mac, i));
     return m;
   }, [snapshot]);
 
@@ -145,121 +139,68 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     [friendly],
   );
 
-  const macRgb = useCallback(
-    (mac: string): [number, number, number] => {
+  const macHex = useCallback(
+    (mac: string) => {
       const idx = macIndex.get(mac.toUpperCase()) ?? 0;
       const p = MAC_BASE_PALETTE_RGB[idx % MAC_BASE_PALETTE_RGB.length];
-      return [p[0], p[1], p[2]];
+      return rgbToHex([p[0], p[1], p[2]]);
     },
     [macIndex],
   );
 
-  /** Auto-generated workspace when the timer hasn't published one yet. */
-  const autoPayload = useMemo(
-    () => (snapshot ? autoWorkspaceFromSnapshot(snapshot) : null),
-    [snapshot],
-  );
-
-  /**
-   * Single source of truth for what's on screen: the timer's first published
-   * workspace, or the auto layout if the timer hasn't published / the
-   * published one is empty.
-   */
-  const effective = useMemo(() => {
-    if (!snapshot) return null;
-    if (snapshot.workspaces?.length) {
-      const row = snapshot.workspaces[0];
-      const parsed = parseWorkspacePayload(row.payload);
-      if (countFilledSlots(parsed) === 0 && autoPayload) {
-        return autoPayload;
-      }
-      return parsed;
-    }
-    return autoPayload;
-  }, [snapshot, autoPayload]);
-
-  const macsOn = useMemo(() => effective?.macs ?? {}, [effective?.macs]);
-  const antsOn = useMemo(
-    () => effective?.antennas ?? {},
-    [effective?.antennas],
-  );
-
-  // Connection chip: Live / Connecting / Reconnecting / No reads in 30 s.
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  useEffect(() => {
-    if (gate !== "live") return;
-    const iv = setInterval(() => setNowTick(Date.now()), 2000);
-    return () => clearInterval(iv);
-  }, [gate]);
-
-  type ConnChip = { label: string; tone: "live" | "warn" | "bad" };
-  const connChip: ConnChip = useMemo(() => {
-    if (status === "error") return { label: "Reconnecting\u2026", tone: "bad" };
-    if (status === "connecting")
-      return { label: "Connecting\u2026", tone: "warn" };
-    if (
-      lastReadAt !== null &&
-      nowTick - lastReadAt > 30_000 &&
-      snapshot &&
-      snapshot.macs.length > 0
-    ) {
-      return { label: "No reads in last 30 s", tone: "warn" };
-    }
-    return { label: "Live", tone: "live" };
-  }, [status, lastReadAt, nowTick, snapshot]);
-
-  const chartSeries: SeriesSpec[] = useMemo(() => {
+  const sortedPorts = useMemo(() => {
     if (!snapshot) return [];
-    const specs: SeriesSpec[] = [];
-    for (const mac of orderedMacs) {
-      if (!(macsOn[mac] ?? true)) continue;
-      const rgb = macRgb(mac);
-      specs.push({
-        kind: "mac",
-        mac,
-        label: displayMac(mac),
-        color: rgbToHex(rgb),
-        linewidth: 2,
-        trend: true,
-      });
-    }
-    const antDone = new Set<string>();
-    for (const pr of snapshot.ports) {
-      const mac = pr.mac.toUpperCase();
-      const port = String(pr.port);
-      const key = `${mac}:${port}`;
-      if (antDone.has(key)) continue;
-      antDone.add(key);
-      if (!(antsOn[key] ?? true)) continue;
-      const ports = snapshot.ports
-        .filter((p) => p.mac === mac)
-        .map((p) => String(p.port));
-      const uniq = [...new Set(ports)].sort((a, b) => {
-        const ka = portSortKey(a);
-        const kb = portSortKey(b);
-        if (ka[0] !== kb[0]) return ka[0] - kb[0];
-        return String(ka[1]).localeCompare(String(kb[1]));
-      });
-      const pi = Math.max(0, uniq.indexOf(port));
-      const shade = antennaShade(macRgb(mac), pi, Math.max(1, uniq.length));
-      specs.push({
-        kind: "antenna",
-        mac,
-        port,
-        label: `${displayMac(mac)} \u00b7 Ant ${port}`,
-        color: rgbToHex(shade),
-        linewidth: 1.2,
-        trend: false,
-      });
-    }
-    return specs;
-  }, [snapshot, orderedMacs, macsOn, antsOn, displayMac, macRgb]);
+    const rows = [...snapshot.ports];
+    rows.sort((a, b) => {
+      const ma = a.mac.toUpperCase().localeCompare(b.mac.toUpperCase());
+      if (ma !== 0) return ma;
+      const pa = portSortKey(String(a.port));
+      const pb = portSortKey(String(b.port));
+      if (pa[0] !== pb[0]) return pa[0] - pb[0];
+      return String(pa[1]).localeCompare(String(pb[1]));
+    });
+    return rows;
+  }, [snapshot]);
 
-  const heatmapSlots = useMemo(() => {
-    if (!effective?.heatmap) return [];
-    const h = effective.heatmap;
-    return rebuildHeatmapSlots(h.row1, h.row2, h.left, h.right, h.slots);
-  }, [effective?.heatmap]);
+  const newestLastSeenMs = useMemo(() => {
+    if (!snapshot?.ports.length) return null;
+    let max = 0;
+    for (const p of snapshot.ports) {
+      const t = new Date(p.lastSeen).getTime();
+      if (!Number.isNaN(t) && t > max) max = t;
+    }
+    return max || null;
+  }, [snapshot]);
+
+  /** Wall clock for “Xs ago”; `tick` bumps every 1s so this stays fresh. */
+  const nowMs = useMemo(() => {
+    void tick;
+    return Date.now();
+  }, [tick]);
+
+  const statusChip = useMemo(() => {
+    const wall = nowMs;
+    if (pollError && !snapshot)
+      return { label: pollError, tone: "bad" as const };
+    if (lastPollOkAt && wall - lastPollOkAt > 20_000)
+      return { label: "Polling stalled", tone: "bad" as const };
+    if (!sortedPorts.length)
+      return { label: "No antenna rows yet", tone: "warn" as const };
+    if (
+      newestLastSeenMs !== null &&
+      wall - newestLastSeenMs > 45_000
+    ) {
+      return { label: "No recent reads", tone: "warn" as const };
+    }
+    return { label: "Live", tone: "live" as const };
+  }, [
+    pollError,
+    snapshot,
+    lastPollOkAt,
+    sortedPorts.length,
+    newestLastSeenMs,
+    nowMs,
+  ]);
 
   async function onUnlock(e: React.FormEvent) {
     e.preventDefault();
@@ -276,8 +217,8 @@ export function EventDashboard({ shortId }: { shortId: string }) {
       toast({ title: "Invalid password", variant: "destructive" });
       return;
     }
-    setGate("live");
     setPassword("");
+    await loadSnapshot();
   }
 
   if (gate === "checking") {
@@ -318,70 +259,116 @@ export function EventDashboard({ shortId }: { shortId: string }) {
 
   if (!snapshot) {
     return (
-      <div className="space-y-2">
-        <div className="text-sm text-muted">
-          Connection: {status}
-          {reconnects > 0 ? ` · reconnect #${reconnects}` : ""}
-        </div>
-        <div>Waiting for live data…</div>
+      <div className="space-y-2 text-sm text-muted">
+        <p>{pollError ?? "Could not load event data."}</p>
       </div>
     );
   }
 
-  const view = effective?.view ?? "heatmap";
-
   return (
-    <div className="space-y-4">
-      <header className="flex flex-col gap-1 border-b border-border pb-3">
-        <div className="flex items-center gap-3">
+    <div className="space-y-6">
+      <header className="flex flex-col gap-2 border-b border-border pb-4">
+        <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-semibold tracking-tight">
             {eventTitle || "Live event"}
           </h1>
           <span
             className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-medium ${
-              connChip.tone === "live"
+              statusChip.tone === "live"
                 ? "bg-emerald-500/15 text-emerald-400"
-                : connChip.tone === "warn"
+                : statusChip.tone === "warn"
                   ? "bg-amber-500/15 text-amber-400"
                   : "bg-rose-500/15 text-rose-400"
             }`}
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                connChip.tone === "live"
+                statusChip.tone === "live"
                   ? "bg-emerald-400"
-                  : connChip.tone === "warn"
+                  : statusChip.tone === "warn"
                     ? "bg-amber-400"
                     : "bg-rose-400"
               }`}
             />
-            {connChip.label}
+            {statusChip.label}
           </span>
         </div>
         <p className="text-xs text-muted">
           {shortId}
-          {reconnects > 0 ? ` · r${reconnects}` : ""}
+          {lastPollOkAt ? (
+            <>
+              {" "}
+              · Updated{" "}
+              {new Date(lastPollOkAt).toLocaleTimeString(undefined, {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}{" "}
+              · Next poll in ~{Math.round(POLL_MS / 1000)}s
+            </>
+          ) : null}
         </p>
+        {pollError ? (
+          <p className="text-xs text-amber-400">{pollError}</p>
+        ) : null}
       </header>
 
-      <main className="min-w-0">
-        {view === "heatmap" ? (
-          <HeatmapCanvas
-            buffers={buffers}
-            slots={heatmapSlots}
-            macRgb={macRgb}
-            displayMac={displayMac}
-            portTotals={portTotals}
-            lastSeenWall={lastSeenWall}
-          />
-        ) : (
-          <LiveChart
-            buffers={buffers}
-            series={chartSeries}
-            gateLabel={snapshot.gateTime ?? undefined}
-          />
-        )}
-      </main>
+      <p className="text-sm text-muted">
+        Each card is one virtual mat: one MAC address and one antenna (port).
+        Numbers are totals from the server database, refreshed every{" "}
+        {POLL_MS / 1000} seconds.
+      </p>
+
+      {sortedPorts.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card/40 px-4 py-8 text-center text-muted">
+          No per-antenna rows yet. When the timer publishes reads, they will
+          appear here grouped by MAC and port.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {sortedPorts.map((p) => {
+            const border = macHex(p.mac);
+            return (
+              <div
+                key={`${p.mac}:${p.port}`}
+                className="flex min-h-[200px] flex-col rounded-xl border-2 bg-card/60 p-4 shadow-sm"
+                style={{ borderColor: border }}
+              >
+                <div
+                  className="mb-2 h-1 w-10 rounded-full"
+                  style={{ backgroundColor: border }}
+                />
+                <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                  MAC · Antenna
+                </div>
+                <div className="truncate text-sm font-semibold leading-snug">
+                  {displayMac(p.mac)}
+                </div>
+                <div className="text-base font-medium text-foreground">
+                  Ant {p.port}
+                </div>
+                <div className="mt-3 flex flex-1 flex-col justify-center border-y border-border/60 py-4">
+                  <div className="text-4xl font-bold tabular-nums tracking-tight">
+                    {Number(p.totalReads).toLocaleString()}
+                  </div>
+                  <div className="text-xs text-muted">reads (all time)</div>
+                </div>
+                <div className="mt-auto space-y-1 pt-3">
+                  <div className="text-[11px] font-medium uppercase text-muted">
+                    Last read
+                  </div>
+                  <div className="font-mono text-xs leading-relaxed text-foreground">
+                    {formatClock(p.lastSeen)}
+                  </div>
+                  <div className="text-sm text-muted">
+                    {formatRelative(p.lastSeen, nowMs)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
