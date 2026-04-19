@@ -97,6 +97,10 @@ export async function POST(
   }
 
   if (rows.length === 0) {
+    await db
+      .update(events)
+      .set({ lastIngestAt: new Date() })
+      .where(eq(events.id, ev.id));
     return NextResponse.json({ inserted: 0 });
   }
 
@@ -157,8 +161,12 @@ export async function POST(
       .set({ lastIngestAt: now })
       .where(eq(events.id, ev.id));
   } catch (e) {
-    console.error("[ingest/reads]", e);
-    return NextResponse.json({ error: "Ingest failed" }, { status: 500 });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[ingest/reads]", shortId, "rows=", rows.length, msg);
+    return NextResponse.json(
+      { error: "Ingest failed", reason: msg.slice(0, 200) },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ inserted: rows.length });

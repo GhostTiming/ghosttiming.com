@@ -8,13 +8,23 @@ export function defaultWorkspace(name = "My view"): WorkspacePayload {
     macs: {},
     antennas: {},
     heatmap: {
-      row1: 4,
+      row1: 0,
       row2: 0,
       left: 0,
       right: 0,
       slots: [],
     },
   };
+}
+
+/** How many non-empty (mac+port) slots are in a heatmap payload? */
+export function countFilledSlots(payload: WorkspacePayload | null): number {
+  if (!payload?.heatmap?.slots) return 0;
+  let n = 0;
+  for (const s of payload.heatmap.slots) {
+    if (s.mac && s.port) n += 1;
+  }
+  return n;
 }
 
 export function parseWorkspacePayload(raw: unknown): WorkspacePayload {
@@ -34,7 +44,7 @@ export function parseWorkspacePayload(raw: unknown): WorkspacePayload {
   if (o.heatmap && typeof o.heatmap === "object") {
     const h = o.heatmap as Record<string, unknown>;
     heatmap = {
-      row1: typeof h.row1 === "number" ? h.row1 : 4,
+      row1: typeof h.row1 === "number" ? h.row1 : 0,
       row2: typeof h.row2 === "number" ? h.row2 : 0,
       left: typeof h.left === "number" ? h.left : 0,
       right: typeof h.right === "number" ? h.right : 0,

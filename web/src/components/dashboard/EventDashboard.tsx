@@ -14,11 +14,13 @@ import {
 } from "@/lib/colors";
 import {
   autoWorkspaceFromSnapshot,
+  countFilledSlots,
   defaultWorkspace,
   parseWorkspacePayload,
   rebuildHeatmapSlots,
 } from "@/lib/workspace";
 import type { WorkspacePayload } from "@/types/workspace";
+import type { SnapshotApi } from "@/types/snapshot";
 
 const LS_PERSONAL = (shortId: string) => `cs:${shortId}:personal_v1`;
 
@@ -59,11 +61,8 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     [],
   );
 
-  const { snapshot, buffers, status, reconnects } = useEventStream(
-    shortId,
-    gate === "live",
-    onReads,
-  );
+  const { snapshot, buffers, status, reconnects, lastReadAt, applySnapshot } =
+    useEventStream(shortId, gate === "live", onReads);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +73,12 @@ export function EventDashboard({ shortId }: { shortId: string }) {
       );
       if (cancelled) return;
       if (r.ok) {
+        try {
+          const body = (await r.json()) as SnapshotApi;
+          applySnapshot(body);
+        } catch {
+          /* fall through to SSE */
+        }
         setGate("live");
       } else if (r.status === 401) {
         setGate("login");
@@ -91,7 +96,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [shortId, toast]);
+  }, [shortId, toast, applySnapshot]);
 
   useEffect(() => {
     if (snapshot?.name) setEventTitle(snapshot.name);
@@ -190,12 +195,43 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     if (snapshot.workspaces?.length) {
       const id = sharedId ?? snapshot.workspaces[0].workspaceId;
       const row = snapshot.workspaces.find((w) => w.workspaceId === id);
-      return row ? parseWorkspacePayload(row.payload) : null;
+      const parsed = row ? parseWorkspacePayload(row.payload) : null;
+      if (parsed && countFilledSlots(parsed) === 0 && autoSharedPayload) {
+        // Published layout was empty; fall back to auto layout so viewer shows data.
+        return autoSharedPayload;
+      }
+      return parsed;
     }
     return autoSharedPayload;
   }, [snapshot, sharedId, autoSharedPayload]);
 
   const hasTimerLayouts = (snapshot?.workspaces?.length ?? 0) > 0;
+
+  // Chip: Live / Reconnecting / No reads in last 30 s.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (gate !== "live") return;
+    const iv = setInterval(() => setNowTick(Date.now()), 2000);
+    return () => clearInterval(iv);
+  }, [gate]);
+
+  type ConnChip = {
+    label: string;
+    tone: "live" | "warn" | "bad";
+  };
+  const connChip: ConnChip = useMemo(() => {
+    if (status === "error") return { label: "Reconnecting…", tone: "bad" };
+    if (status === "connecting") return { label: "Connecting…", tone: "warn" };
+    if (
+      lastReadAt !== null &&
+      nowTick - lastReadAt > 30_000 &&
+      snapshot &&
+      snapshot.macs.length > 0
+    ) {
+      return { label: "No reads in last 30 s", tone: "warn" };
+    }
+    return { label: "Live", tone: "live" };
+  }, [status, lastReadAt, nowTick, snapshot]);
 
   const effective = useMemo(() => {
     if (activeTab === "shared" && sharedPayload) return sharedPayload;
@@ -372,9 +408,31 @@ export function EventDashboard({ shortId }: { shortId: string }) {
           <h1 className="text-xl font-semibold tracking-tight">
             {eventTitle || "Live event"}
           </h1>
-          <p className="text-xs text-muted">
-            {shortId} · SSE {status}
-            {reconnects > 0 ? ` · r${reconnects}` : ""}
+          <p className="flex items-center gap-2 text-xs text-muted">
+            <span
+              className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                connChip.tone === "live"
+                  ? "bg-emerald-500/15 text-emerald-400"
+                  : connChip.tone === "warn"
+                    ? "bg-amber-500/15 text-amber-400"
+                    : "bg-rose-500/15 text-rose-400"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  connChip.tone === "live"
+                    ? "bg-emerald-400"
+                    : connChip.tone === "warn"
+                      ? "bg-amber-400"
+                      : "bg-rose-400"
+                }`}
+              />
+              {connChip.label}
+            </span>
+            <span>
+              {shortId}
+              {reconnects > 0 ? ` · r${reconnects}` : ""}
+            </span>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

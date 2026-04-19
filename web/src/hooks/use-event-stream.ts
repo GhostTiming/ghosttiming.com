@@ -18,8 +18,7 @@ function patchSnapshotMetaFromReads(
 
   const findPortIdx = (mac: string, port: number) =>
     portsList.findIndex(
-      (p) =>
-        p.mac.toUpperCase() === mac.toUpperCase() && p.port === port,
+      (p) => p.mac.toUpperCase() === mac.toUpperCase() && p.port === port,
     );
 
   for (const r of newReads) {
@@ -77,6 +76,7 @@ export function useEventStream(
   const [snapshot, setSnapshot] = useState<SnapshotApi | null>(null);
   const [status, setStatus] = useState<Conn>("idle");
   const [reconnects, setReconnects] = useState(0);
+  const [lastReadAt, setLastReadAt] = useState<number | null>(null);
   const buffersRef = useRef(new RateBuffers());
 
   const applySnapshot = useCallback((snap: SnapshotApi) => {
@@ -90,12 +90,17 @@ export function useEventStream(
       })),
       anchor,
     );
+    if (snap.recentReads.length > 0) {
+      const latest = Math.max(
+        ...snap.recentReads.map((r) => new Date(r.ts).getTime()),
+      );
+      setLastReadAt(latest);
+    }
   }, []);
 
   const mergeReads = useCallback(
-    (
-      batch: Array<{ id: string; mac: string; port: number; ts: string }>,
-    ) => {
+    (batch: Array<{ id: string; mac: string; port: number; ts: string }>) => {
+      if (batch.length === 0) return;
       const nowPerf = performance.now();
       const anchorWall = Date.now();
       for (const r of batch) {
@@ -112,13 +117,20 @@ export function useEventStream(
         if (add.length === 0) return prev;
         const merged = [...prev.recentReads, ...add];
         const cutoff = Date.now() - 610_000;
-        const pruned = merged.filter((x) => new Date(x.ts).getTime() >= cutoff);
+        const pruned = merged.filter(
+          (x) => new Date(x.ts).getTime() >= cutoff,
+        );
         const withMeta = patchSnapshotMetaFromReads(prev, add);
         return {
           ...withMeta,
           recentReads: pruned.slice(-50000),
         };
       });
+      const maxWall = batch.reduce(
+        (m, r) => Math.max(m, new Date(r.ts).getTime()),
+        0,
+      );
+      if (maxWall > 0) setLastReadAt(maxWall);
     },
     [],
   );
@@ -129,6 +141,26 @@ export function useEventStream(
     let es: EventSource | null = null;
     let dead = false;
     let attempt = 0;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const pollSnapshotFallback = async () => {
+      if (dead) return;
+      try {
+        const r = await fetch(
+          `/api/events/${encodeURIComponent(shortId)}/snapshot`,
+          { credentials: "include" },
+        );
+        if (r.ok) {
+          const snap = (await r.json()) as SnapshotApi;
+          applySnapshot(snap);
+        }
+      } catch {
+        /* ignore; SSE retry will handle */
+      }
+      if (!dead && status !== "live") {
+        fallbackTimer = setTimeout(pollSnapshotFallback, 5000);
+      }
+    };
 
     const connect = () => {
       if (dead) return;
@@ -144,6 +176,10 @@ export function useEventStream(
           applySnapshot(data);
           setStatus("live");
           setReconnects(0);
+          if (fallbackTimer) {
+            clearTimeout(fallbackTimer);
+            fallbackTimer = null;
+          }
         } catch {
           setStatus("error");
         }
@@ -173,6 +209,9 @@ export function useEventStream(
         setStatus("error");
         attempt += 1;
         setReconnects(attempt);
+        if (!fallbackTimer) {
+          fallbackTimer = setTimeout(pollSnapshotFallback, 2000);
+        }
         const delay = Math.min(15_000, 800 + attempt * 700);
         setTimeout(() => {
           if (!dead) connect();
@@ -189,8 +228,10 @@ export function useEventStream(
     return () => {
       dead = true;
       clearInterval(iv);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       es?.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shortId, enabled, applySnapshot, mergeReads, onReads]);
 
   return {
@@ -198,5 +239,7 @@ export function useEventStream(
     buffers: buffersRef,
     status,
     reconnects,
+    lastReadAt,
+    applySnapshot,
   };
 }

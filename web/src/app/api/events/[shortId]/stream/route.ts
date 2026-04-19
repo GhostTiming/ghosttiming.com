@@ -7,6 +7,12 @@ import { requireViewerAuth } from "@/lib/resolve-event";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+const POLL_FAST_MS = 500;
+const POLL_SLOW_MS = 1500;
+const EMPTY_TICKS_BEFORE_SLOW = 10;
+const PING_EVERY_MS = 25_000;
 
 export async function GET(
   req: NextRequest,
@@ -22,9 +28,7 @@ export async function GET(
   const wmStart =
     snap.recentReads.length > 0
       ? new Date(
-          Math.max(
-            ...snap.recentReads.map((r) => new Date(r.ts).getTime()),
-          ),
+          Math.max(...snap.recentReads.map((r) => new Date(r.ts).getTime())),
         )
       : new Date(Date.now() - 2000);
 
@@ -42,16 +46,41 @@ export async function GET(
 
   const stream = new ReadableStream({
     start(controller) {
+      let closed = false;
+      let emptyTicks = 0;
+      let pollTimer: ReturnType<typeof setTimeout> | null = null;
+      let pingTimer: ReturnType<typeof setInterval> | null = null;
+
+      const safeEnqueue = (chunk: string) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          closed = true;
+        }
+      };
+
       const send = (event: string, data: unknown, id?: string) => {
         let b = "";
         if (id) b += `id: ${id}\n`;
         b += `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(b));
+        safeEnqueue(b);
       };
 
       send("snapshot", snap, wm.toISOString());
+      safeEnqueue(": hello\n\n");
+
+      const schedulePoll = () => {
+        if (closed) return;
+        const delay =
+          emptyTicks >= EMPTY_TICKS_BEFORE_SLOW ? POLL_SLOW_MS : POLL_FAST_MS;
+        pollTimer = setTimeout(() => {
+          void poll();
+        }, delay);
+      };
 
       const poll = async () => {
+        if (closed) return;
         try {
           const rows = await db
             .select({
@@ -66,6 +95,7 @@ export async function GET(
             .limit(8000);
 
           if (rows.length > 0) {
+            emptyTicks = 0;
             const maxTs = rows.reduce(
               (m, r) => (r.ts > m ? r.ts : m),
               rows[0].ts,
@@ -83,24 +113,35 @@ export async function GET(
               },
               wm.toISOString(),
             );
+          } else {
+            emptyTicks = Math.min(emptyTicks + 1, 60);
           }
         } catch (e) {
-          controller.error(e as Error);
+          console.error("[stream/poll]", shortId, e);
+        } finally {
+          schedulePoll();
         }
       };
 
-      const iv = setInterval(() => {
-        void poll();
-      }, 500);
+      schedulePoll();
 
-      req.signal.addEventListener("abort", () => {
-        clearInterval(iv);
+      pingTimer = setInterval(() => {
+        safeEnqueue(`: ping ${Date.now()}\n\n`);
+      }, PING_EVERY_MS);
+
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        if (pollTimer) clearTimeout(pollTimer);
+        if (pingTimer) clearInterval(pingTimer);
         try {
           controller.close();
         } catch {
           /* closed */
         }
-      });
+      };
+
+      req.signal.addEventListener("abort", cleanup);
     },
   });
 

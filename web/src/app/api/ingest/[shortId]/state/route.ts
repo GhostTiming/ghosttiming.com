@@ -40,76 +40,95 @@ export async function POST(
 
   const now = new Date();
 
-  if (typeof body.eventName === "string") {
-    const name = body.eventName.trim().slice(0, 200);
-    if (name) {
-      await db.update(events).set({ name }).where(eq(events.id, ev.id));
+  try {
+    const jobs: Promise<unknown>[] = [];
+
+    if (typeof body.eventName === "string") {
+      const name = body.eventName.trim().slice(0, 200);
+      if (name) {
+        jobs.push(
+          db.update(events).set({ name }).where(eq(events.id, ev.id)),
+        );
+      }
     }
-  }
 
-  if (Array.isArray(body.macs)) {
-    for (const m of body.macs) {
-      const mac = String(m.mac ?? "")
-        .trim()
-        .toUpperCase()
-        .replace(/[^0-9A-F]/g, "");
-      if (!mac || mac.length < 4) continue;
-      const fn =
-        typeof m.friendlyName === "string"
-          ? m.friendlyName.trim().slice(0, 120)
-          : undefined;
+    if (Array.isArray(body.macs)) {
+      for (const m of body.macs) {
+        const mac = String(m.mac ?? "")
+          .trim()
+          .toUpperCase()
+          .replace(/[^0-9A-F]/g, "");
+        if (!mac || mac.length < 4) continue;
+        const fn =
+          typeof m.friendlyName === "string"
+            ? m.friendlyName.trim().slice(0, 120)
+            : undefined;
 
-      await db
-        .insert(macsEvent)
-        .values({
-          eventId: ev.id,
-          mac,
-          friendlyName: fn ?? null,
-          firstSeen: now,
-          lastSeen: now,
-          totalReads: 0,
-        })
-        .onConflictDoUpdate({
-          target: [macsEvent.eventId, macsEvent.mac],
-          set:
-            fn !== undefined
-              ? {
-                  friendlyName: fn || null,
-                  lastSeen: now,
-                }
-              : {
-                  lastSeen: now,
-                },
-        });
+        jobs.push(
+          db
+            .insert(macsEvent)
+            .values({
+              eventId: ev.id,
+              mac,
+              friendlyName: fn ?? null,
+              firstSeen: now,
+              lastSeen: now,
+              totalReads: 0,
+            })
+            .onConflictDoUpdate({
+              target: [macsEvent.eventId, macsEvent.mac],
+              set:
+                fn !== undefined
+                  ? {
+                      friendlyName: fn || null,
+                      lastSeen: now,
+                    }
+                  : {
+                      lastSeen: now,
+                    },
+            }),
+        );
+      }
     }
-  }
 
-  if (Array.isArray(body.workspaces)) {
-    for (const w of body.workspaces) {
-      const workspaceId = String(w.workspaceId ?? "").trim().slice(0, 128);
-      if (!workspaceId || w.payload === undefined) continue;
-      await db
-        .insert(timerWorkspaces)
-        .values({
-          eventId: ev.id,
-          workspaceId,
-          payload: w.payload as object,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [timerWorkspaces.eventId, timerWorkspaces.workspaceId],
-          set: {
-            payload: w.payload as object,
-            updatedAt: now,
-          },
-        });
+    if (Array.isArray(body.workspaces)) {
+      for (const w of body.workspaces) {
+        const workspaceId = String(w.workspaceId ?? "")
+          .trim()
+          .slice(0, 128);
+        if (!workspaceId || w.payload === undefined) continue;
+        jobs.push(
+          db
+            .insert(timerWorkspaces)
+            .values({
+              eventId: ev.id,
+              workspaceId,
+              payload: w.payload as object,
+              updatedAt: now,
+            })
+            .onConflictDoUpdate({
+              target: [timerWorkspaces.eventId, timerWorkspaces.workspaceId],
+              set: {
+                payload: w.payload as object,
+                updatedAt: now,
+              },
+            }),
+        );
+      }
     }
-  }
 
-  await db
-    .update(events)
-    .set({ lastIngestAt: now })
-    .where(eq(events.id, ev.id));
+    if (jobs.length > 0) {
+      await Promise.all(jobs);
+    }
+
+    await db
+      .update(events)
+      .set({ lastIngestAt: now })
+      .where(eq(events.id, ev.id));
+  } catch (e) {
+    console.error("[ingest/state]", shortId, e);
+    return NextResponse.json({ error: "State ingest failed" }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true });
 }
