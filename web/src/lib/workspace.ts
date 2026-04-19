@@ -1,3 +1,4 @@
+import type { SnapshotApi } from "@/types/snapshot";
 import type { HeatmapSlotState, WorkspacePayload } from "@/types/workspace";
 
 export function defaultWorkspace(name = "My view"): WorkspacePayload {
@@ -75,4 +76,68 @@ export function rebuildHeatmapSlots(
   for (let c = 0; c < row2; c++) carry("row2", c, 1);
   for (let c = 0; c < right; c++) carry("right", c, 0);
   return out;
+}
+
+/**
+ * When the desktop has not published Analytics workspaces yet, derive a heatmap
+ * from live port / read data so remote viewers still see mats and activity.
+ */
+export function autoWorkspaceFromSnapshot(
+  snapshot: SnapshotApi,
+): WorkspacePayload | null {
+  const keys = new Set<string>();
+  for (const p of snapshot.ports) {
+    keys.add(`${p.mac.toUpperCase()}:${p.port}`);
+  }
+  if (keys.size === 0) {
+    for (const r of snapshot.recentReads.slice(-800)) {
+      keys.add(`${r.mac.toUpperCase()}:${r.port}`);
+    }
+  }
+  const uniq = [...keys].sort((a, b) => a.localeCompare(b));
+  if (uniq.length === 0) {
+    return null;
+  }
+
+  const macs: Record<string, boolean> = {};
+  const antennas: Record<string, boolean> = {};
+  for (const k of uniq) {
+    antennas[k] = true;
+    const m = k.split(":")[0] ?? "";
+    if (m) macs[m] = true;
+  }
+
+  const row1 = 4;
+  const slots: HeatmapSlotState[] = [];
+  for (let c = 0; c < row1; c++) {
+    const key = uniq[c];
+    let mac: string | null = null;
+    let port: string | null = null;
+    if (key) {
+      const parts = key.split(":");
+      mac = parts[0] ?? null;
+      port = parts.slice(1).join(":") || null;
+    }
+    slots.push({
+      role: "row1",
+      col: c,
+      row: 0,
+      mac,
+      port,
+    });
+  }
+
+  return {
+    name: "Live feeds",
+    view: "heatmap",
+    macs,
+    antennas,
+    heatmap: {
+      row1,
+      row2: 0,
+      left: 0,
+      right: 0,
+      slots: rebuildHeatmapSlots(row1, 0, 0, 0, slots),
+    },
+  };
 }

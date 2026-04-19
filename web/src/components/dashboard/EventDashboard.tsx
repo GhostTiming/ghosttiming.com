@@ -13,6 +13,7 @@ import {
   rgbToHex,
 } from "@/lib/colors";
 import {
+  autoWorkspaceFromSnapshot,
   defaultWorkspace,
   parseWorkspacePayload,
   rebuildHeatmapSlots,
@@ -173,24 +174,28 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     }
   }, [shortId, personal]);
 
+  const autoSharedPayload = useMemo(
+    () => (snapshot ? autoWorkspaceFromSnapshot(snapshot) : null),
+    [snapshot],
+  );
+
   useEffect(() => {
     if (!snapshot?.workspaces?.length) return;
     const first = snapshot.workspaces[0]?.workspaceId;
     if (first && !sharedId) setSharedId(first);
   }, [snapshot?.workspaces, sharedId]);
 
-  useEffect(() => {
-    if (snapshot && !snapshot.workspaces?.length) {
-      setActiveTab("personal");
-    }
-  }, [shortId, snapshot?.workspaces?.length]);
-
   const sharedPayload = useMemo(() => {
-    if (!snapshot?.workspaces?.length) return null;
-    const id = sharedId ?? snapshot.workspaces[0].workspaceId;
-    const row = snapshot.workspaces.find((w) => w.workspaceId === id);
-    return row ? parseWorkspacePayload(row.payload) : null;
-  }, [snapshot?.workspaces, sharedId]);
+    if (!snapshot) return null;
+    if (snapshot.workspaces?.length) {
+      const id = sharedId ?? snapshot.workspaces[0].workspaceId;
+      const row = snapshot.workspaces.find((w) => w.workspaceId === id);
+      return row ? parseWorkspacePayload(row.payload) : null;
+    }
+    return autoSharedPayload;
+  }, [snapshot, sharedId, autoSharedPayload]);
+
+  const hasTimerLayouts = (snapshot?.workspaces?.length ?? 0) > 0;
 
   const effective = useMemo(() => {
     if (activeTab === "shared" && sharedPayload) return sharedPayload;
@@ -373,17 +378,27 @@ export function EventDashboard({ shortId }: { shortId: string }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="rounded border border-border bg-card px-2 py-1 text-sm"
-            value={sharedId ?? ""}
-            onChange={(e) => setSharedId(e.target.value || null)}
-          >
-            {(snapshot.workspaces ?? []).map((w) => (
-              <option key={w.workspaceId} value={w.workspaceId}>
-                Timer: {parseWorkspacePayload(w.payload).name}
-              </option>
-            ))}
-          </select>
+          {hasTimerLayouts ? (
+            <select
+              className="rounded border border-border bg-card px-2 py-1 text-sm"
+              value={sharedId ?? ""}
+              onChange={(e) => setSharedId(e.target.value || null)}
+            >
+              {(snapshot.workspaces ?? []).map((w) => (
+                <option key={w.workspaceId} value={w.workspaceId}>
+                  Timer: {parseWorkspacePayload(w.payload).name}
+                </option>
+              ))}
+            </select>
+          ) : autoSharedPayload ? (
+            <span className="rounded border border-border bg-card px-2 py-1 text-sm text-muted">
+              Live feeds (auto)
+            </span>
+          ) : (
+            <span className="rounded border border-border bg-muted/30 px-2 py-1 text-sm text-muted">
+              No timer layout — publishing reads only
+            </span>
+          )}
           <div className="flex gap-1 rounded border border-border p-0.5">
             <button
               type="button"
@@ -393,7 +408,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
                   : "hover:bg-background"
               }`}
               onClick={() => setActiveTab("shared")}
-              disabled={!snapshot.workspaces?.length}
+              disabled={!hasTimerLayouts && !autoSharedPayload}
             >
               Shared layout
             </button>
