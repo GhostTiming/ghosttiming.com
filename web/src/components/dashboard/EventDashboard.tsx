@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useEventStream } from "@/hooks/use-event-stream";
 import { useToast } from "@/hooks/use-toast";
 import { LiveChart, type SeriesSpec } from "@/components/dashboard/LiveChart";
-import { FilterPanel } from "@/components/dashboard/FilterPanel";
 import { HeatmapCanvas } from "@/components/dashboard/HeatmapCanvas";
 import {
   antennaShade,
@@ -15,17 +14,20 @@ import {
 import {
   autoWorkspaceFromSnapshot,
   countFilledSlots,
-  defaultWorkspace,
   parseWorkspacePayload,
   rebuildHeatmapSlots,
 } from "@/lib/workspace";
-import type { WorkspacePayload } from "@/types/workspace";
 import type { SnapshotApi } from "@/types/snapshot";
-
-const LS_PERSONAL = (shortId: string) => `cs:${shortId}:personal_v1`;
 
 type Gate = "checking" | "login" | "live";
 
+/**
+ * Viewer dashboard.
+ *
+ * Deliberately minimal: no controls, no tabs, no filter editing. Viewers see
+ * a read-only mirror of the timer's published workspace (or an auto-generated
+ * fallback when nothing has been published yet).
+ */
 export function EventDashboard({ shortId }: { shortId: string }) {
   const toast = useToast();
   const [gate, setGate] = useState<Gate>("checking");
@@ -38,9 +40,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   );
 
   const onReads = useCallback(
-    (
-      batch: Array<{ id: string; mac: string; port: number; ts: string }>,
-    ) => {
+    (batch: Array<{ id: string; mac: string; port: number; ts: string }>) => {
       setPortTotals((prev) => {
         const n = new Map(prev);
         for (const r of batch) {
@@ -154,60 +154,37 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     [macIndex],
   );
 
-  const [personal, setPersonal] = useState<WorkspacePayload>(() =>
-    defaultWorkspace(),
-  );
-  /** Default to timer “Shared layout” so heatmap/chart match the desktop publish. */
-  const [activeTab, setActiveTab] = useState<"shared" | "personal">("shared");
-  const [sharedId, setSharedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_PERSONAL(shortId));
-      if (raw) setPersonal(parseWorkspacePayload(JSON.parse(raw)));
-    } catch {
-      /* keep default */
-    }
-  }, [shortId]);
-
-  useEffect(() => {
-    if (!personal) return;
-    try {
-      localStorage.setItem(LS_PERSONAL(shortId), JSON.stringify(personal));
-    } catch {
-      /* quota */
-    }
-  }, [shortId, personal]);
-
-  const autoSharedPayload = useMemo(
+  /** Auto-generated workspace when the timer hasn't published one yet. */
+  const autoPayload = useMemo(
     () => (snapshot ? autoWorkspaceFromSnapshot(snapshot) : null),
     [snapshot],
   );
 
-  useEffect(() => {
-    if (!snapshot?.workspaces?.length) return;
-    const first = snapshot.workspaces[0]?.workspaceId;
-    if (first && !sharedId) setSharedId(first);
-  }, [snapshot?.workspaces, sharedId]);
-
-  const sharedPayload = useMemo(() => {
+  /**
+   * Single source of truth for what's on screen: the timer's first published
+   * workspace, or the auto layout if the timer hasn't published / the
+   * published one is empty.
+   */
+  const effective = useMemo(() => {
     if (!snapshot) return null;
     if (snapshot.workspaces?.length) {
-      const id = sharedId ?? snapshot.workspaces[0].workspaceId;
-      const row = snapshot.workspaces.find((w) => w.workspaceId === id);
-      const parsed = row ? parseWorkspacePayload(row.payload) : null;
-      if (parsed && countFilledSlots(parsed) === 0 && autoSharedPayload) {
-        // Published layout was empty; fall back to auto layout so viewer shows data.
-        return autoSharedPayload;
+      const row = snapshot.workspaces[0];
+      const parsed = parseWorkspacePayload(row.payload);
+      if (countFilledSlots(parsed) === 0 && autoPayload) {
+        return autoPayload;
       }
       return parsed;
     }
-    return autoSharedPayload;
-  }, [snapshot, sharedId, autoSharedPayload]);
+    return autoPayload;
+  }, [snapshot, autoPayload]);
 
-  const hasTimerLayouts = (snapshot?.workspaces?.length ?? 0) > 0;
+  const macsOn = useMemo(() => effective?.macs ?? {}, [effective?.macs]);
+  const antsOn = useMemo(
+    () => effective?.antennas ?? {},
+    [effective?.antennas],
+  );
 
-  // Chip: Live / Reconnecting / No reads in last 30 s.
+  // Connection chip: Live / Connecting / Reconnecting / No reads in 30 s.
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     if (gate !== "live") return;
@@ -215,13 +192,11 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     return () => clearInterval(iv);
   }, [gate]);
 
-  type ConnChip = {
-    label: string;
-    tone: "live" | "warn" | "bad";
-  };
+  type ConnChip = { label: string; tone: "live" | "warn" | "bad" };
   const connChip: ConnChip = useMemo(() => {
-    if (status === "error") return { label: "Reconnecting…", tone: "bad" };
-    if (status === "connecting") return { label: "Connecting…", tone: "warn" };
+    if (status === "error") return { label: "Reconnecting\u2026", tone: "bad" };
+    if (status === "connecting")
+      return { label: "Connecting\u2026", tone: "warn" };
     if (
       lastReadAt !== null &&
       nowTick - lastReadAt > 30_000 &&
@@ -232,44 +207,6 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     }
     return { label: "Live", tone: "live" };
   }, [status, lastReadAt, nowTick, snapshot]);
-
-  const effective = useMemo(() => {
-    if (activeTab === "shared" && sharedPayload) return sharedPayload;
-    return personal;
-  }, [activeTab, sharedPayload, personal]);
-  const readonlyFilters = activeTab === "shared";
-
-  const macsOn = useMemo(
-    () => effective?.macs ?? {},
-    [effective?.macs],
-  );
-  const antsOn = useMemo(
-    () => effective?.antennas ?? {},
-    [effective?.antennas],
-  );
-
-  const setMac = useCallback(
-    (mac: string, v: boolean) => {
-      if (readonlyFilters) return;
-      setPersonal((prev) => ({
-        ...prev,
-        macs: { ...prev.macs, [mac]: v },
-      }));
-    },
-    [readonlyFilters],
-  );
-
-  const setAnt = useCallback(
-    (mac: string, port: string, v: boolean) => {
-      if (readonlyFilters) return;
-      const key = `${mac}:${port}`;
-      setPersonal((prev) => ({
-        ...prev,
-        antennas: { ...prev.antennas, [key]: v },
-      }));
-    },
-    [readonlyFilters],
-  );
 
   const chartSeries: SeriesSpec[] = useMemo(() => {
     if (!snapshot) return [];
@@ -309,7 +246,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
         kind: "antenna",
         mac,
         port,
-        label: `${displayMac(mac)} · Ant ${port}`,
+        label: `${displayMac(mac)} \u00b7 Ant ${port}`,
         color: rgbToHex(shade),
         linewidth: 1.2,
         trend: false,
@@ -317,16 +254,6 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     }
     return specs;
   }, [snapshot, orderedMacs, macsOn, antsOn, displayMac, macRgb]);
-
-  const buffersWall = useMemo(() => {
-    const m = new Map<string, Map<string, number>>();
-    for (const [k, t] of lastSeenWall) {
-      const [mac, port] = k.split(":");
-      if (!m.has(mac)) m.set(mac, new Map());
-      m.get(mac)!.set(port, t);
-    }
-    return m;
-  }, [lastSeenWall]);
 
   const heatmapSlots = useMemo(() => {
     if (!effective?.heatmap) return [];
@@ -401,173 +328,60 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     );
   }
 
+  const view = effective?.view ?? "heatmap";
+
   return (
     <div className="space-y-4">
-      <header className="flex flex-col gap-2 border-b border-border pb-4 md:flex-row md:items-center md:justify-between">
-        <div>
+      <header className="flex flex-col gap-1 border-b border-border pb-3">
+        <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold tracking-tight">
             {eventTitle || "Live event"}
           </h1>
-          <p className="flex items-center gap-2 text-xs text-muted">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-medium ${
+              connChip.tone === "live"
+                ? "bg-emerald-500/15 text-emerald-400"
+                : connChip.tone === "warn"
+                  ? "bg-amber-500/15 text-amber-400"
+                  : "bg-rose-500/15 text-rose-400"
+            }`}
+          >
             <span
-              className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${
+              className={`h-1.5 w-1.5 rounded-full ${
                 connChip.tone === "live"
-                  ? "bg-emerald-500/15 text-emerald-400"
+                  ? "bg-emerald-400"
                   : connChip.tone === "warn"
-                    ? "bg-amber-500/15 text-amber-400"
-                    : "bg-rose-500/15 text-rose-400"
+                    ? "bg-amber-400"
+                    : "bg-rose-400"
               }`}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  connChip.tone === "live"
-                    ? "bg-emerald-400"
-                    : connChip.tone === "warn"
-                      ? "bg-amber-400"
-                      : "bg-rose-400"
-                }`}
-              />
-              {connChip.label}
-            </span>
-            <span>
-              {shortId}
-              {reconnects > 0 ? ` · r${reconnects}` : ""}
-            </span>
-          </p>
+            />
+            {connChip.label}
+          </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {hasTimerLayouts ? (
-            <select
-              className="rounded border border-border bg-card px-2 py-1 text-sm"
-              value={sharedId ?? ""}
-              onChange={(e) => setSharedId(e.target.value || null)}
-            >
-              {(snapshot.workspaces ?? []).map((w) => (
-                <option key={w.workspaceId} value={w.workspaceId}>
-                  Timer: {parseWorkspacePayload(w.payload).name}
-                </option>
-              ))}
-            </select>
-          ) : autoSharedPayload ? (
-            <span className="rounded border border-border bg-card px-2 py-1 text-sm text-muted">
-              Live feeds (auto)
-            </span>
-          ) : (
-            <span className="rounded border border-border bg-muted/30 px-2 py-1 text-sm text-muted">
-              No timer layout — publishing reads only
-            </span>
-          )}
-          <div className="flex gap-1 rounded border border-border p-0.5">
-            <button
-              type="button"
-              className={`rounded px-2 py-1 text-xs ${
-                activeTab === "shared"
-                  ? "bg-foreground text-background"
-                  : "hover:bg-background"
-              }`}
-              onClick={() => setActiveTab("shared")}
-              disabled={!hasTimerLayouts && !autoSharedPayload}
-            >
-              Shared layout
-            </button>
-            <button
-              type="button"
-              className={`rounded px-2 py-1 text-xs ${
-                activeTab === "personal"
-                  ? "bg-foreground text-background"
-                  : "hover:bg-background"
-              }`}
-              onClick={() => setActiveTab("personal")}
-            >
-              My layout
-            </button>
-          </div>
-          {activeTab === "personal" && (
-            <button
-              type="button"
-              className="rounded border border-border px-2 py-1 text-xs"
-                  onClick={() => {
-                if (sharedPayload) {
-                  setPersonal(
-                    JSON.parse(JSON.stringify(sharedPayload)) as WorkspacePayload,
-                  );
-                  toast({ title: "Copied timer layout to My layout." });
-                }
-              }}
-            >
-              Copy from timer
-            </button>
-          )}
-        </div>
+        <p className="text-xs text-muted">
+          {shortId}
+          {reconnects > 0 ? ` · r${reconnects}` : ""}
+        </p>
       </header>
 
-      <div className="flex flex-col gap-4 lg:flex-row">
-        <aside className="w-full shrink-0 lg:w-[300px]">
-          <FilterPanel
-            snapshot={snapshot}
-            macsOn={macsOn}
-            antsOn={antsOn}
-            onMac={setMac}
-            onAnt={setAnt}
-            readonly={readonlyFilters}
-            buffersWall={buffersWall}
+      <main className="min-w-0">
+        {view === "heatmap" ? (
+          <HeatmapCanvas
+            buffers={buffers}
+            slots={heatmapSlots}
+            macRgb={macRgb}
+            displayMac={displayMac}
+            portTotals={portTotals}
+            lastSeenWall={lastSeenWall}
           />
-        </aside>
-        <main className="min-w-0 flex-1 space-y-4">
-          <div className="flex gap-2 text-sm">
-            <span className="text-muted">View:</span>
-            {activeTab === "personal" ? (
-              <>
-                <button
-                  type="button"
-                  className={`rounded px-2 py-0.5 ${
-                    effective?.view === "chart"
-                      ? "bg-foreground text-background"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    setPersonal((p) => ({ ...p, view: "chart" }))
-                  }
-                >
-                  Chart
-                </button>
-                <button
-                  type="button"
-                  className={`rounded px-2 py-0.5 ${
-                    effective?.view === "heatmap"
-                      ? "bg-foreground text-background"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    setPersonal((p) => ({ ...p, view: "heatmap" }))
-                  }
-                >
-                  Heatmap
-                </button>
-              </>
-            ) : (
-              <span className="capitalize">{effective?.view ?? "chart"}</span>
-            )}
-          </div>
-
-          {effective?.view === "heatmap" ? (
-            <HeatmapCanvas
-              buffers={buffers}
-              slots={heatmapSlots}
-              macRgb={macRgb}
-              displayMac={displayMac}
-              portTotals={portTotals}
-              lastSeenWall={lastSeenWall}
-            />
-          ) : (
-            <LiveChart
-              buffers={buffers}
-              series={chartSeries}
-              gateLabel={snapshot.gateTime ?? undefined}
-            />
-          )}
-        </main>
-      </div>
+        ) : (
+          <LiveChart
+            buffers={buffers}
+            series={chartSeries}
+            gateLabel={snapshot.gateTime ?? undefined}
+          />
+        )}
+      </main>
     </div>
   );
 }

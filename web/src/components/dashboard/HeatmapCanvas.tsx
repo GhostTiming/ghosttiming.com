@@ -219,9 +219,11 @@ export function HeatmapCanvas({
 
         const cx = (x0 + x1) / 2;
         const cy = (y0 + y1) / 2;
+        const w = x1 - x0;
+        const h = y1 - y0;
         const header =
           mac && port !== null
-            ? `${p.displayMac(mac)} · Ant ${port}`
+            ? `${p.displayMac(mac)} \u00b7 Ant ${port}`
             : `${
                 s.role === "left"
                   ? "Left"
@@ -237,40 +239,84 @@ export function HeatmapCanvas({
             ? (() => {
                 const t = p.lastSeenWall.get(key);
                 if (t === undefined) return "no reads yet";
-                return `last: ${formatElapsed((nowWall - t) / 1000)}`;
+                return formatElapsed((nowWall - t) / 1000);
               })()
             : "";
 
         const total =
           mac && port !== null && key ? p.portTotals.get(key) ?? 0 : 0;
-        const countLine =
-          mac && port !== null ? `${total.toLocaleString()} reads` : "";
+        const countText =
+          mac && port !== null ? total.toLocaleString() : "";
+        const countLabel = mac && port !== null ? "reads" : "";
 
         c.save();
-        if (s.role === "left" || s.role === "right") {
+        const isSide = s.role === "left" || s.role === "right";
+        if (isSide) {
           c.translate(cx, cy);
           c.rotate(-Math.PI / 2);
-          const lines = [header, elapsed, countLine].filter(Boolean);
-          c.fillStyle = mac ? "#f2f4f8" : "#cbd0dc";
-          c.font = "bold 11px system-ui,sans-serif";
-          c.textAlign = "center";
-          c.textBaseline = "middle";
-          let oy = -((lines.length - 1) * 7);
-          for (const line of lines) {
-            c.fillText(line, 0, oy);
-            oy += 14;
-          }
         } else {
-          c.fillStyle = mac ? "#f2f4f8" : "#cbd0dc";
-          c.font = "bold 11px system-ui,sans-serif";
-          c.textAlign = "center";
-          c.textBaseline = "middle";
-          c.fillText(header, cx, cy - 12);
-          c.fillStyle = "#d4d8e3";
-          c.font = "10px system-ui,sans-serif";
-          if (elapsed) c.fillText(elapsed, cx, cy + 8);
-          if (countLine) c.fillText(countLine, cx, cy + 22);
+          c.translate(cx, cy);
         }
+
+        const boxW = isSide ? h : w;
+        const boxH = isSide ? w : h;
+        const scale = Math.max(0.6, Math.min(1.4, boxW / 220));
+        const headerPx = Math.max(11, Math.round(13 * scale));
+        const countPx = Math.max(22, Math.round(38 * scale));
+        const smallPx = Math.max(10, Math.round(11 * scale));
+
+        const maxTextW = boxW * 0.88;
+        const fitText = (
+          text: string,
+          weight: string,
+          desiredPx: number,
+        ): { text: string; px: number } => {
+          let px = desiredPx;
+          for (let i = 0; i < 6; i++) {
+            c.font = `${weight} ${px}px system-ui,sans-serif`;
+            if (c.measureText(text).width <= maxTextW) break;
+            px = Math.max(9, Math.round(px * 0.9));
+          }
+          return { text, px };
+        };
+
+        const headerFit = fitText(header, "600", headerPx);
+        const countFit = countText
+          ? fitText(countText, "700", countPx)
+          : null;
+
+        if (mac) {
+          c.fillStyle = "rgba(255,255,255,0.92)";
+        } else {
+          c.fillStyle = "#8a90a0";
+        }
+        c.textAlign = "center";
+        c.textBaseline = "middle";
+
+        // Header near the top of the cell so it can't collide with the count.
+        const topY = -boxH / 2 + Math.max(12, boxH * 0.14);
+        c.font = `600 ${headerFit.px}px system-ui,sans-serif`;
+        c.fillText(headerFit.text, 0, topY);
+
+        if (countFit) {
+          c.fillStyle = "rgba(255,255,255,0.98)";
+          c.font = `700 ${countFit.px}px system-ui,sans-serif`;
+          c.fillText(countFit.text, 0, 0);
+
+          if (countLabel) {
+            c.fillStyle = "rgba(210,214,226,0.78)";
+            c.font = `500 ${smallPx}px system-ui,sans-serif`;
+            c.fillText(countLabel, 0, countFit.px * 0.62);
+          }
+        }
+
+        if (elapsed && mac) {
+          c.fillStyle = "rgba(205,210,222,0.75)";
+          c.font = `500 ${smallPx}px system-ui,sans-serif`;
+          const bottomY = boxH / 2 - Math.max(10, boxH * 0.12);
+          c.fillText(elapsed, 0, bottomY);
+        }
+
         c.restore();
       }
 
