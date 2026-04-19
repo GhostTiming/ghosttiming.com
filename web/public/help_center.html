@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Remote Timing Crew Help Guide</title>
+  <meta name="description" content="Combined mobile-friendly help guide for crew in the field covering cellular connection, time sync, event naming, server connection, LAN fixes and MiniTrack alerts." />
+  <style>
+    :root{
+      --bg:#f4f6f8;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#5b6472;
+      --line:#e5e7eb;
+      --soft:#f8fafc;
+      --accent:#0f172a;
+      --accent2:#1f2937;
+      --warn-bg:#fff7ed;
+      --warn-line:#fdba74;
+      --ok-bg:#f0fdf4;
+      --ok-line:#86efac;
+      --danger:#b91c1c;
+      --shadow:0 6px 18px rgba(15,23,42,.08);
+      --radius:16px;
+    }
+
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      font-family:Arial, Helvetica, sans-serif;
+      background:linear-gradient(180deg,#eef2f6 0%, #f7f8fb 100%);
+      color:var(--text);
+      line-height:1.5;
+    }
+    a{color:var(--accent);}
+    img{max-width:100%;height:auto;display:block}
+    .wrap{max-width:980px;margin:0 auto;padding:16px 14px 40px}
+    .hero, .card, details{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+    }
+    .hero{padding:18px 16px}
+    .eyebrow{
+      font-size:12px;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      color:var(--muted);
+      margin-bottom:6px;
+      font-weight:700;
+    }
+    h1{font-size:26px;line-height:1.15;margin:0;}
+    .sub{margin-top:10px;color:var(--muted);font-size:15px;}
+    .tip{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);}
+    .toc{margin-top:14px;padding:0;background:rgba(255,255,255,.85);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);backdrop-filter: blur(6px);position:sticky;top:10px;z-index:5;overflow:hidden;}
+    .toc summary{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;}
+    .toc-title{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;}
+    .toc-badge{white-space:nowrap;border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:700;color:var(--accent2);}
+    .toc-grid{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:8px;padding:0 14px 14px;}
+    .toc a{text-decoration:none;color:var(--accent);background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px;font-weight:700;display:block;}
+    .section{margin-top:14px; scroll-margin-top:110px;}
+    details{overflow:hidden}
+    summary{list-style:none;cursor:pointer;padding:16px;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;}
+    summary::-webkit-details-marker{display:none}
+    .summary-main{min-width:0}
+    .summary-title{font-size:18px;font-weight:700;line-height:1.25;margin:0;}
+    .summary-desc{margin-top:6px;font-size:14px;color:var(--muted);}
+    .badge{white-space:nowrap;border:1px solid var(--line);background:var(--soft);border-radius:999px;padding:7px 10px;font-size:12px;font-weight:700;color:var(--accent2);}
+    .danger-text{color:var(--danger)!important}
+    details[open] .badge{background:#e8eef8}
+    .body{border-top:1px solid var(--line);padding:16px;}
+    .callout{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:12px;padding:12px;margin:0 0 14px 0;}
+    .callout.ok{background:var(--ok-bg);border-color:var(--ok-line);}
+    .callout-title{font-size:12px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:6px;color:#9a3412;}
+    .callout.ok .callout-title{color:#166534}
+    .panel{background:var(--soft);border:1px solid #edf2f7;border-radius:12px;padding:12px;margin-bottom:12px;}
+    .panel h3{font-size:14px;margin:0 0 8px 0;color:var(--accent2);}
+    .steps, .bullets{margin:0;padding-left:18px}
+    .steps li, .bullets li{margin:0 0 8px 0}
+    .image-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin:10px 0;}
+    .image-card .label{font-size:13px;margin:0 0 8px 0;color:var(--accent2);font-weight:700;}
+    .image-note{margin-top:8px;font-size:12px;color:var(--muted);}
+    .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    .footer{margin-top:16px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:14px 16px;font-size:12px;color:var(--muted);}
+    .toplink{display:inline-block;margin-top:8px;font-size:13px;font-weight:700;text-decoration:none;}
+    @media (max-width:720px){
+      h1{font-size:22px}
+      .toc-grid,.two-col{grid-template-columns:1fr}
+      summary{padding:14px}
+      .body{padding:14px}
+      .summary-title{font-size:17px}
+      .badge,.toc-badge{font-size:11px;padding:6px 9px}
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap" id="top">
+    <section class="hero">
+      <div class="eyebrow">Remote Timing Crew Reference</div>
+      <h1>Field Help & Troubleshooting Guide</h1>
+      <div class="sub">
+        One page, built for crew in the field. Open the jump menu, pick the section you need and each section stays collapsed until you open it.
+      </div>
+      <div class="tip">
+        Recommended flow: cellular network first, then time setup and Mini sync, then event and point name, then final server connection. Use the troubleshooting sections below only if something goes sideways.
+      </div>
+    </section>
+
+    <details class="toc" aria-label="Section links" id="section-jump">
+      <summary><span class="toc-title">Jump to a section</span><span class="toc-badge">Tap to open</span></summary>
+      <div class="toc-grid">
+        <a href="#cellular-network-connect">Step 1: Cellular Network Connect</a>
+        <a href="#time-setup-sync">Step 2: Time Setup and Sync</a>
+        <a href="#set-event-point-name">Step 3: Set Event and Point Name</a>
+        <a href="#server-connect">Step 4: Server Connect</a>
+        <a href="#mini-lan-fix">Mini LAN Fix</a>
+        <a href="#mini-clear-message">Mini Track Clear Message</a>
+        <a href="#wifi-server-connect">Emergency - Wi‑Fi Server Connect</a>
+      </div>
+    </details>
+
+    <section class="section" id="cellular-network-connect">
+      <details>
+        <summary>
+          <div class="summary-main">
+            <div class="summary-title">Step 1: Cellular Network Connect</div>
+            <div class="summary-desc">Turn on the cellular adapter first and confirm the Pro2 actually has cellular service before doing anything with server connection.</div>
+          </div>
+          <div class="badge">Tap to toggle</div>
+        </summary>
+        <div class="body">
+          <div class="callout ok">
+            <div class="callout-title">Goal</div>
+            Get the <b>green status bubble</b> on the cellular adapter. Do not jump ahead to server connection until that part is good.
+          </div>
+
+          <div class="panel">
+            <h3>Cellular connection steps</h3>
+            <ol class="steps">
+              <li>Go to <b>Settings → Network Adapters</b>.</li>
+              <li>Tap <b>Cellular</b> → <b>Edit</b>.</li>
+              <li>Make sure <b>Power</b> is set to <b>On</b>.</li>
+              <li>Wait <b>10 to 20 seconds</b> and look for the <b>green status bubble</b>.</li>
+              <li>If Power is On and you still do <b>not</b> see the green bubble after 1 to 2 minutes, toggle <b>Power Off → On</b> and try again.</li>
+              <li>This can take a couple tries. Do not start messing with the server settings yet.</li>
+            </ol>
+          </div>
+
+          <div class="image-card">
+            <div class="label">Settings → Network Adapters</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003513772/mceclip0.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003513772/mceclip0.png" alt="Settings screen with Network Adapters highlighted"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Select Cellular → Edit</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003514072/mceclip1.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003514072/mceclip1.png" alt="Network Adapters screen with Cellular selected and Edit button"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Toggle Cellular Power On</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003532691/mceclip2.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003532691/mceclip2.png" alt="Cellular screen showing Power toggle"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Wait for the green bubble</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003532871/mceclip3.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003532871/mceclip3.png" alt="Cellular screen showing connected status with green indicator"></a>
+            <div class="image-note"><b>Critical:</b> no green bubble means you are not ready for final server connection yet.</div>
+          </div>
+          <a class="toplink" href="#top">Back to top</a>
+        </div>
+      </details>
+    </section>
+
+    <section class="section" id="time-setup-sync">
+      <details>
+        <summary>
+          <div class="summary-main">
+            <div class="summary-title">Step 2: Time Setup and Sync With Mini</div>
+            <div class="summary-desc">Set the Pro2 time using NTP first, use manual time only as backup, then broadcast from the running clock to sync with the Mini.</div>
+          </div>
+          <div class="badge">Tap to toggle</div>
+        </summary>
+        <div class="body">
+          <div class="callout">
+            <div class="callout-title">Priority order</div>
+            <ul class="bullets">
+              <li><b>NTP Time</b> is the preferred method.</li>
+              <li><b>Manual Time</b> is backup only and should not be used casually.</li>
+              <li>After time is set, press the <b>running clock</b> and use <b>Broadcast</b> to sync with the Mini.</li>
+              <li>If you press <b>Broadcast</b> and hear <b>no beep</b>, go to <b>Mini LAN Fix</b>. That means the boxes are not reaching each other.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>Preferred method: NTP Time</h3>
+            <ol class="steps">
+              <li>From the main ChronOS screen, tap the <b>running time display</b>.</li>
+              <li>Go to <b>Race Ops → Time</b>.</li>
+              <li>Tap <b>Time Sync</b> → select <b>NTP Time</b>.</li>
+              <li>Toggle <b>Auto Sync Time</b> to <b>On</b>.</li>
+              <li>Confirm the Pro2 time looks right compared with your phone.</li>
+            </ol>
+          </div>
+
+          <div class="panel">
+            <h3>Fallback only: Manual Time</h3>
+            <p style="margin:0 0 8px 0;"><b>Do not press Set Time without direction from the timer.</b></p>
+            <ol class="steps">
+              <li>Tap the <b>running time display</b> → <b>Race Ops → Time</b>.</li>
+              <li>Tap <b>Manual Time</b> → <b>Config Time</b>.</li>
+              <li>Set the date → <b>Next</b>.</li>
+              <li>Set hour, minute, second and AM/PM → <b>Update</b>.</li>
+              <li>Only when instructed, press <b>Set Time</b>.</li>
+            </ol>
+          </div>
+
+          <div class="panel">
+            <h3>Sync the Mini after time setup</h3>
+            <ol class="steps">
+              <li>Return to the main screen and tap the <b>running clock</b>.</li>
+              <li>Press <b>Broadcast</b> to sync the time with the Mini.</li>
+              <li>Listen for the Mini to <b>beep</b>.</li>
+              <li>If you hear the beep, the boxes are talking and the sync should be good.</li>
+              <li>If you do <b>not</b> hear a beep, go straight to <a href="#mini-lan-fix">Mini LAN Fix</a>.</li>
+            </ol>
+          </div>
+
+          <div class="image-card">
+            <div class="label">NTP: Time Sync → NTP Time</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360051739471/mceclip1.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360051739471/mceclip1.png" alt="Time Sync screen showing NTP Time option"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">NTP: Toggle Auto Sync Time On</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360051739611/mceclip2.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360051739611/mceclip2.png" alt="NTP Time screen with Auto Sync Time toggle"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Manual: Select Manual Time</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360051740751/mceclip3.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360051740751/mceclip3.png" alt="Time menu showing Manual Time option"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Manual: Config Time screen</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003488872/mceclip2.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003488872/mceclip2.png" alt="Manual Time screen showing Config Time and Set Time buttons"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Manual: Set the date</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003509271/mceclip3.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003509271/mceclip3.png" alt="Date picker screen"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Manual: Set the time</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003489092/mceclip4.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003489092/mceclip4.png" alt="Time picker screen"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Manual: Confirm and Set Time</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003509471/mceclip5.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003509471/mceclip5.png" alt="Manual Time confirmation screen showing Set Time button"></a>
+          </div>
+          <a class="toplink" href="#top">Back to top</a>
+        </div>
+      </details>
+    </section>
+
+    <section class="section" id="set-event-point-name">
+      <details>
+        <summary>
+          <div class="summary-main">
+            <div class="summary-title">Step 3: Set Event and Point Name</div>
+            <div class="summary-desc">Set the event name from the crew email and make sure the point name matches the location.</div>
+          </div>
+          <div class="badge">Tap to toggle</div>
+        </summary>
+        <div class="body">
+          <div class="callout">
+            <div class="callout-title">Important</div>
+            Changing the <b>Event Name</b> creates a <b>new session of data</b>. Do <b>not</b> change it while athletes are actively crossing unless you intentionally want a new session.
+          </div>
+
+          <div class="panel">
+            <h3>Event Name rules</h3>
+            <ul class="bullets">
+              <li>Use the value from the crew email.</li>
+              <li>Use <b>ALL CAPS</b>.</li>
+              <li>Use <b>NO SPACES</b>.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>Event Name steps</h3>
+            <ol class="steps">
+              <li>From the main ChronOS screen, tap the <b>Event Name</b> in the top left.</li>
+              <li>On the Controller screen, tap the <b>Event Name</b> field to edit it.</li>
+              <li>If needed, tap the <b>X</b> next to the field to clear it quickly.</li>
+              <li>Type the new Event Name exactly as provided in the crew email.</li>
+              <li>Press <b>Save</b>.</li>
+            </ol>
+          </div>
+
+          <div class="panel">
+            <h3>Point Name standards</h3>
+            <ul class="bullets">
+              <li><b>START</b> = Start line only</li>
+              <li><b>FINISH</b> = Finish line only</li>
+              <li><b>MAIN</b> = Start and finish are the same physical location</li>
+              <li><b>ANNOUNCER</b> = Announcer line system</li>
+              <li>For other locations, use an intuitive name like <b>MILE5</b>. If unsure, reach out to the timer.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>Point Name steps</h3>
+            <ol class="steps">
+              <li>On the Controller screen, tap the <b>Point Name</b> field.</li>
+              <li>Use the <b>ellipsis (...)</b> button to pick a standard name when applicable.</li>
+              <li>If it is a split or custom location, type an intuitive Point Name and press <b>Save</b>.</li>
+            </ol>
+          </div>
+
+          <div class="image-card">
+            <div class="label">Tap the Event Name on the main ChronOS screen</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003505931/mceclip0.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003505931/mceclip0.png" alt="ChronOS main screen showing Event Name area"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Controller screen — tap Event Name and use X to clear if needed</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003505991/mceclip1.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003505991/mceclip1.png" alt="Controller screen with Event Name field and clear button"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Type the Event Name and Save</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003506471/mceclip2.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003506471/mceclip2.png" alt="Keyboard entry screen for Event Name with Save button"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Point Name example set to START</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003485352/mceclip3.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003485352/mceclip3.png" alt="Controller screen showing point name set to START"></a>
+          </div>
+          <a class="toplink" href="#top">Back to top</a>
+        </div>
+      </details>
+    </section>
+
+    <section class="section" id="server-connect">
+      <details>
+        <summary>
+          <div class="summary-main">
+            <div class="summary-title">Step 4: Server Connect</div>
+            <div class="summary-desc">Final setup step. Do this after cellular is good, time is set and synced, and event and point name are correct.</div>
+          </div>
+          <div class="badge">Tap to toggle</div>
+        </summary>
+        <div class="body">
+          <div class="callout ok">
+            <div class="callout-title">Final step</div>
+            This is where you actually connect the Pro2 to the server after the rest of setup is already in place.
+          </div>
+          <div class="panel">
+            <h3>Server connection steps</h3>
+            <ol class="steps">
+              <li>Go to <b>Race Ops → Server Connection</b>.</li>
+              <li>Select the server entry.</li>
+              <li>Tap <b>Connect</b>.</li>
+              <li>Confirm it shows <b>Connected</b>.</li>
+              <li>Confirm the cloud icon does <b>not</b> have a slash through it.</li>
+            </ol>
+          </div>
+          <div class="image-card">
+            <div class="label">Race Ops → Server Connection</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003520772/mceclip4.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003520772/mceclip4.png" alt="Race Ops menu showing Server Connection"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Select the server entry and tap Connect</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003538511/mceclip5.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003538511/mceclip5.png" alt="Server Connections screen showing Connect button"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Confirm Connected</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003538851/mceclip7.png" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003538851/mceclip7.png" alt="Server Connections screen showing Connected status"></a>
+          </div>
+          <a class="toplink" href="#top">Back to top</a>
+        </div>
+      </details>
+    </section>
+
+    <section class="section" id="mini-lan-fix">
+      <details>
+        <summary>
+          <div class="summary-main">
+            <div class="summary-title">Mini LAN Fix</div>
+            <div class="summary-desc">Use this when you press Broadcast from the running clock and the Mini does not beep, which means the boxes cannot reach each other.</div>
+          </div>
+          <div class="badge">Tap to toggle</div>
+        </summary>
+        <div class="body">
+          <div class="callout">
+            <div class="callout-title">Hard rule</div>
+            The <b>Pro2 LAN IP</b> and the <b>Mini LAN IP</b> must <b>never</b> be the same.
+          </div>
+
+          <div class="two-col">
+            <div class="panel">
+              <h3>Pro2 LAN settings</h3>
+              <ul class="bullets">
+                <li>IP format: <b>172.20.23.x</b></li>
+                <li><b>x</b> must be a multiple of 5 between <b>100 and 250</b></li>
+                <li>Netmask: <b>255.255.252.0</b></li>
+                <li>Gateway: <b>172.20.23.1</b></li>
+              </ul>
+            </div>
+            <div class="panel">
+              <h3>Mini LAN settings</h3>
+              <ul class="bullets">
+                <li>IP format: <b>172.20.23.x</b></li>
+                <li><b>x</b> range: <b>50 to 99</b></li>
+                <li>Netmask: <b>255.255.252.0</b></li>
+                <li>Gateway: <b>172.20.23.1</b></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Fix on Pro2 (ChronOS)</h3>
+            <ol class="steps">
+              <li>Go to <b>Settings → Network Adapters</b>.</li>
+              <li>Select <b>LAN</b> → tap <b>Edit</b>.</li>
+              <li>Set the Pro2 IP to <b>172.20.23.x</b> where <b>x</b> is a multiple of 5 between <b>100 and 250</b>.</li>
+              <li>Set <b>Netmask</b> to <b>255.255.252.0</b>.</li>
+              <li>Set <b>Gateway</b> to <b>172.20.23.1</b>.</li>
+              <li>Press <b>Save</b> or <b>Apply</b>.</li>
+            </ol>
+          </div>
+
+          <div class="panel">
+            <h3>Fix on Mini</h3>
+            <ol class="steps">
+              <li>Open the Mini menu → go to <b>Network Cfg</b>.</li>
+              <li>Set <b>Ctrlr IP</b> to <b>172.20.23.x</b> where <b>x</b> is between <b>50 and 99</b>.</li>
+              <li>Set <b>Ctrlr Netmsk</b> to <b>255.255.252.0</b>.</li>
+              <li>Set <b>Ctrlr Gatewy</b> to <b>172.20.23.1</b>.</li>
+              <li>Confirm changes when prompted.</li>
+            </ol>
+          </div>
+
+          <div class="callout">
+            <div class="callout-title">Then retry the sync</div>
+            Go back to the Pro2, tap the <b>running clock</b> and press <b>Broadcast</b> again. If it still does not beep, call the timer.
+          </div>
+          <a class="toplink" href="#top">Back to top</a>
+        </div>
+      </details>
+    </section>
+
+    <section class="section" id="mini-clear-message">
+      <details>
+        <summary>
+          <div class="summary-main">
+            <div class="summary-title">Mini Track Clear Message (AKA Make the Beeping Stop)</div>
+            <div class="summary-desc">Use this when the MiniTrack keeps beeping. Read the message first, then acknowledge or clear it.</div>
+          </div>
+          <div class="badge">Tap to toggle</div>
+        </summary>
+        <div class="body">
+          <div class="callout ok">
+            <div class="callout-title">Always do this first</div>
+            <ol class="steps">
+              <li>Press <b>Menu</b>.</li>
+              <li>Press <b>1</b> then <b>1</b> to open <b>Messages</b>.</li>
+              <li><b>Read the message</b>.</li>
+              <li><b>Acknowledge</b> or <b>Clear</b> the message to stop the alert.</li>
+            </ol>
+          </div>
+
+          <div class="panel">
+            <h3>Common message: Time mismatch</h3>
+            <ul class="bullets">
+              <li>After clearing the message, confirm whether the Pro2 time and Mini time still match.</li>
+              <li>If they still match, disregard and continue.</li>
+              <li>If they significantly mismatch, <b>call the timer</b>.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>Common message: Power or battery</h3>
+            <ul class="bullets">
+              <li>If the message mentions power or battery, put a <b>fresh battery</b> in the slot that does <b>not</b> have the in-use light.</li>
+              <li>If it says the <b>DC cable is disconnected</b>, make sure the cable is snug in the port and connected to a power source that is on.</li>
+              <li>Then clear the message again using <b>Menu → 1 → 1</b>.</li>
+              <li>If time does not significantly mismatch and it is only a power message, you should be all set after clearing it.</li>
+              <li>For all other errors, or any significant time mismatch, <b>call the timer</b>.</li>
+            </ul>
+          </div>
+          <a class="toplink" href="#top">Back to top</a>
+        </div>
+      </details>
+    </section>
+
+    <section class="section" id="wifi-server-connect">
+      <details>
+        <summary>
+          <div class="summary-main">
+            <div class="summary-title danger-text">Emergency - Wi‑Fi Server Connect</div>
+            <div class="summary-desc">Use this only if cellular will not work. Join Wi‑Fi first, then connect to the server through a Wi‑Fi server profile.</div>
+          </div>
+          <div class="badge danger-text">Tap to toggle</div>
+        </summary>
+        <div class="body">
+          <div class="callout">
+            <div class="callout-title">Emergency only</div>
+            This is the backup plan when cellular refuses to cooperate.
+          </div>
+
+          <div class="panel">
+            <h3>Part A — Join Wi‑Fi</h3>
+            <ol class="steps">
+              <li>Make sure the router or hotspot is <b>On</b> and broadcasting Wi‑Fi.</li>
+              <li>Go to <b>Settings → Network Adapters</b> → select <b>WIFI</b> → <b>Edit</b>.</li>
+              <li>Toggle Wi‑Fi <b>Power On</b> if needed.</li>
+              <li>Select the network → press <b>Connect</b>.</li>
+              <li>Enter the password → press <b>Save</b> → then press <b>Join</b>.</li>
+              <li>Wait 10 to 30 seconds. Status should show <b>Connected</b> and the Wi‑Fi icon should not have a slash.</li>
+            </ol>
+          </div>
+
+          <div class="panel">
+            <h3>Part B — Connect to the Server</h3>
+            <ol class="steps">
+              <li>Go to <b>Race Ops → Server Connection</b>.</li>
+              <li>Press <b>+</b> to add a server entry if needed.</li>
+              <li>Choose <b>WIFI</b> type, enter a name and enter the server IP: <b>50.17.233.218</b>.</li>
+              <li>Press <b>Add</b>.</li>
+              <li>Tap the new WiFi server entry → press <b>Connect</b>.</li>
+              <li>Confirm it changes to <b>Connected</b> and the cloud icon has no slash.</li>
+            </ol>
+          </div>
+
+          <div class="image-card">
+            <div class="label">Join Wi‑Fi: Network Adapters → WIFI → Edit</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003524872" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003524872" alt="Network Adapters screen with WIFI selected and Edit button"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Join Wi‑Fi: Select network → Connect</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003542731" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003542731" alt="WiFi list showing Connect button"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Join Wi‑Fi: Enter password → Save</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003525032" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003525032" alt="Password entry screen with Save button"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Join Wi‑Fi: Press Join</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003525052" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003525052" alt="Join prompt window"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Join Wi‑Fi: Confirm Connected</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003542931" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003542931" alt="WiFi connected status"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Server Connection: Race Ops → Server Connection</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003525132" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003525132" alt="Race Ops showing Server Connection"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Server Connection: Press + to add server entry</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003542951" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003542951" alt="Server Connections screen with plus button"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Server Connection: Type = WIFI → enter IP → Add</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003543011" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003543011" alt="Add New Server screen with WIFI selected"></a>
+          </div>
+          <div class="image-card">
+            <div class="label">Server Connection: Confirm Connected</div>
+            <a href="https://knowledge.chronotrack.com/hc/article_attachments/360003543171" target="_blank"><img src="https://knowledge.chronotrack.com/hc/article_attachments/360003543171" alt="Server connection connected over WiFi"></a>
+          </div>
+          <a class="toplink" href="#top">Back to top</a>
+        </div>
+      </details>
+    </section>
+
+    <footer class="footer">
+      Combined from your crew help pages and reordered into the actual setup flow, then the troubleshooting items.
+    </footer>
+  </main>
+
+  <script>
+    (function(){
+      const jumpMenu = document.getElementById('section-jump');
+      const tocLinks = document.querySelectorAll('.toc a[href^="#"]');
+      const sectionDetails = document.querySelectorAll('.section details');
+
+      function closeAllSections(){
+        sectionDetails.forEach(d => d.open = false);
+      }
+
+      function openTarget(hash){
+        const target = document.querySelector(hash);
+        if(!target) return;
+        closeAllSections();
+        const details = target.querySelector('details');
+        if(details) details.open = true;
+        setTimeout(() => {
+          target.scrollIntoView({behavior:'smooth', block:'start'});
+        }, 30);
+      }
+
+      tocLinks.forEach(link => {
+        link.addEventListener('click', function(e){
+          e.preventDefault();
+          const hash = this.getAttribute('href');
+          openTarget(hash);
+          if (jumpMenu) jumpMenu.open = false;
+          history.replaceState(null, '', hash);
+        });
+      });
+
+      closeAllSections();
+      if (jumpMenu) jumpMenu.open = false;
+      if (window.location.hash) {
+        openTarget(window.location.hash);
+      }
+    })();
+  </script>
+
+</body>
+</html>

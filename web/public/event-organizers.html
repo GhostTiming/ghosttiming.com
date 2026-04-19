@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Run4aCause | Event Organizer Contact</title>
+  <meta
+    name="description"
+    content="Contact Run4aCause for full event support services."
+  />
+  <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex" />
+  <link rel="canonical" href="https://ghosttiming.com/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="icon" type="image/x-icon" href="./assets/r4ac.ico" />
+  <link rel="apple-touch-icon" href="./assets/r4ac.ico" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="run4acause-page">
+  <header class="site-header">
+    <div class="container nav-wrap">
+      <a href="https://www.run4acause.org/" class="brand run4-brand" target="_blank" rel="noopener noreferrer">
+        <span class="brand-mark run4-brand-mark">
+          <img src="./assets/run4acause-logo-page.png" alt="Run4aCause logo" class="logo run4-logo" />
+        </span>
+        <span class="brand-text">
+          <strong>Run4aCause</strong>
+          <small>Full Event Support Inquiry</small>
+        </span>
+      </a>
+      <a class="btn btn-secondary" href="./index.html">Back to Ghost Timing</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container contact-grid">
+        <div>
+          <p class="eyebrow">Contact Run4aCause</p>
+          <h1>Event Organizer Inquiry</h1>
+          <p>
+            Complete this form and we will send your request directly to Run4aCause.
+          </p>
+          <p class="contact-note">A team member will follow up with you after submission.</p>
+        </div>
+
+        <form id="organizer-form" class="lead-form" novalidate>
+          <div class="form-row">
+            <label for="eventName">Event Name</label>
+            <input id="eventName" name="eventName" type="text" autocomplete="on" required />
+          </div>
+          <div class="form-row form-row-2">
+            <div>
+              <label for="firstName">First Name</label>
+              <input id="firstName" name="firstName" type="text" autocomplete="given-name" required />
+            </div>
+            <div>
+              <label for="lastName">Last Name</label>
+              <input id="lastName" name="lastName" type="text" autocomplete="family-name" required />
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required />
+          </div>
+          <div class="form-row">
+            <label for="phone">Phone (Optional)</label>
+            <input
+              id="phone"
+              name="phone"
+              type="tel"
+              inputmode="tel"
+              autocomplete="tel"
+              placeholder="Example: (555) 123-4567"
+            />
+          </div>
+          <div class="form-row">
+            <label for="orgName">Company / Organization Name</label>
+            <input id="orgName" name="orgName" type="text" autocomplete="organization" required />
+          </div>
+          <div class="form-row">
+            <label for="raceWebsite">Race Website Link (Optional)</label>
+            <input
+              id="raceWebsite"
+              name="raceWebsite"
+              type="text"
+              inputmode="url"
+              autocomplete="url"
+              placeholder="example.com"
+            />
+          </div>
+          <div class="form-row">
+            <label for="anticipatedParticipants">Anticipated Number of Participants</label>
+            <input
+              id="anticipatedParticipants"
+              name="anticipatedParticipants"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              step="1"
+              placeholder="Example: 500"
+              required
+            />
+          </div>
+          <div class="form-row">
+            <label for="eventDescription">Description of Event</label>
+            <textarea id="eventDescription" name="eventDescription" rows="5" autocomplete="on" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary form-btn">Send Request</button>
+          <p class="form-status" id="organizer-form-status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="./event-organizers.js"></script>
+</body>
+</html>

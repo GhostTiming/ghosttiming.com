@@ -1,0 +1,11 @@
+{
+  "name": "ghosttiming-site",
+  "private": true,
+  "workspaces": ["web"],
+  "scripts": {
+    "build": "npm run build -w chip-streamer-web",
+    "dev": "npm run dev -w chip-streamer-web",
+    "lint": "npm run lint -w chip-streamer-web",
+    "start": "npm run start -w chip-streamer-web"
+  }
+}
