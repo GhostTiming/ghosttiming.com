@@ -17,11 +17,12 @@ import {
   parseWorkspacePayload,
   rebuildHeatmapSlots,
 } from "@/lib/workspace";
+import type { SnapshotApi } from "@/types/snapshot";
 import type { WorkspacePayload } from "@/types/workspace";
 
 type Gate = "checking" | "login" | "live";
 
-const POLL_MS = 1500;
+const POLL_MS = 5000;
 
 function formatRelative(iso: string, nowMs: number): string {
   const t = new Date(iso).getTime();
@@ -72,6 +73,8 @@ export function EventDashboard({ shortId }: { shortId: string }) {
         { credentials: "include", cache: "no-store" },
       );
       if (r.ok) {
+        const body = (await r.json()) as SnapshotApi;
+        stream.applySnapshot(body);
         setGate("live");
         setLastPollOkAt(Date.now());
         setPollError(null);
@@ -93,7 +96,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     } catch {
       setPollError("Network error — retrying…");
     }
-  }, [shortId, toast]);
+  }, [shortId, toast, stream]);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,12 +114,13 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   }, [shortId, loadSnapshot]);
 
   useEffect(() => {
-    if (gate !== "live" || stream.status === "live") return;
+    if (gate !== "live") return;
+    void loadSnapshot();
     const id = window.setInterval(() => {
       void loadSnapshot();
     }, POLL_MS);
     return () => window.clearInterval(id);
-  }, [gate, loadSnapshot, stream.status]);
+  }, [gate, loadSnapshot]);
 
   useEffect(() => {
     if (gate !== "live") return;
@@ -518,8 +522,8 @@ export function EventDashboard({ shortId }: { shortId: string }) {
               </select>
               <span className="text-xs text-muted">
                 {stream.status === "live"
-                  ? "SSE live"
-                  : `Polling fallback ~${Math.round(POLL_MS / 1000)}s`}
+                  ? `SSE live · snapshot sync ~${Math.round(POLL_MS / 1000)}s`
+                  : `SSE reconnecting · snapshot sync ~${Math.round(POLL_MS / 1000)}s`}
               </span>
             </div>
             {activeWorkspace?.view === "heatmap" && slots.length > 0 ? (
