@@ -5,9 +5,10 @@ import { useEffect, useRef } from "react";
 import type { HeatmapSlotState } from "@/types/workspace";
 import type { RateBuffers } from "@/lib/rate-buffer";
 
-const FLASH_DURATION = 0.6;
+const FLASH_DURATION = 0.18;
 const DARKNESS_WINDOW = 30;
 const DARKNESS_REFERENCE_HITS = 60;
+const RENDER_INTERVAL_MS = 140;
 
 function formatElapsed(seconds: number): string {
   if (seconds < 90) return `${seconds.toFixed(1)}s ago`;
@@ -58,7 +59,6 @@ export function HeatmapCanvas({
   };
 
   useEffect(() => {
-    let id = 0;
 
     function resize() {
       const canvas = canvasRef.current;
@@ -130,7 +130,7 @@ export function HeatmapCanvas({
           b = 0.14;
         }
         if (flashAge >= 0 && flashAge < FLASH_DURATION) {
-          const alpha = (1 - flashAge / FLASH_DURATION) * 0.55;
+          const alpha = (1 - flashAge / FLASH_DURATION) * 0.16;
           r = r + (1 - r) * alpha;
           g = g + (1 - g) * alpha;
           b = b + (1 - b) * alpha;
@@ -350,17 +350,17 @@ export function HeatmapCanvas({
         });
       }
 
-      id = requestAnimationFrame(drawFrame);
     }
 
     resize();
     const ro = new ResizeObserver(resize);
     const par = canvasRef.current?.parentElement;
     if (par) ro.observe(par);
-    id = requestAnimationFrame(drawFrame);
+    drawFrame();
+    const interval = window.setInterval(drawFrame, RENDER_INTERVAL_MS);
 
     return () => {
-      cancelAnimationFrame(id);
+      window.clearInterval(interval);
       ro.disconnect();
     };
   }, []);
