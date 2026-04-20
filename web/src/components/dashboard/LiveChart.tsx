@@ -32,6 +32,9 @@ export function LiveChart({ buffers, series, gateLabel }: Props) {
   const plotRef = useRef<uPlot | null>(null);
   const seriesRef = useRef(series);
   seriesRef.current = series;
+  const seriesKey = series
+    .map((s) => `${s.kind}:${s.mac}:${s.port ?? ""}:${s.label}:${s.color}:${s.linewidth}:${s.trend ? 1 : 0}`)
+    .join("|");
 
   useEffect(() => {
     const el = rootRef.current;
@@ -133,7 +136,7 @@ export function LiveChart({ buffers, series, gateLabel }: Props) {
     const iv = setInterval(() => {
       if (!plotRef.current) return;
       plotRef.current.setData(buildAlignedData(seriesRef.current));
-    }, 900);
+    }, 1500);
 
     return () => {
       clearInterval(iv);
@@ -141,7 +144,7 @@ export function LiveChart({ buffers, series, gateLabel }: Props) {
       plot.destroy();
       plotRef.current = null;
     };
-  }, [buffers, series]);
+  }, [buffers, seriesKey]);
 
   return (
     <div className="flex min-h-[320px] w-full flex-col gap-2">

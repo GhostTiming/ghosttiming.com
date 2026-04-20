@@ -24,6 +24,7 @@ import type { WorkspacePayload } from "@/types/workspace";
 type Gate = "checking" | "login" | "live";
 
 const POLL_MS = 5000;
+const POLL_LIVE_MS = 20000;
 
 function formatRelative(iso: string, nowMs: number): string {
   const t = new Date(iso).getTime();
@@ -65,8 +66,14 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   const [motionMode, setMotionMode] = useState<"stable" | "animated">("stable");
   /** Bumps once per second so “Xs ago” updates without new fetches. */
   const [tick, setTick] = useState(0);
-  const stream = useEventStream(shortId, gate === "live");
-  const snapshot = stream.snapshot;
+  const {
+    snapshot,
+    status: streamStatus,
+    buffers: streamBuffers,
+    applySnapshot,
+    lastSnapshotAt,
+    lastSseReadAt,
+  } = useEventStream(shortId, gate === "live");
 
   const loadSnapshot = useCallback(async () => {
     try {
@@ -76,7 +83,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
       );
       if (r.ok) {
         const body = (await r.json()) as SnapshotApi;
-        stream.applySnapshot(body, { resetBuffers: false });
+        applySnapshot(body, { resetBuffers: false });
         setGate("live");
         setLastPollOkAt(Date.now());
         setPollError(null);
@@ -98,7 +105,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     } catch {
       setPollError("Network error — retrying…");
     }
-  }, [shortId, toast, stream]);
+  }, [shortId, toast, applySnapshot]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,11 +125,12 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   useEffect(() => {
     if (gate !== "live") return;
     void loadSnapshot();
+    const cadence = streamStatus === "live" ? POLL_LIVE_MS : POLL_MS;
     const id = window.setInterval(() => {
       void loadSnapshot();
-    }, POLL_MS);
+    }, cadence);
     return () => window.clearInterval(id);
-  }, [gate, loadSnapshot]);
+  }, [gate, loadSnapshot, streamStatus]);
 
   useEffect(() => {
     if (gate !== "live") return;
@@ -193,27 +201,6 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   const sortedPorts = useMemo(() => {
     if (!snapshot) return [];
     const rows = [...snapshot.ports];
-    // Safety net: if aggregate port rows are missing, derive mats from recent
-    // reads so the viewer still renders live data.
-    if (rows.length === 0 && snapshot.recentReads.length > 0) {
-      const agg = new Map<string, { mac: string; port: number; totalReads: number; lastSeen: string }>();
-      for (const r of snapshot.recentReads) {
-        const mac = String(r.mac || "").toUpperCase();
-        const port = Number(r.port);
-        if (!mac || !Number.isFinite(port)) continue;
-        const key = `${mac}:${port}`;
-        const cur = agg.get(key);
-        if (!cur) {
-          agg.set(key, { mac, port, totalReads: 1, lastSeen: r.ts });
-          continue;
-        }
-        cur.totalReads += 1;
-        if (new Date(r.ts).getTime() > new Date(cur.lastSeen).getTime()) {
-          cur.lastSeen = r.ts;
-        }
-      }
-      rows.push(...agg.values());
-    }
     rows.sort((a, b) => {
       const ma = a.mac.toUpperCase().localeCompare(b.mac.toUpperCase());
       if (ma !== 0) return ma;
@@ -325,7 +312,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     if (newestLastSeenMs !== null && wall - newestLastSeenMs > 45_000) {
       return { label: "No recent reads", tone: "warn" as const };
     }
-    if (stream.status !== "live") {
+    if (streamStatus !== "live") {
       return { label: "Connecting stream", tone: "warn" as const };
     }
     return { label: "Live stream", tone: "live" as const };
@@ -336,7 +323,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     sortedPorts.length,
     newestLastSeenMs,
     nowMs,
-    stream.status,
+    streamStatus,
   ]);
 
   const chartSeries = useMemo(() => {
@@ -504,7 +491,11 @@ export function EventDashboard({ shortId }: { shortId: string }) {
                 minute: "2-digit",
                 second: "2-digit",
               })}{" "}
-              · Next poll in ~{Math.round(POLL_MS / 1000)}s
+              · Next poll in ~
+              {Math.round(
+                (streamStatus === "live" ? POLL_LIVE_MS : POLL_MS) / 1000,
+              )}
+              s
             </>
           ) : null}
         </p>
@@ -545,9 +536,29 @@ export function EventDashboard({ shortId }: { shortId: string }) {
                 ))}
               </select>
               <span className="text-xs text-muted">
-                {stream.status === "live"
-                  ? `SSE live · snapshot sync ~${Math.round(POLL_MS / 1000)}s`
+                {streamStatus === "live"
+                  ? `SSE live · snapshot sync ~${Math.round(POLL_LIVE_MS / 1000)}s`
                   : `SSE reconnecting · snapshot sync ~${Math.round(POLL_MS / 1000)}s`}
+              </span>
+              <span className="text-xs text-muted">
+                Last SSE read:{" "}
+                {lastSseReadAt
+                  ? new Date(lastSseReadAt).toLocaleTimeString()
+                  : "—"}
+              </span>
+              <span className="text-xs text-muted">
+                Last snapshot:{" "}
+                {lastSnapshotAt
+                  ? new Date(lastSnapshotAt).toLocaleTimeString()
+                  : "—"}
+              </span>
+              <span className="text-xs text-muted">
+                Render mode:{" "}
+                {activeWorkspace?.view === "heatmap"
+                  ? motionMode === "stable"
+                    ? "Stable DOM"
+                    : "Animated canvas"
+                  : "Chart"}
               </span>
               <label className="text-xs text-muted">Motion</label>
               <select
@@ -571,10 +582,11 @@ export function EventDashboard({ shortId }: { shortId: string }) {
                   displayMac={displayMac}
                   portTotals={portTotals}
                   lastSeenWall={lastSeenWall}
+                  nowMs={nowMs}
                 />
               ) : (
               <HeatmapCanvas
-                buffers={stream.buffers}
+                buffers={streamBuffers}
                 slots={slots}
                 macRgb={macRgb}
                 displayMac={displayMac}
@@ -585,7 +597,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
               )
             ) : (
               <LiveChart
-                buffers={stream.buffers}
+                buffers={streamBuffers}
                 series={chartSeries}
                 gateLabel={snapshot.gateTime ?? undefined}
               />

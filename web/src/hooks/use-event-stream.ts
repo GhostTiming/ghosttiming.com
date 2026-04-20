@@ -1,70 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SnapshotApi } from "@/types/snapshot";
 import { RateBuffers } from "@/lib/rate-buffer";
 
 type Conn = "idle" | "connecting" | "live" | "error";
-
-/** Extend aggregated MAC/port rows when live reads arrive (initial snapshot can be empty). */
-function patchSnapshotMetaFromReads(
-  prev: SnapshotApi,
-  newReads: Array<{ mac: string; port: number; ts: string }>,
-): SnapshotApi {
-  const macsMap = new Map(
-    prev.macs.map((m) => [m.mac.toUpperCase(), { ...m }]),
-  );
-  const portsList = [...prev.ports];
-
-  const findPortIdx = (mac: string, port: number) =>
-    portsList.findIndex(
-      (p) => p.mac.toUpperCase() === mac.toUpperCase() && p.port === port,
-    );
-
-  for (const r of newReads) {
-    const mac = r.mac.toUpperCase();
-    const tsStr = r.ts;
-
-    const existing = macsMap.get(mac);
-    if (!existing) {
-      macsMap.set(mac, {
-        mac,
-        friendlyName: null,
-        firstSeen: tsStr,
-        lastSeen: tsStr,
-        totalReads: 1,
-      });
-    } else {
-      macsMap.set(mac, {
-        ...existing,
-        lastSeen: tsStr,
-        totalReads: existing.totalReads + 1,
-      });
-    }
-
-    const pci = findPortIdx(mac, r.port);
-    if (pci < 0) {
-      portsList.push({
-        mac,
-        port: r.port,
-        lastSeen: tsStr,
-        totalReads: 1,
-      });
-    } else {
-      const cur = portsList[pci];
-      portsList[pci] = {
-        ...cur,
-        lastSeen: tsStr,
-        totalReads: cur.totalReads + 1,
-      };
-    }
-  }
-
-  const macs = [...macsMap.values()].sort((a, b) =>
-    a.mac.localeCompare(b.mac),
-  );
-  return { ...prev, macs, ports: portsList };
-}
 
 export function useEventStream(
   shortId: string,
@@ -77,7 +17,20 @@ export function useEventStream(
   const [status, setStatus] = useState<Conn>("idle");
   const [reconnects, setReconnects] = useState(0);
   const [lastReadAt, setLastReadAt] = useState<number | null>(null);
+  const [lastSnapshotAt, setLastSnapshotAt] = useState<number | null>(null);
+  const [lastSseReadAt, setLastSseReadAt] = useState<number | null>(null);
   const buffersRef = useRef(new RateBuffers());
+  const statusRef = useRef<Conn>("idle");
+  const onReadsRef = useRef(onReads);
+
+  useEffect(() => {
+    onReadsRef.current = onReads;
+  }, [onReads]);
+
+  const setConn = useCallback((next: Conn) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
 
   const applySnapshot = useCallback(
     (
@@ -87,7 +40,8 @@ export function useEventStream(
       },
     ) => {
       const resetBuffers = opts?.resetBuffers ?? true;
-    setSnapshot(snap);
+      setSnapshot(snap);
+      setLastSnapshotAt(Date.now());
       if (resetBuffers) {
         const anchor = Date.now();
         buffersRef.current.seedFromSnapshot(
@@ -99,12 +53,12 @@ export function useEventStream(
           anchor,
         );
       }
-    if (snap.recentReads.length > 0) {
-      const latest = Math.max(
-        ...snap.recentReads.map((r) => new Date(r.ts).getTime()),
-      );
-      setLastReadAt(latest);
-    }
+      if (snap.recentReads.length > 0) {
+        const latest = Math.max(
+          ...snap.recentReads.map((r) => new Date(r.ts).getTime()),
+        );
+        setLastReadAt(latest);
+      }
     },
     [],
   );
@@ -131,9 +85,8 @@ export function useEventStream(
         const pruned = merged.filter(
           (x) => new Date(x.ts).getTime() >= cutoff,
         );
-        const withMeta = patchSnapshotMetaFromReads(prev, add);
         return {
-          ...withMeta,
+          ...prev,
           recentReads: pruned.slice(-50000),
         };
       });
@@ -141,7 +94,10 @@ export function useEventStream(
         (m, r) => Math.max(m, new Date(r.ts).getTime()),
         0,
       );
-      if (maxWall > 0) setLastReadAt(maxWall);
+      if (maxWall > 0) {
+        setLastReadAt(maxWall);
+        setLastSseReadAt(maxWall);
+      }
     },
     [],
   );
@@ -168,14 +124,14 @@ export function useEventStream(
       } catch {
         /* ignore; SSE retry will handle */
       }
-      if (!dead && status !== "live") {
+      if (!dead && statusRef.current !== "live") {
         fallbackTimer = setTimeout(pollSnapshotFallback, 5000);
       }
     };
 
     const connect = () => {
       if (dead) return;
-      setStatus("connecting");
+      setConn("connecting");
       es = new EventSource(
         `/api/events/${encodeURIComponent(shortId)}/stream`,
         { withCredentials: true },
@@ -185,14 +141,14 @@ export function useEventStream(
         try {
           const data = JSON.parse((ev as MessageEvent).data) as SnapshotApi;
           applySnapshot(data);
-          setStatus("live");
+          setConn("live");
           setReconnects(0);
           if (fallbackTimer) {
             clearTimeout(fallbackTimer);
             fallbackTimer = null;
           }
         } catch {
-          setStatus("error");
+          setConn("error");
         }
       });
 
@@ -208,7 +164,7 @@ export function useEventStream(
           };
           const rows = data.reads ?? [];
           mergeReads(rows);
-          onReads?.(rows);
+          onReadsRef.current?.(rows);
         } catch {
           /* noop */
         }
@@ -217,7 +173,7 @@ export function useEventStream(
       es.onerror = () => {
         es?.close();
         es = null;
-        setStatus("error");
+        setConn("error");
         attempt += 1;
         setReconnects(attempt);
         if (!fallbackTimer) {
@@ -243,14 +199,27 @@ export function useEventStream(
       es?.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shortId, enabled, applySnapshot, mergeReads, onReads]);
+  }, [shortId, enabled, applySnapshot, mergeReads, setConn]);
 
-  return {
-    snapshot,
-    buffers: buffersRef,
-    status,
-    reconnects,
-    lastReadAt,
-    applySnapshot,
-  };
+  return useMemo(
+    () => ({
+      snapshot,
+      buffers: buffersRef,
+      status,
+      reconnects,
+      lastReadAt,
+      lastSnapshotAt,
+      lastSseReadAt,
+      applySnapshot,
+    }),
+    [
+      snapshot,
+      status,
+      reconnects,
+      lastReadAt,
+      lastSnapshotAt,
+      lastSseReadAt,
+      applySnapshot,
+    ],
+  );
 }

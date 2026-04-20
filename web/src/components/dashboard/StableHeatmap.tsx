@@ -8,6 +8,7 @@ type Props = {
   displayMac: (mac: string) => string;
   portTotals: Map<string, number>;
   lastSeenWall: Map<string, number>;
+  nowMs: number;
 };
 
 function clamp01(x: number): number {
@@ -32,6 +33,7 @@ function slotBg(
   port: string | null,
   macRgb: (mac: string) => [number, number, number],
   lastSeenWall: Map<string, number>,
+  nowMs: number,
 ): string {
   const base: [number, number, number] = [0.09, 0.1, 0.13];
   if (!mac || !port) {
@@ -39,7 +41,8 @@ function slotBg(
   }
   const key = `${mac}:${port}`;
   const t = lastSeenWall.get(key);
-  const ageSec = t ? (Date.now() - t) / 1000 : 9_999;
+  const ageSecRaw = t ? (nowMs - t) / 1000 : 9_999;
+  const ageSec = Math.floor(ageSecRaw / 5) * 5;
   const freshness = clamp01(1 - ageSec / 300);
   const target = macRgb(mac);
   const mix = 0.18 + 0.72 * freshness;
@@ -55,6 +58,7 @@ export function StableHeatmap({
   displayMac,
   portTotals,
   lastSeenWall,
+  nowMs,
 }: Props) {
   const left = slots.filter((s) => s.role === "left");
   const row1 = slots.filter((s) => s.role === "row1");
@@ -74,6 +78,7 @@ export function StableHeatmap({
               displayMac={displayMac}
               portTotals={portTotals}
               lastSeenWall={lastSeenWall}
+              nowMs={nowMs}
               side
             />
           ))}
@@ -89,6 +94,7 @@ export function StableHeatmap({
                   displayMac={displayMac}
                   portTotals={portTotals}
                   lastSeenWall={lastSeenWall}
+                  nowMs={nowMs}
                 />
               ))}
             </div>
@@ -103,6 +109,7 @@ export function StableHeatmap({
               displayMac={displayMac}
               portTotals={portTotals}
               lastSeenWall={lastSeenWall}
+              nowMs={nowMs}
               side
             />
           ))}
@@ -118,6 +125,7 @@ function SlotCard({
   displayMac,
   portTotals,
   lastSeenWall,
+  nowMs,
   side = false,
 }: {
   slot: HeatmapSlotState;
@@ -125,6 +133,7 @@ function SlotCard({
   displayMac: (mac: string) => string;
   portTotals: Map<string, number>;
   lastSeenWall: Map<string, number>;
+  nowMs: number;
   side?: boolean;
 }) {
   const mac = slot.mac ?? null;
@@ -132,12 +141,12 @@ function SlotCard({
   const key = mac && port ? `${mac}:${port}` : "";
   const lastSeen = key ? lastSeenWall.get(key) : undefined;
   const total = key ? portTotals.get(key) ?? 0 : 0;
-  const elapsed = lastSeen ? formatElapsed((Date.now() - lastSeen) / 1000) : "no reads yet";
+  const elapsed = lastSeen ? formatElapsed((nowMs - lastSeen) / 1000) : "no reads yet";
 
   return (
     <div
       className={`rounded border border-white/10 p-2 text-center ${side ? "w-20" : "min-h-[150px]"}`}
-      style={{ background: slotBg(mac, port, macRgb, lastSeenWall) }}
+      style={{ background: slotBg(mac, port, macRgb, lastSeenWall, nowMs) }}
     >
       <div className="text-[11px] text-white/90">
         {mac && port ? `${displayMac(mac)} · Ant ${port}` : "Unassigned"}
