@@ -74,7 +74,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
       );
       if (r.ok) {
         const body = (await r.json()) as SnapshotApi;
-        stream.applySnapshot(body);
+        stream.applySnapshot(body, { resetBuffers: false });
         setGate("live");
         setLastPollOkAt(Date.now());
         setPollError(null);

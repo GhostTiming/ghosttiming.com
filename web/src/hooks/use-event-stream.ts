@@ -79,24 +79,35 @@ export function useEventStream(
   const [lastReadAt, setLastReadAt] = useState<number | null>(null);
   const buffersRef = useRef(new RateBuffers());
 
-  const applySnapshot = useCallback((snap: SnapshotApi) => {
+  const applySnapshot = useCallback(
+    (
+      snap: SnapshotApi,
+      opts?: {
+        resetBuffers?: boolean;
+      },
+    ) => {
+      const resetBuffers = opts?.resetBuffers ?? true;
     setSnapshot(snap);
-    const anchor = Date.now();
-    buffersRef.current.seedFromSnapshot(
-      snap.recentReads.map((r) => ({
-        mac: r.mac,
-        port: r.port,
-        ts: r.ts,
-      })),
-      anchor,
-    );
+      if (resetBuffers) {
+        const anchor = Date.now();
+        buffersRef.current.seedFromSnapshot(
+          snap.recentReads.map((r) => ({
+            mac: r.mac,
+            port: r.port,
+            ts: r.ts,
+          })),
+          anchor,
+        );
+      }
     if (snap.recentReads.length > 0) {
       const latest = Math.max(
         ...snap.recentReads.map((r) => new Date(r.ts).getTime()),
       );
       setLastReadAt(latest);
     }
-  }, []);
+    },
+    [],
+  );
 
   const mergeReads = useCallback(
     (batch: Array<{ id: string; mac: string; port: number; ts: string }>) => {
