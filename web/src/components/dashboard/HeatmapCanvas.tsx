@@ -8,7 +8,7 @@ import type { RateBuffers } from "@/lib/rate-buffer";
 const FLASH_DURATION = 0.18;
 const DARKNESS_WINDOW = 30;
 const DARKNESS_REFERENCE_HITS = 60;
-const RENDER_INTERVAL_STABLE_MS = 0;
+const RENDER_INTERVAL_STABLE_MS = 900;
 const RENDER_INTERVAL_ANIMATED_MS = 140;
 const ELAPSED_ROUNDING_STABLE_SEC = 5;
 
@@ -394,7 +394,7 @@ export function HeatmapCanvas({
       }
       ro.disconnect();
     };
-  }, [motionMode, slots, portTotals, lastSeenWall]);
+  }, [motionMode]);
 
   return (
     <div className="w-full">
