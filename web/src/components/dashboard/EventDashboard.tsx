@@ -125,9 +125,10 @@ export function EventDashboard({ shortId }: { shortId: string }) {
 
   useEffect(() => {
     if (gate !== "live") return;
-    const id = window.setInterval(() => setTick((n) => n + 1), 1000);
+    const cadenceMs = motionMode === "animated" ? 1000 : 5000;
+    const id = window.setInterval(() => setTick((n) => n + 1), cadenceMs);
     return () => window.clearInterval(id);
-  }, [gate]);
+  }, [gate, motionMode]);
 
   useEffect(() => {
     try {

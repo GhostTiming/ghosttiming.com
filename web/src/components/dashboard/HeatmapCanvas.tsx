@@ -8,7 +8,7 @@ import type { RateBuffers } from "@/lib/rate-buffer";
 const FLASH_DURATION = 0.18;
 const DARKNESS_WINDOW = 30;
 const DARKNESS_REFERENCE_HITS = 60;
-const RENDER_INTERVAL_STABLE_MS = 500;
+const RENDER_INTERVAL_STABLE_MS = 0;
 const RENDER_INTERVAL_ANIMATED_MS = 140;
 const ELAPSED_ROUNDING_STABLE_SEC = 5;
 
@@ -66,7 +66,6 @@ export function HeatmapCanvas({
   };
 
   useEffect(() => {
-
     function resize() {
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -103,6 +102,15 @@ export function HeatmapCanvas({
 
       function recentFactor(mac: string | null, port: string | null): number {
         if (!mac || port === null || port === undefined) return 0;
+        if (p.motionMode === "stable") {
+          const key = `${mac}:${port}`;
+          const total = p.portTotals.get(key) ?? 0;
+          const norm =
+            DARKNESS_REFERENCE_HITS <= 0
+              ? 0
+              : Math.pow(total / DARKNESS_REFERENCE_HITS, 0.35);
+          return 0.2 + 0.8 * Math.min(1, norm);
+        }
         const buf = p.buffers.current.get(mac);
         const cutoff = nowPerf - DARKNESS_WINDOW;
         let hits = 0;
@@ -372,17 +380,21 @@ export function HeatmapCanvas({
     const par = canvasRef.current?.parentElement;
     if (par) ro.observe(par);
     drawFrame();
-    const intervalMs =
-      motionMode === "animated"
-        ? RENDER_INTERVAL_ANIMATED_MS
-        : RENDER_INTERVAL_STABLE_MS;
-    const interval = window.setInterval(drawFrame, intervalMs);
+    let interval: number | null = null;
+    if (motionMode === "animated") {
+      interval = window.setInterval(drawFrame, RENDER_INTERVAL_ANIMATED_MS);
+    } else if (RENDER_INTERVAL_STABLE_MS > 0) {
+      // Stable mode redraws slowly only as a fallback.
+      interval = window.setInterval(drawFrame, RENDER_INTERVAL_STABLE_MS);
+    }
 
     return () => {
-      window.clearInterval(interval);
+      if (interval !== null) {
+        window.clearInterval(interval);
+      }
       ro.disconnect();
     };
-  }, [motionMode]);
+  }, [motionMode, slots, portTotals, lastSeenWall]);
 
   return (
     <div className="w-full">
