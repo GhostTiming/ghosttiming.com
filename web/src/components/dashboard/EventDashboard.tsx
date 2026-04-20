@@ -12,6 +12,7 @@ import { useEventStream } from "@/hooks/use-event-stream";
 import { FilterPanel } from "@/components/dashboard/FilterPanel";
 import { LiveChart } from "@/components/dashboard/LiveChart";
 import { HeatmapCanvas } from "@/components/dashboard/HeatmapCanvas";
+import { StableHeatmap } from "@/components/dashboard/StableHeatmap";
 import {
   autoWorkspaceFromSnapshot,
   parseWorkspacePayload,
@@ -125,7 +126,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
 
   useEffect(() => {
     if (gate !== "live") return;
-    const cadenceMs = motionMode === "animated" ? 1000 : 5000;
+    const cadenceMs = motionMode === "animated" ? 1000 : 15000;
     const id = window.setInterval(() => setTick((n) => n + 1), cadenceMs);
     return () => window.clearInterval(id);
   }, [gate, motionMode]);
@@ -563,6 +564,15 @@ export function EventDashboard({ shortId }: { shortId: string }) {
               </select>
             </div>
             {activeWorkspace?.view === "heatmap" && slots.length > 0 ? (
+              motionMode === "stable" ? (
+                <StableHeatmap
+                  slots={slots}
+                  macRgb={macRgb}
+                  displayMac={displayMac}
+                  portTotals={portTotals}
+                  lastSeenWall={lastSeenWall}
+                />
+              ) : (
               <HeatmapCanvas
                 buffers={stream.buffers}
                 slots={slots}
@@ -572,6 +582,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
                 lastSeenWall={lastSeenWall}
                 motionMode={motionMode}
               />
+              )
             ) : (
               <LiveChart
                 buffers={stream.buffers}
