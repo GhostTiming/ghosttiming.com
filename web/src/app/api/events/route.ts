@@ -14,6 +14,7 @@ const shortIdAlphabet = customAlphabet(
 );
 const BCRYPT_ROUNDS = 12;
 const MAX_EVENTS_PER_IP_HOUR = 20;
+const MAX_SHORT_ID_ATTEMPTS = 24;
 
 function clientIp(req: NextRequest) {
   return (
@@ -27,50 +28,50 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    await requireCreationAllowed(req);
-  } catch {
-    return NextResponse.json({ error: "Creation not allowed" }, { status: 403 });
-  }
-
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    return NextResponse.json(
-      { error: "Server misconfiguration: SESSION_SECRET" },
-      { status: 500 },
-    );
-  }
-
-  const body = (await req.json().catch(() => ({}))) as { name?: string };
-  const name = (body.name || "Untitled event").trim().slice(0, 200) || "Untitled event";
-
-  const hourBucket = new Date();
-  hourBucket.setUTCMinutes(0, 0, 0);
-  const ipHash = hashIpForRateLimit(clientIp(req), secret);
-
-  const [up] = await db
-    .insert(creationIpHour)
-    .values({ ipHash, hourBucket, count: 1 })
-    .onConflictDoUpdate({
-      target: [creationIpHour.ipHash, creationIpHour.hourBucket],
-      set: { count: sql`${creationIpHour.count} + 1` },
-    })
-    .returning({ count: creationIpHour.count });
-
-  if (up && up.count > MAX_EVENTS_PER_IP_HOUR) {
-    return NextResponse.json(
-      { error: "Too many events created from this network. Try again later." },
-      { status: 429 },
-    );
-  }
-
-  const ingestToken = nanoid(32);
-  const viewerPassword = nanoid(10);
-  const ingestTokenHash = await bcrypt.hash(ingestToken, BCRYPT_ROUNDS);
-  const viewerPasswordHash = await bcrypt.hash(viewerPassword, BCRYPT_ROUNDS);
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const shortId = shortIdAlphabet();
     try {
+      await requireCreationAllowed(req);
+    } catch {
+      return NextResponse.json({ error: "Creation not allowed" }, { status: 403 });
+    }
+
+    const secret = process.env.SESSION_SECRET;
+    if (!secret) {
+      return NextResponse.json(
+        { error: "Server misconfiguration: SESSION_SECRET" },
+        { status: 500 },
+      );
+    }
+
+    const body = (await req.json().catch(() => ({}))) as { name?: string };
+    const name = (body.name || "Untitled event").trim().slice(0, 200) || "Untitled event";
+
+    const hourBucket = new Date();
+    hourBucket.setUTCMinutes(0, 0, 0);
+    const ipHash = hashIpForRateLimit(clientIp(req), secret);
+
+    const [up] = await db
+      .insert(creationIpHour)
+      .values({ ipHash, hourBucket, count: 1 })
+      .onConflictDoUpdate({
+        target: [creationIpHour.ipHash, creationIpHour.hourBucket],
+        set: { count: sql`${creationIpHour.count} + 1` },
+      })
+      .returning({ count: creationIpHour.count });
+
+    if (up && up.count > MAX_EVENTS_PER_IP_HOUR) {
+      return NextResponse.json(
+        { error: "Too many events created from this network. Try again later." },
+        { status: 429 },
+      );
+    }
+
+    const ingestToken = nanoid(32);
+    const viewerPassword = nanoid(10);
+    const ingestTokenHash = await bcrypt.hash(ingestToken, BCRYPT_ROUNDS);
+    const viewerPasswordHash = await bcrypt.hash(viewerPassword, BCRYPT_ROUNDS);
+
+    for (let attempt = 0; attempt < MAX_SHORT_ID_ATTEMPTS; attempt++) {
+      const shortId = shortIdAlphabet();
       const [row] = await db
         .insert(events)
         .values({
@@ -79,8 +80,11 @@ export async function POST(req: NextRequest) {
           ingestTokenHash,
           viewerPasswordHash,
         })
+        .onConflictDoNothing({ target: events.shortId })
         .returning({ id: events.id, shortId: events.shortId });
-      if (!row) continue;
+      if (!row) {
+        continue;
+      }
       const base =
         process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "";
       const shareUrl = base
@@ -95,12 +99,17 @@ export async function POST(req: NextRequest) {
         shareUrl,
         name,
       });
-    } catch {
-      // shortId collision — retry
     }
+    return NextResponse.json(
+      { error: "Could not allocate a unique id" },
+      { status: 500 },
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[events/create]", msg);
+    return NextResponse.json(
+      { error: "Event creation failed", reason: msg.slice(0, 200) },
+      { status: 500 },
+    );
   }
-  return NextResponse.json(
-    { error: "Could not allocate a unique id" },
-    { status: 500 },
-  );
 }
