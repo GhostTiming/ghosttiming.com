@@ -45,6 +45,7 @@ export async function buildSnapshot(
     .where(eq(events.id, eventId))
     .limit(1);
   const name = ev?.name ?? "Untitled event";
+  const gateTime = ev?.gateTime ?? null;
 
   let macRows = await db
     .select()
@@ -123,7 +124,7 @@ export async function buildSnapshot(
     eventId,
     shortId,
     name,
-    gateTime: null,
+    gateTime,
     macs: macRows.map((m) => ({
       mac: m.mac,
       friendlyName: m.friendlyName,

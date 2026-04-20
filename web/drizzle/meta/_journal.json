@@ -8,6 +8,13 @@
       "when": 1776608323357,
       "tag": "0000_great_arachne",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776619200000,
+      "tag": "0001_race_day_cleanup",
+      "breakpoints": true
     }
   ]
 }

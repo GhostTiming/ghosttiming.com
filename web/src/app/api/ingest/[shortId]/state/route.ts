@@ -34,6 +34,7 @@ export async function POST(
 
   const body = (await req.json().catch(() => ({}))) as {
     eventName?: string;
+    gateTime?: string | null;
     macs?: Array<{ mac?: string; friendlyName?: string | null }>;
     workspaces?: Array<{ workspaceId?: string; payload?: unknown }>;
   };
@@ -50,6 +51,12 @@ export async function POST(
           db.update(events).set({ name }).where(eq(events.id, ev.id)),
         );
       }
+    }
+    if (body.gateTime === null || typeof body.gateTime === "string") {
+      const gateTime = body.gateTime ? body.gateTime.trim().slice(0, 32) : null;
+      jobs.push(
+        db.update(events).set({ gateTime }).where(eq(events.id, ev.id)),
+      );
     }
 
     if (Array.isArray(body.macs)) {

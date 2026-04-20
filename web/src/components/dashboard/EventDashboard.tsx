@@ -2,8 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { MAC_BASE_PALETTE_RGB, portSortKey, rgbToHex } from "@/lib/colors";
-import type { SnapshotApi } from "@/types/snapshot";
+import {
+  antennaShade,
+  MAC_BASE_PALETTE_RGB,
+  portSortKey,
+  rgbToHex,
+} from "@/lib/colors";
+import { useEventStream } from "@/hooks/use-event-stream";
+import { FilterPanel } from "@/components/dashboard/FilterPanel";
+import { LiveChart } from "@/components/dashboard/LiveChart";
+import { HeatmapCanvas } from "@/components/dashboard/HeatmapCanvas";
+import {
+  autoWorkspaceFromSnapshot,
+  parseWorkspacePayload,
+  rebuildHeatmapSlots,
+} from "@/lib/workspace";
+import type { WorkspacePayload } from "@/types/workspace";
 
 type Gate = "checking" | "login" | "live";
 
@@ -41,11 +55,15 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   const toast = useToast();
   const [gate, setGate] = useState<Gate>("checking");
   const [password, setPassword] = useState("");
-  const [snapshot, setSnapshot] = useState<SnapshotApi | null>(null);
   const [lastPollOkAt, setLastPollOkAt] = useState<number | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string>("");
+  const [macsOn, setMacsOn] = useState<Record<string, boolean>>({});
+  const [antsOn, setAntsOn] = useState<Record<string, boolean>>({});
   /** Bumps once per second so “Xs ago” updates without new fetches. */
   const [tick, setTick] = useState(0);
+  const stream = useEventStream(shortId, gate === "live");
+  const snapshot = stream.snapshot;
 
   const loadSnapshot = useCallback(async () => {
     try {
@@ -54,8 +72,6 @@ export function EventDashboard({ shortId }: { shortId: string }) {
         { credentials: "include", cache: "no-store" },
       );
       if (r.ok) {
-        const body = (await r.json()) as SnapshotApi;
-        setSnapshot(body);
         setGate("live");
         setLastPollOkAt(Date.now());
         setPollError(null);
@@ -63,7 +79,6 @@ export function EventDashboard({ shortId }: { shortId: string }) {
       }
       if (r.status === 401) {
         setGate("login");
-        setSnapshot(null);
         return;
       }
       if (r.status === 410) {
@@ -72,7 +87,6 @@ export function EventDashboard({ shortId }: { shortId: string }) {
           variant: "destructive",
         });
         setGate("login");
-        setSnapshot(null);
         return;
       }
       setPollError(`Could not load snapshot (HTTP ${r.status})`);
@@ -97,12 +111,12 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   }, [shortId, loadSnapshot]);
 
   useEffect(() => {
-    if (gate !== "live") return;
+    if (gate !== "live" || stream.status === "live") return;
     const id = window.setInterval(() => {
       void loadSnapshot();
     }, POLL_MS);
     return () => window.clearInterval(id);
-  }, [gate, loadSnapshot]);
+  }, [gate, loadSnapshot, stream.status]);
 
   useEffect(() => {
     if (gate !== "live") return;
@@ -183,6 +197,79 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     return rows;
   }, [snapshot]);
 
+  const portTotals = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!snapshot) return m;
+    for (const p of snapshot.ports) {
+      m.set(`${p.mac.toUpperCase()}:${p.port}`, Number(p.totalReads));
+    }
+    return m;
+  }, [snapshot]);
+
+  const lastSeenWall = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!snapshot) return m;
+    for (const p of snapshot.ports) {
+      const t = new Date(p.lastSeen).getTime();
+      if (!Number.isNaN(t)) {
+        m.set(`${p.mac.toUpperCase()}:${p.port}`, t);
+      }
+    }
+    return m;
+  }, [snapshot]);
+
+  const buffersWall = useMemo(() => {
+    const m = new Map<string, Map<string, number>>();
+    for (const p of sortedPorts) {
+      const mac = p.mac.toUpperCase();
+      const port = String(p.port);
+      const t = new Date(p.lastSeen).getTime();
+      const cur = m.get(mac) ?? new Map<string, number>();
+      cur.set(port, t);
+      m.set(mac, cur);
+    }
+    return m;
+  }, [sortedPorts]);
+
+  const workspaces = useMemo(() => {
+    if (!snapshot) return [];
+    const rows = snapshot.workspaces.map((w) => ({
+      workspaceId: w.workspaceId,
+      payload: parseWorkspacePayload(w.payload),
+    }));
+    if (rows.length === 0) {
+      const auto = autoWorkspaceFromSnapshot(snapshot);
+      if (auto) {
+        rows.push({ workspaceId: "auto", payload: auto });
+      }
+    }
+    return rows;
+  }, [snapshot]);
+
+  useEffect(() => {
+    if (!workspaces.length) return;
+    setWorkspaceId((prev) => {
+      if (prev && workspaces.some((w) => w.workspaceId === prev)) return prev;
+      return workspaces[0]?.workspaceId ?? "";
+    });
+  }, [workspaces]);
+
+  const activeWorkspace = useMemo<WorkspacePayload | null>(() => {
+    if (!workspaceId) return workspaces[0]?.payload ?? null;
+    return workspaces.find((w) => w.workspaceId === workspaceId)?.payload ?? null;
+  }, [workspaces, workspaceId]);
+
+  const slots = useMemo(() => {
+    if (!activeWorkspace?.heatmap) return [];
+    return rebuildHeatmapSlots(
+      activeWorkspace.heatmap.row1,
+      activeWorkspace.heatmap.row2,
+      activeWorkspace.heatmap.left,
+      activeWorkspace.heatmap.right,
+      activeWorkspace.heatmap.slots,
+    );
+  }, [activeWorkspace]);
+
   const newestLastSeenMs = useMemo(() => {
     if (!snapshot?.ports.length) return null;
     let max = 0;
@@ -207,13 +294,13 @@ export function EventDashboard({ shortId }: { shortId: string }) {
       return { label: "Polling stalled", tone: "bad" as const };
     if (!sortedPorts.length)
       return { label: "No antenna rows yet", tone: "warn" as const };
-    if (
-      newestLastSeenMs !== null &&
-      wall - newestLastSeenMs > 45_000
-    ) {
+    if (newestLastSeenMs !== null && wall - newestLastSeenMs > 45_000) {
       return { label: "No recent reads", tone: "warn" as const };
     }
-    return { label: "Live", tone: "live" as const };
+    if (stream.status !== "live") {
+      return { label: "Connecting stream", tone: "warn" as const };
+    }
+    return { label: "Live stream", tone: "live" as const };
   }, [
     pollError,
     snapshot,
@@ -221,7 +308,71 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     sortedPorts.length,
     newestLastSeenMs,
     nowMs,
+    stream.status,
   ]);
+
+  const chartSeries = useMemo(() => {
+    const rows: Array<{
+      kind: "mac" | "antenna";
+      mac: string;
+      port?: string;
+      label: string;
+      color: string;
+      linewidth: number;
+      trend: boolean;
+    }> = [];
+    const portsByMac = new Map<string, string[]>();
+    for (const p of sortedPorts) {
+      const mac = p.mac.toUpperCase();
+      const arr = portsByMac.get(mac) ?? [];
+      arr.push(String(p.port));
+      portsByMac.set(mac, arr);
+    }
+    for (const [mac, ports] of portsByMac) {
+      const idx = macIndex.get(mac) ?? 0;
+      const base = MAC_BASE_PALETTE_RGB[idx % MAC_BASE_PALETTE_RGB.length];
+      if (macsOn[mac] ?? true) {
+        rows.push({
+          kind: "mac",
+          mac,
+          label: displayMac(mac),
+          color: rgbToHex([base[0], base[1], base[2]]),
+          linewidth: 2.2,
+          trend: true,
+        });
+      }
+      const sorted = [...new Set(ports)].sort((a, b) => {
+        const ka = portSortKey(a);
+        const kb = portSortKey(b);
+        if (ka[0] !== kb[0]) return ka[0] - kb[0];
+        return String(ka[1]).localeCompare(String(kb[1]));
+      });
+      sorted.forEach((port, i) => {
+        const key = `${mac}:${port}`;
+        if (!(antsOn[key] ?? true)) return;
+        const shade = antennaShade([base[0], base[1], base[2]], i, sorted.length);
+        rows.push({
+          kind: "antenna",
+          mac,
+          port,
+          label: `${displayMac(mac)} · Ant ${port}`,
+          color: rgbToHex(shade),
+          linewidth: 1.2,
+          trend: false,
+        });
+      });
+    }
+    return rows;
+  }, [sortedPorts, macIndex, macsOn, antsOn, displayMac]);
+
+  const macRgb = useCallback(
+    (mac: string): [number, number, number] => {
+      const idx = macIndex.get(mac.toUpperCase()) ?? 0;
+      const p = MAC_BASE_PALETTE_RGB[idx % MAC_BASE_PALETTE_RGB.length];
+      return [p[0], p[1], p[2]];
+    },
+    [macIndex],
+  );
 
   async function onUnlock(e: React.FormEvent) {
     e.preventDefault();
@@ -335,10 +486,61 @@ export function EventDashboard({ shortId }: { shortId: string }) {
       </header>
 
       <p className="text-sm text-muted">
-        Each card is one virtual mat: one MAC address and one antenna (port).
-        Numbers are totals from the server database, refreshed every{" "}
-        {POLL_MS / 1000} seconds.
+        Layout mirrors the timer workspace payload when available; stream mode
+        keeps activity smooth while totals remain DB-backed.
       </p>
+
+      {snapshot && (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[340px,1fr]">
+          <FilterPanel
+            snapshot={snapshot}
+            macsOn={macsOn}
+            antsOn={antsOn}
+            onMac={(mac, v) => setMacsOn((p) => ({ ...p, [mac]: v }))}
+            onAnt={(mac, port, v) =>
+              setAntsOn((p) => ({ ...p, [`${mac}:${port}`]: v }))
+            }
+            buffersWall={buffersWall}
+          />
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-xs text-muted">Workspace</label>
+              <select
+                className="rounded border border-border bg-background px-2 py-1 text-sm"
+                value={workspaceId}
+                onChange={(e) => setWorkspaceId(e.target.value)}
+              >
+                {workspaces.map((w) => (
+                  <option key={w.workspaceId} value={w.workspaceId}>
+                    {w.payload.name || w.workspaceId}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-muted">
+                {stream.status === "live"
+                  ? "SSE live"
+                  : `Polling fallback ~${Math.round(POLL_MS / 1000)}s`}
+              </span>
+            </div>
+            {activeWorkspace?.view === "heatmap" && slots.length > 0 ? (
+              <HeatmapCanvas
+                buffers={stream.buffers}
+                slots={slots}
+                macRgb={macRgb}
+                displayMac={displayMac}
+                portTotals={portTotals}
+                lastSeenWall={lastSeenWall}
+              />
+            ) : (
+              <LiveChart
+                buffers={stream.buffers}
+                series={chartSeries}
+                gateLabel={snapshot.gateTime ?? undefined}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {sortedPorts.length === 0 ? (
         <div className="rounded-lg border border-border bg-card/40 px-4 py-8 text-center text-muted">

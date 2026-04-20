@@ -38,7 +38,6 @@ export async function GET(req: NextRequest) {
     .where(
       and(
         isNotNull(events.closedAt),
-        isNull(events.pinnedAt),
         lt(events.closedAt, sql`now() - interval '7 days'`),
       ),
     )

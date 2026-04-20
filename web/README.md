@@ -1,6 +1,22 @@
-# Chip Streamer Cloud (Next.js)
+# Chip Streamer Cloud (Next.js + Neon)
 
-Read-only browser dashboard for live RFID reads. Timers publish from the desktop **Chip Streamer** app (`cloud_publisher.py`) to this API; viewers open `/e/<shortId>` with an event password.
+Read-only browser dashboard for live RFID reads. Timers publish from the local
+desktop app; this service stores normalized reads in Neon and renders a remote
+viewer that mirrors workspace layout/state.
+
+## Architecture
+
+- API ingest:
+  - `POST /api/ingest/<shortId>/reads` writes reads + aggregate counters.
+  - `POST /api/ingest/<shortId>/state` updates event/workspace/mapping state.
+- API read paths:
+  - `GET /api/events/<shortId>/snapshot` for DB-backed state.
+  - `GET /api/events/<shortId>/stream` for low-latency SSE updates.
+- Viewer UI:
+  - `EventDashboard` renders workspace-aware heatmap/chart + per-antenna status.
+  - Uses SSE first with polling fallback.
+- DB schema:
+  - Event metadata, raw reads, MAC+port aggregates, timer workspace payloads.
 
 ## Prerequisites
 
@@ -50,6 +66,7 @@ npx drizzle-kit push
 **Env file name:** variables must live in **`web/.env.local`** or **`web/.env`** (leading dot — not `env.local`). `drizzle.config.ts` loads both so `npx drizzle-kit push` picks up `DATABASE_URL` the same way as Next.js dev/build.
 
 Alternatively apply the SQL under `drizzle/` manually in the Neon SQL editor.
+Latest cleanup migration: `drizzle/0001_race_day_cleanup.sql`.
 
 ## Local development
 

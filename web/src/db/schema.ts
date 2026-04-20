@@ -16,9 +16,9 @@ export const events = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     shortId: text("short_id").notNull().unique(),
     name: text("name").notNull().default("Untitled event"),
+    gateTime: text("gate_time"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
-    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
     ingestTokenHash: text("ingest_token_hash").notNull(),
     viewerPasswordHash: text("viewer_password_hash").notNull(),
     lastIngestAt: timestamp("last_ingest_at", { withTimezone: true }),
@@ -59,6 +59,7 @@ export const portsEvent = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.eventId, t.mac, t.port] }),
+    seenIdx: index("ports_event_last_seen_idx").on(t.eventId, t.lastSeen),
   }),
 );
 
@@ -72,7 +73,6 @@ export const reads = pgTable(
     mac: text("mac").notNull(),
     port: integer("port").notNull(),
     ts: timestamp("ts", { withTimezone: true }).notNull(),
-    clientSeq: bigint("client_seq", { mode: "number" }),
   },
   (t) => ({
     evTsIdx: index("reads_event_ts_idx").on(t.eventId, t.ts.desc()),

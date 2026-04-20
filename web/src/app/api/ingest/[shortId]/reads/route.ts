@@ -11,12 +11,6 @@ export const dynamic = "force-dynamic";
 
 const MAX_BATCH = 500;
 
-function parseClientTs(t: number): Date {
-  if (!Number.isFinite(t)) return new Date();
-  if (t > 10_000_000_000) return new Date(t);
-  return new Date(t * 1000);
-}
-
 export async function POST(
   req: NextRequest,
   { params }: { params: { shortId: string } },
@@ -42,7 +36,7 @@ export async function POST(
   }
 
   const body = (await req.json().catch(() => null)) as {
-    reads?: Array<{ mac?: string; port?: number; ts?: number; seq?: number }>;
+    reads?: Array<{ mac?: string; port?: number; ts?: number }>;
   } | null;
   const batch = Array.isArray(body?.reads) ? body!.reads : [];
   if (batch.length === 0) {
@@ -72,7 +66,6 @@ export async function POST(
     mac: string;
     port: number;
     ts: Date;
-    clientSeq: number | null;
   }> = [];
 
   for (const r of batch) {
@@ -83,7 +76,9 @@ export async function POST(
     const port = typeof r.port === "number" ? r.port : parseInt(String(r.port), 10);
     if (!mac || mac.length < 4 || !Number.isFinite(port)) continue;
     const ts =
-      typeof r.ts === "number" ? parseClientTs(r.ts) : now;
+      typeof r.ts === "number"
+        ? new Date(r.ts > 10_000_000_000 ? r.ts : r.ts * 1000)
+        : now;
     const pk = `${mac}:${port}`;
     macTotals.set(mac, (macTotals.get(mac) ?? 0) + 1);
     portTotals.set(pk, (portTotals.get(pk) ?? 0) + 1);
@@ -92,7 +87,6 @@ export async function POST(
       mac,
       port,
       ts,
-      clientSeq: typeof r.seq === "number" ? r.seq : null,
     });
   }
 
