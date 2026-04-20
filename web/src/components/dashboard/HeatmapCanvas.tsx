@@ -8,12 +8,15 @@ import type { RateBuffers } from "@/lib/rate-buffer";
 const FLASH_DURATION = 0.18;
 const DARKNESS_WINDOW = 30;
 const DARKNESS_REFERENCE_HITS = 60;
-const RENDER_INTERVAL_MS = 140;
+const RENDER_INTERVAL_STABLE_MS = 500;
+const RENDER_INTERVAL_ANIMATED_MS = 140;
+const ELAPSED_ROUNDING_STABLE_SEC = 5;
 
 function formatElapsed(seconds: number): string {
-  if (seconds < 90) return `${seconds.toFixed(1)}s ago`;
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
+  const whole = Math.max(0, Math.floor(seconds));
+  if (whole < 90) return `${whole}s ago`;
+  const m = Math.floor(whole / 60);
+  const s = Math.floor(whole % 60);
   if (m < 60) return `${m}m ${s}s ago`;
   const h = Math.floor(m / 60);
   const mm = m % 60;
@@ -27,6 +30,7 @@ export type HeatmapCanvasProps = {
   displayMac: (mac: string) => string;
   portTotals: Map<string, number>;
   lastSeenWall: Map<string, number>;
+  motionMode?: "stable" | "animated";
 };
 
 export function HeatmapCanvas({
@@ -36,6 +40,7 @@ export function HeatmapCanvas({
   displayMac,
   portTotals,
   lastSeenWall,
+  motionMode = "stable",
 }: HeatmapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flashRef = useRef<Map<number, number>>(new Map());
@@ -48,6 +53,7 @@ export function HeatmapCanvas({
     displayMac,
     portTotals,
     lastSeenWall,
+    motionMode,
   });
   propsRef.current = {
     buffers,
@@ -56,6 +62,7 @@ export function HeatmapCanvas({
     displayMac,
     portTotals,
     lastSeenWall,
+    motionMode,
   };
 
   useEffect(() => {
@@ -129,7 +136,8 @@ export function HeatmapCanvas({
           g = 0.11;
           b = 0.14;
         }
-        if (flashAge >= 0 && flashAge < FLASH_DURATION) {
+        const animated = p.motionMode === "animated";
+        if (animated && flashAge >= 0 && flashAge < FLASH_DURATION) {
           const alpha = (1 - flashAge / FLASH_DURATION) * 0.16;
           r = r + (1 - r) * alpha;
           g = g + (1 - g) * alpha;
@@ -239,7 +247,14 @@ export function HeatmapCanvas({
             ? (() => {
                 const t = p.lastSeenWall.get(key);
                 if (t === undefined) return "no reads yet";
-                return formatElapsed((nowWall - t) / 1000);
+                const sec = (nowWall - t) / 1000;
+                if (p.motionMode === "stable") {
+                  const rounded =
+                    Math.floor(sec / ELAPSED_ROUNDING_STABLE_SEC) *
+                    ELAPSED_ROUNDING_STABLE_SEC;
+                  return formatElapsed(rounded);
+                }
+                return formatElapsed(sec);
               })()
             : "";
 
@@ -357,13 +372,17 @@ export function HeatmapCanvas({
     const par = canvasRef.current?.parentElement;
     if (par) ro.observe(par);
     drawFrame();
-    const interval = window.setInterval(drawFrame, RENDER_INTERVAL_MS);
+    const intervalMs =
+      motionMode === "animated"
+        ? RENDER_INTERVAL_ANIMATED_MS
+        : RENDER_INTERVAL_STABLE_MS;
+    const interval = window.setInterval(drawFrame, intervalMs);
 
     return () => {
       window.clearInterval(interval);
       ro.disconnect();
     };
-  }, []);
+  }, [motionMode]);
 
   return (
     <div className="w-full">

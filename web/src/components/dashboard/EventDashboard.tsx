@@ -61,6 +61,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
   const [workspaceId, setWorkspaceId] = useState<string>("");
   const [macsOn, setMacsOn] = useState<Record<string, boolean>>({});
   const [antsOn, setAntsOn] = useState<Record<string, boolean>>({});
+  const [motionMode, setMotionMode] = useState<"stable" | "animated">("stable");
   /** Bumps once per second so “Xs ago” updates without new fetches. */
   const [tick, setTick] = useState(0);
   const stream = useEventStream(shortId, gate === "live");
@@ -127,6 +128,27 @@ export function EventDashboard({ shortId }: { shortId: string }) {
     const id = window.setInterval(() => setTick((n) => n + 1), 1000);
     return () => window.clearInterval(id);
   }, [gate]);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("viewer.motionMode");
+      if (saved === "stable" || saved === "animated") {
+        setMotionMode(saved);
+      } else if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        setMotionMode("stable");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("viewer.motionMode", motionMode);
+    } catch {
+      /* ignore */
+    }
+  }, [motionMode]);
 
   const eventTitle = snapshot?.name ?? "";
 
@@ -525,6 +547,19 @@ export function EventDashboard({ shortId }: { shortId: string }) {
                   ? `SSE live · snapshot sync ~${Math.round(POLL_MS / 1000)}s`
                   : `SSE reconnecting · snapshot sync ~${Math.round(POLL_MS / 1000)}s`}
               </span>
+              <label className="text-xs text-muted">Motion</label>
+              <select
+                className="rounded border border-border bg-background px-2 py-1 text-sm"
+                value={motionMode}
+                onChange={(e) =>
+                  setMotionMode(
+                    e.target.value === "animated" ? "animated" : "stable",
+                  )
+                }
+              >
+                <option value="stable">Stable</option>
+                <option value="animated">Animated</option>
+              </select>
             </div>
             {activeWorkspace?.view === "heatmap" && slots.length > 0 ? (
               <HeatmapCanvas
@@ -534,6 +569,7 @@ export function EventDashboard({ shortId }: { shortId: string }) {
                 displayMac={displayMac}
                 portTotals={portTotals}
                 lastSeenWall={lastSeenWall}
+                motionMode={motionMode}
               />
             ) : (
               <LiveChart
