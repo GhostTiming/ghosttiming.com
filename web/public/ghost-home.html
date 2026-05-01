@@ -262,22 +262,12 @@
 
         <form id="lead-form" class="lead-form" novalidate>
           <div class="form-row">
-            <label for="company">Timing Company Name</label>
-            <input id="company" name="company" type="text" required />
-          </div>
-          <div class="form-row form-row-2">
-            <div>
-              <label for="firstName">First Name</label>
-              <input id="firstName" name="firstName" type="text" required />
-            </div>
-            <div>
-              <label for="lastName">Last Name</label>
-              <input id="lastName" name="lastName" type="text" required />
-            </div>
+            <label for="name">Name</label>
+            <input id="name" name="name" type="text" autocomplete="name" required />
           </div>
           <div class="form-row">
-            <label for="email">Work Email</label>
-            <input id="email" name="email" type="email" required />
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required />
           </div>
           <div class="form-row">
             <label for="phone">Phone (Optional)</label>
@@ -290,24 +280,22 @@
               placeholder="Example: (555) 123-4567"
             />
           </div>
-          <div class="form-row">
-            <label for="supportType">Support Needed</label>
-            <select id="supportType" name="supportType" required>
-              <option value="">Select an option</option>
-              <option>Freelance Race Timing</option>
-              <option>Race Day Execution Support</option>
-              <option>Timing operations consulting</option>
-            </select>
+          <div class="form-row form-row-2">
+            <div>
+              <label for="eventDate">Event Date (Optional)</label>
+              <input id="eventDate" name="eventDate" type="date" />
+            </div>
+            <div>
+              <label for="eventLocation">Event Location (Optional)</label>
+              <input id="eventLocation" name="eventLocation" type="text" placeholder="City, State" />
+            </div>
           </div>
           <div class="form-row">
-            <label for="timeline">When do you need support?</label>
-            <input id="timeline" name="timeline" type="text" placeholder="Example: Next 30 days" />
-          </div>
-          <div class="form-row">
-            <label for="message">What challenge are you solving?</label>
+            <label for="message">How can we help?</label>
             <textarea id="message" name="message" rows="5" required></textarea>
           </div>
           <input type="text" name="website" tabindex="-1" autocomplete="off" class="hp-field" />
+          <input type="hidden" name="formStartedAt" id="form-started-at" />
           <button type="submit" class="btn btn-primary form-btn">Let's Chat</button>
           <p class="form-status" id="form-status" aria-live="polite"></p>
         </form>

@@ -51,6 +51,17 @@ Set these in Vercel (**Settings → Environment Variables**) and locally in `web
 
 Copy from `.env.example` and fill values.
 
+### Contact form email variables
+
+`POST /api/contact` sends homepage contact submissions through SMTP. Set these as server-side environment variables (never `NEXT_PUBLIC_*`):
+
+- `CONTACT_TO_EMAIL` — destination inbox (for example `info@ghosttiming.com`)
+- `CONTACT_FROM_EMAIL` — verified sender (for example `noreply@ghosttiming.com`)
+- `SMTP_HOST` — SMTP host (for example `smtp.sendgrid.net`)
+- `SMTP_PORT` — SMTP port (`587` for STARTTLS or `465` for SSL)
+- `SMTP_USER` — SMTP username
+- `SMTP_PASS` — SMTP password / app password
+
 ## Database migrations
 
 From this directory:
@@ -76,6 +87,8 @@ npm run dev
 
 Open `http://localhost:3000`. Health: `http://localhost:3000/api/health`.
 
+Homepage contact form: `http://localhost:3000/` (rewritten to `ghost-home.html`).
+
 Create an event with:
 
 ```bash
@@ -83,6 +96,34 @@ curl -s -X POST http://localhost:3000/api/events -H "Content-Type: application/j
 ```
 
 Use returned `shortId`, `ingestToken`, `viewerPassword`, and `shareUrl`.
+
+### Test the contact form locally
+
+1. Add the contact variables listed above to `web/.env.local`.
+2. Start dev server with `npm run dev`.
+3. Open `http://localhost:3000/` and submit the form with valid values.
+4. Confirm:
+   - UI shows a success message.
+   - terminal logs do not show `/api/contact` errors.
+   - the message arrives at `CONTACT_TO_EMAIL`.
+5. Negative checks:
+   - submit with an invalid email and confirm inline validation error.
+   - fill the hidden honeypot field in DevTools and confirm request is blocked.
+   - submit immediately after load and confirm anti-bot timing rejection.
+
+### Vercel Preview and Production setup
+
+Set all contact variables in Vercel Project Settings -> Environment Variables for:
+
+- **Preview**: to validate form/email behavior on branch deployments.
+- **Production**: for live traffic on `ghosttiming.com`.
+
+Recommended flow:
+
+1. Add/update values in Vercel for both environments.
+2. Redeploy the target environment.
+3. Submit a real contact form test from that deployment URL.
+4. Verify request succeeds and inbox delivery completes.
 
 ## Desktop publishing
 
