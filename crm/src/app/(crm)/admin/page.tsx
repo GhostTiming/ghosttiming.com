@@ -12,6 +12,7 @@ import { getPool } from "@/db";
 import { canImpersonateUser } from "@/lib/auth/access";
 import { requireAdminConsole } from "@/lib/auth/server";
 import type { CrmRole } from "@/lib/auth/roles";
+import { TABLE_SCROLL } from "@/lib/crm/layout";
 
 export const metadata = { title: "Admin" };
 
@@ -160,7 +161,7 @@ export default async function AdminPage() {
       </section>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        <div className={TABLE_SCROLL}>
           <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>

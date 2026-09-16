@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, Plus } from "lucide-react";
 import Link from "next/link";
 import { startProspectAction } from "@/app/actions";
+import { DatasetFilterNav } from "@/components/dataset-filter-nav";
 import {
   DatasetBulkRoot,
   DatasetCheckbox,
@@ -18,7 +19,7 @@ import { getPool } from "@/db";
 import { requireProspectingUser } from "@/lib/auth/server";
 import { formatNextStep } from "@/lib/crm/domain";
 import { reconcileProspectingWithPool, listProspects } from "@/lib/crm/queries";
-import { CHIP_ROW, MOBILE_CARDS } from "@/lib/crm/layout";
+import { MOBILE_CARDS, TABLE_SCROLL } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Prospecting" };
@@ -165,22 +166,19 @@ export default async function ProspectingPage({
         </div>
       </div>
 
-      <nav className={CHIP_ROW} aria-label="Prospect stage filters">
-        {viewOptions.map(({ key, label }) => (
-          <Link
-            key={key}
-            href={buildSearchHref("/prospecting", current, { view: key, page: null })}
-            className={`rounded-full px-3 py-1.5 text-sm ring-1 ${
-              current.view === key
-                ? "bg-slate-900 text-white ring-slate-900"
-                : "bg-white ring-slate-200"
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
-        <ProspectingLocationFilter params={current} />
-      </nav>
+      <DatasetFilterNav
+        ariaLabel="Prospect stage"
+        value={current.view}
+        options={viewOptions.map(({ key, label }) => ({
+          value: key,
+          label,
+          href: buildSearchHref("/prospecting", current, {
+            view: key,
+            page: null,
+          }),
+        }))}
+        trailing={<ProspectingLocationFilter params={current} />}
+      />
 
       <DatasetBulkRoot>
       <div className="space-y-3">
@@ -274,7 +272,7 @@ export default async function ProspectingPage({
             );
           })}
         </div>
-        <div className="hidden overflow-x-auto md:block">
+        <div className={`hidden md:block ${TABLE_SCROLL}`}>
           <table className="w-full min-w-[1100px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
