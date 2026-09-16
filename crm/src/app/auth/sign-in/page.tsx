@@ -8,7 +8,7 @@ export const metadata = {
 
 export default function SignInPage() {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 px-4 text-white">
+    <main className="grid min-h-screen place-items-center bg-slate-950 px-4 py-8 text-white">
       <section className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/5 p-8 shadow-2xl">
         <div className="mb-8 text-center">
           <Image

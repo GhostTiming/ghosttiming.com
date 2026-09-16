@@ -90,7 +90,7 @@ export function DatasetCheckbox({
       checked={selected.has(id)}
       disabled={disabled}
       aria-label="Select row"
-      className="relative z-10 size-4 rounded border-slate-300"
+      className="relative z-10 size-5 rounded border-slate-300 md:size-4"
       onChange={() => toggle(id)}
       onClick={(event) => event.stopPropagation()}
     />
@@ -110,7 +110,7 @@ export function DatasetHeaderCheckbox({ ids }: { ids: string[] }) {
       }}
       disabled={!ids.length}
       aria-label="Select all rows"
-      className="relative z-10 size-4 rounded border-slate-300"
+      className="relative z-10 size-5 rounded border-slate-300 md:size-4"
       onChange={(event) => setAll(ids, event.target.checked)}
       onClick={(event) => event.stopPropagation()}
     />
@@ -283,7 +283,7 @@ export function DatasetBulkBar({
   if (!ids.length && !message) return null;
 
   return (
-    <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm shadow-sm">
+    <div className="sticky top-[6.75rem] z-20 flex flex-wrap items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm shadow-sm md:top-0">
       <p className="font-semibold text-cyan-950">
         {ids.length} {noun} selected
       </p>

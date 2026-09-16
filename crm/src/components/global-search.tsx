@@ -155,7 +155,7 @@ export function GlobalSearch() {
   const showPanel = open && trimmed.length > 0;
 
   return (
-    <div ref={rootRef} className="relative min-w-[18rem] flex-1 basis-72">
+    <div ref={rootRef} className="relative min-w-0 w-full md:min-w-[18rem] md:flex-1 md:basis-72">
       <label htmlFor={inputId} className="sr-only">
         Search CRM
       </label>
@@ -186,7 +186,7 @@ export function GlobalSearch() {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          className="w-full rounded-lg border border-white/10 bg-white/10 py-2 pr-12 pl-9 text-sm text-white placeholder:text-slate-400 outline-none focus:border-cyan-400 focus:bg-white/15"
+          className="w-full rounded-lg border border-white/10 bg-white/10 py-2 pr-3 pl-9 text-sm text-white placeholder:text-slate-400 outline-none focus:border-cyan-400 focus:bg-white/15 md:pr-12"
         />
         <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-white/15 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 sm:inline">
           /
@@ -196,7 +196,7 @@ export function GlobalSearch() {
         <div
           id={listId}
           role="listbox"
-          className="absolute right-0 z-50 mt-2 max-h-[min(28rem,70vh)] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 text-slate-950 shadow-xl"
+          className="absolute inset-x-0 z-50 mt-2 max-h-[min(28rem,70vh)] overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 text-slate-950 shadow-xl md:inset-x-auto md:right-0 md:w-[min(36rem,calc(100vw-2rem))]"
         >
           {tooShort ? (
             <p className="px-3 py-2 text-sm text-slate-500">

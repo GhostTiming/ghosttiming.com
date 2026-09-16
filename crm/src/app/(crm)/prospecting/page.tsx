@@ -18,6 +18,7 @@ import { getPool } from "@/db";
 import { requireProspectingUser } from "@/lib/auth/server";
 import { formatNextStep } from "@/lib/crm/domain";
 import { reconcileProspectingWithPool, listProspects } from "@/lib/crm/queries";
+import { CHIP_ROW, MOBILE_CARDS } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Prospecting" };
@@ -145,7 +146,7 @@ export default async function ProspectingPage({
           <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
             Race-first pipeline
           </p>
-          <h1 className="text-3xl font-bold tracking-tight">Prospecting</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Prospecting</h1>
           <p className="mt-1 text-sm text-slate-600">
             The numbered pills are the live pipeline: Candidates, Contacting,
             Scoping, then Confirmed. Candidates only include Get Run Vibes
@@ -164,7 +165,7 @@ export default async function ProspectingPage({
         </div>
       </div>
 
-      <nav className="flex flex-wrap gap-2" aria-label="Prospect stage filters">
+      <nav className={CHIP_ROW} aria-label="Prospect stage filters">
         {viewOptions.map(({ key, label }) => (
           <Link
             key={key}
@@ -185,7 +186,95 @@ export default async function ProspectingPage({
       <div className="space-y-3">
       <ProspectBulkBar users={users.rows} />
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        <div className={MOBILE_CARDS + " p-3"}>
+          <label className="flex items-center gap-2 px-1 text-sm text-slate-600">
+            <DatasetHeaderCheckbox
+              ids={result.rows
+                .map((row) => row.prospect_id)
+                .filter((id): id is string => Boolean(id))}
+            />
+            Select all
+          </label>
+          {result.rows.map((row) => {
+            const href = row.prospect_id
+              ? `/prospecting/${row.prospect_id}`
+              : null;
+            return (
+              <article
+                key={row.prospect_id ?? row.race_listing_id}
+                className="relative rounded-xl border border-slate-200 bg-slate-50 p-3"
+              >
+                <div className="flex items-start gap-3">
+                  {row.prospect_id ? <DatasetCheckbox id={row.prospect_id} /> : null}
+                  <div className="min-w-0 flex-1 space-y-2">
+                    {href ? (
+                      <ListRowLink
+                        href={href}
+                        className="font-semibold text-slate-900"
+                      >
+                        <EventLogo
+                          url={row.logo_url}
+                          name={row.race_name}
+                          size="list"
+                        />
+                        <span>
+                          <span className="block">{row.race_name}</span>
+                          <span className="block text-xs font-normal text-slate-500">
+                            {row.location || "—"}
+                          </span>
+                        </span>
+                      </ListRowLink>
+                    ) : (
+                      <div className="flex items-start gap-2.5">
+                        <EventLogo
+                          url={row.logo_url}
+                          name={row.race_name}
+                          size="list"
+                        />
+                        <div>
+                          <p className="font-semibold text-slate-900">{row.race_name}</p>
+                          <p className="text-xs text-slate-500">{row.location || "—"}</p>
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-sm text-slate-600">
+                      {formatDate(row.event_date)} · {row.stage_name}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {row.owner_name ?? "Unassigned"}
+                      {row.primary_phone ? ` · ${row.primary_phone}` : ""}
+                      {row.primary_email ? ` · ${row.primary_email}` : ""}
+                    </p>
+                    <ListRowActions>
+                      {row.prospect_id ? (
+                        <ProspectListStageBubbles
+                          prospectId={row.prospect_id}
+                          currentStageKey={row.stage_key}
+                        />
+                      ) : (
+                        <form action={startProspectAction}>
+                          <input
+                            type="hidden"
+                            name="raceListingId"
+                            value={row.race_listing_id ?? undefined}
+                          />
+                          <button
+                            type="submit"
+                            className="inline-flex items-center gap-1 font-semibold text-cyan-700"
+                          >
+                            <Plus aria-hidden className="size-4" />
+                            Start
+                          </button>
+                        </form>
+                      )}
+                    </ListRowActions>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[1100px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -365,7 +454,7 @@ export default async function ProspectingPage({
             No prospects match this view and its filters.
           </p>
         ) : null}
-        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm">
+        <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
           <p className="text-slate-500">
             Page {result.page} of {lastPage} · {result.total.toLocaleString()} records
           </p>

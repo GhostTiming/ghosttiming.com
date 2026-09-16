@@ -15,6 +15,7 @@ import { getPool } from "@/db";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { organizationBulkFields } from "@/lib/crm/bulk-fields";
+import { CHIP_ROW } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 const roleFilters = [
@@ -182,7 +183,7 @@ export default async function OrganizationsPage({
         ) : null}
       </header>
 
-      <nav className="flex flex-wrap gap-2">
+      <nav className={CHIP_ROW}>
         <Link
           href={buildSearchHref("/organizations", current, {
             role: null,

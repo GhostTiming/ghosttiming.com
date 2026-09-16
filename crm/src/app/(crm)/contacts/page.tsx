@@ -26,6 +26,7 @@ import {
   contactBulkPersonId,
   type ContactListView,
 } from "@/lib/crm/contacts";
+import { CHIP_ROW } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Contacts" };
@@ -218,7 +219,7 @@ export default async function ContactsPage({
         ) : null}
       </header>
 
-      <nav className="flex flex-wrap gap-2" aria-label="Contact list views">
+      <nav className={CHIP_ROW} aria-label="Contact list views">
         {viewTabs
           .filter((tab) => tab.show)
           .map((tab) => (
@@ -241,7 +242,7 @@ export default async function ContactsPage({
           updateAction={bulkUpdateContactsAction}
         />
       ) : null}
-      <nav className="flex flex-wrap gap-2" aria-label="Contact status">
+      <nav className={CHIP_ROW} aria-label="Contact status">
         <Link
           href={buildSearchHref("/contacts", current, {
             archived: null,

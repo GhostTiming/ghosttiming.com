@@ -22,10 +22,14 @@ function statusLabel(status: string | undefined, expired: boolean) {
   }
 }
 
-export function GoogleConnectionControl() {
+export function GoogleConnectionControl({
+  variant = "menu",
+}: {
+  variant?: "menu" | "inline";
+}) {
   const google = useGoogleSession();
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(variant === "inline");
   const [busy, setBusy] = useState<string | null>(null);
 
   function run(label: string, work: () => Promise<void>) {
@@ -50,20 +54,10 @@ export function GoogleConnectionControl() {
           ? "Authorize Google"
           : "Connect Google";
 
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="rounded-lg px-3 py-2 text-left text-xs text-slate-200 hover:bg-white/10"
-      >
-        <span className="block font-medium">{label}</span>
-        {google.connection?.google_email ? (
-          <span className="block text-[11px] text-slate-400">{google.connection.google_email}</span>
-        ) : null}
-      </button>
-      {open ? (
-        <section className="absolute right-0 z-30 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-4 text-slate-950 shadow-lg">
+  const panel = (
+        <section className={variant === "inline"
+          ? "rounded-xl bg-white p-4 text-slate-950"
+          : "absolute right-0 z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-4 text-slate-950 shadow-lg"}>
           <h2 className="text-sm font-bold">Google</h2>
           {!google.clientId ? (
             <p className="mt-2 text-sm text-red-700">
@@ -188,7 +182,23 @@ export function GoogleConnectionControl() {
             </div>
           )}
         </section>
-      ) : null}
+  );
+
+  if (variant === "inline") return panel;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="rounded-lg px-3 py-2 text-left text-xs text-slate-200 hover:bg-white/10"
+      >
+        <span className="block font-medium">{label}</span>
+        {google.connection?.google_email ? (
+          <span className="block text-[11px] text-slate-400">{google.connection.google_email}</span>
+        ) : null}
+      </button>
+      {open ? panel : null}
     </div>
   );
 }

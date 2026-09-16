@@ -22,6 +22,7 @@ import {
   loadCatalogListingCandidates,
   suggestCatalogMatches,
 } from "@/lib/crm/catalog-link";
+import { CHIP_ROW, DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam } from "@/lib/crm/search-params";
 
 export const maxDuration = 120;
@@ -263,7 +264,7 @@ export default async function BookingsPage({
           <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
             Operations
           </p>
-          <h1 className="text-3xl font-bold text-slate-950">Bookings</h1>
+          <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Bookings</h1>
           <p className="mt-1 text-slate-600">
             The numbered pills are the live pipeline: Awaiting decision through
             Paid. Closed Lost is an outcome. Needs listing is the catalog review
@@ -293,7 +294,7 @@ export default async function BookingsPage({
         </div>
       </header>
 
-      <nav className="flex flex-wrap gap-2" aria-label="Booking stage filters">
+      <nav className={CHIP_ROW} aria-label="Booking stage filters">
         {stageOptions.map(({ key, label }) => (
           <Link
             key={key}
@@ -310,7 +311,65 @@ export default async function BookingsPage({
       <BookingBulkBar stages={stages.rows} users={users.rows} />
 
       {stageFilter === "needs_listing" ? (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <>
+        <div className={MOBILE_CARDS}>
+          <label className="flex items-center gap-2 px-1 text-sm text-slate-600">
+            <DatasetHeaderCheckbox ids={rows.map((row) => row.id)} />
+            Select all
+          </label>
+          {rows.map((booking) => {
+            const suggestions = catalogContext
+              ? suggestCatalogMatches(
+                  {
+                    name: booking.event_name,
+                    city: booking.city,
+                    state: booking.state,
+                  },
+                  catalogContext.listings,
+                  { takenIds: catalogContext.takenIds },
+                )
+              : [];
+            return (
+              <article
+                key={booking.id}
+                className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+              >
+                <div className="flex items-start gap-3">
+                  <DatasetCheckbox id={booking.id} />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <ListRowLink className="font-semibold text-cyan-700" href={`/bookings/${booking.id}`}>
+                      <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
+                      <span>
+                        {booking.event_name}
+                        <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                          {booking.direct_client}
+                        </span>
+                      </span>
+                    </ListRowLink>
+                    <p className="text-sm text-slate-600">
+                      {booking.race_date ? date(booking.race_date) : "TBD"}
+                      {booking.location ? ` · ${booking.location}` : ""}
+                    </p>
+                    <ListRowActions>
+                      <CatalogMatchControls
+                        bookingId={booking.id}
+                        suggestions={suggestions}
+                        returnTo="/bookings?stage=needs_listing"
+                        compact
+                      />
+                    </ListRowActions>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+          {!rows.length ? (
+            <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
+              Every booking is linked or marked as not in Get Run Vibes.
+            </p>
+          ) : null}
+        </div>
+        <div className={DESKTOP_TABLE}>
           <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -395,15 +454,16 @@ export default async function BookingsPage({
           </table>
           </div>
         </div>
+        </>
       ) : view === "kanban" ? (
         <div className="space-y-3">
           <label className="inline-flex items-center gap-2 text-sm text-slate-600">
             <DatasetHeaderCheckbox ids={rows.map((row) => row.id)} />
             Select all visible cards
           </label>
-        <div className="grid gap-4 overflow-x-auto lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {visibleStages.map((stage) => (
-            <section key={stage.key} className="min-w-64 rounded-xl bg-slate-200/70 p-3">
+            <section key={stage.key} className="rounded-xl bg-slate-200/70 p-3">
               <h2 className="mb-3 flex justify-between font-semibold text-slate-800">
                 {stage.name}
                 <span>{rows.filter((row) => row.stage_key === stage.key).length}</span>
@@ -440,7 +500,50 @@ export default async function BookingsPage({
         </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <>
+        <div className={MOBILE_CARDS}>
+          <label className="flex items-center gap-2 px-1 text-sm text-slate-600">
+            <DatasetHeaderCheckbox ids={rows.map((row) => row.id)} />
+            Select all
+          </label>
+          {rows.map((booking) => (
+            <article
+              key={booking.id}
+              className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+            >
+              <div className="flex items-start gap-3">
+                <DatasetCheckbox id={booking.id} />
+                <Link href={`/bookings/${booking.id}`} className="min-w-0 flex-1">
+                  <span className="flex items-start gap-2.5">
+                    <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
+                    <span>
+                      <span className="block font-semibold text-slate-950">{booking.event_name}</span>
+                      <span className="mt-1 block text-sm text-slate-600">{booking.direct_client}</span>
+                      <span className="mt-1 block text-sm text-slate-500">
+                        {booking.race_date ? date(booking.race_date) : "TBD"}
+                        {" · "}
+                        {booking.stage_name}
+                      </span>
+                      {showFinancials ? (
+                        <span className="mt-2 block text-sm font-medium">
+                          {money(booking.actual_revenue ?? booking.expected_revenue)}
+                          {" · "}
+                          {booking.payment_at ? "Paid" : "Unpaid"}
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                </Link>
+              </div>
+            </article>
+          ))}
+          {!rows.length ? (
+            <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
+              No bookings match this view and its filters.
+            </p>
+          ) : null}
+        </div>
+        <div className={DESKTOP_TABLE}>
           <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -552,6 +655,7 @@ export default async function BookingsPage({
           </table>
           </div>
         </div>
+        </>
       )}
       </div>
       </DatasetBulkRoot>

@@ -28,12 +28,12 @@ function Metric({
   icon: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
       <div className="flex items-center justify-between text-slate-500">
         <p className="text-sm font-medium">{label}</p>
         {icon}
       </div>
-      <p className="mt-2 text-3xl font-bold text-slate-950">{value}</p>
+      <p className="mt-2 text-2xl font-bold text-slate-950 sm:text-3xl">{value}</p>
     </div>
   );
 }
@@ -371,7 +371,7 @@ export default async function DashboardPage({
           <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
             Welcome back, {user.name.split(" ")[0]}
           </p>
-          <h1 className="text-3xl font-bold text-slate-950">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Dashboard</h1>
           <p className="mt-1 text-slate-600">
             What needs attention across operations and prospecting.
           </p>
@@ -383,7 +383,7 @@ export default async function DashboardPage({
             <h2 className="text-xl font-bold text-slate-950">Operations</h2>
             <p className="text-sm text-slate-500">Booked work and payment status</p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <Metric label="Upcoming events" value={ops.upcoming} icon={<CalendarClock className="size-5" />} />
             <Metric label="Next 14 days needing prep" value={ops.needs_prep} icon={<ClockAlert className="size-5" />} />
             <Metric label="Awaiting decision" value={ops.awaiting_decision} icon={<Target className="size-5" />} />
@@ -421,7 +421,7 @@ export default async function DashboardPage({
             <h2 className="text-xl font-bold text-slate-950">Prospecting</h2>
             <p className="text-sm text-slate-500">Current lead pipeline</p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <Metric label="Active prospects" value={prospect.active} icon={<Search className="size-5" />} />
             <Metric label="Untouched" value={prospect.untouched} icon={<ClockAlert className="size-5" />} />
             <Metric label="Contacted" value={prospect.contacted} icon={<CheckCircle2 className="size-5" />} />
@@ -518,11 +518,11 @@ export default async function DashboardPage({
         <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
           Welcome back, {user.name.split(" ")[0]}
         </p>
-        <h1 className="text-3xl font-bold text-slate-950">Prospecting Dashboard</h1>
+        <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Prospecting Dashboard</h1>
         <p className="mt-1 text-slate-600">Your leads and next actions.</p>
       </header>
       <PeriodControls period={period} />
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Metric label="Untouched leads" value={prospect.untouched} icon={<Search className="size-5" />} />
         <Metric label="Overdue tasks" value={taskCounts.overdue} icon={<ClockAlert className="size-5" />} />
         <Metric label="Due today" value={taskCounts.due_today} icon={<CalendarClock className="size-5" />} />

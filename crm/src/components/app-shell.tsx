@@ -3,6 +3,7 @@ import { GlobalSearch } from "@/components/global-search";
 import { GoogleConnectionControl } from "@/components/google/google-connection-control";
 import { GoogleSessionProvider } from "@/components/google/google-session-provider";
 import { HeaderMoreNav } from "@/components/header-more-nav";
+import { MobileShell } from "@/components/mobile-shell";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { SignOutForm } from "@/components/sign-out-form";
 import {
@@ -51,8 +52,8 @@ export function AppShell({
       initialConnections={googleConnections}
     >
     <div className="min-h-screen bg-slate-100">
-      <header className="border-b border-slate-800 bg-slate-950 text-white">
-        <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950 text-white">
+        <div className="mx-auto hidden max-w-screen-2xl items-center gap-x-3 px-6 py-3 md:flex">
           <Link href="/dashboard" className="flex shrink-0 items-center gap-2">
             <Image
               src={GHOST_TIMING_LOGO_WHITE}
@@ -64,7 +65,7 @@ export function AppShell({
             />
             <span className="text-sm font-semibold tracking-wide">CRM</span>
           </Link>
-          <nav className="flex shrink-0 flex-wrap items-center gap-1" aria-label="Main navigation">
+          <nav className="flex shrink-0 items-center gap-1" aria-label="Main navigation">
             <Link
               href="/dashboard"
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
@@ -114,13 +115,23 @@ export function AppShell({
             ) : null}
           </nav>
           <GlobalSearch />
-          <div className="ml-auto hidden text-right text-sm sm:block">
+          <div className="ml-auto hidden text-right text-sm lg:block">
             <p className="font-medium">{user.name}</p>
             <p className="text-xs capitalize text-slate-400">{displayRole}</p>
           </div>
           {canAccessGoogle ? <GoogleConnectionControl /> : null}
           <SignOutForm />
         </div>
+        <MobileShell
+          userName={user.name}
+          displayRole={displayRole}
+          canAccessOperations={canAccessOperations}
+          canAccessProspecting={canAccessProspecting}
+          canAccessTasks={canAccessTasks}
+          canAccessGoogle={canAccessGoogle}
+          canAccessAdminConsole={canAccessAdminConsole}
+          search={<GlobalSearch />}
+        />
       </header>
       {viewingAs ? (
         <div className="border-b border-amber-300 bg-amber-100 text-amber-950" role="status">
@@ -140,7 +151,9 @@ export function AppShell({
           </div>
         </div>
       ) : null}
-      <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6">{children}</main>
+      <main className="mx-auto max-w-screen-2xl px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-6">
+        {children}
+      </main>
     </div>
     </GoogleSessionProvider>
   );

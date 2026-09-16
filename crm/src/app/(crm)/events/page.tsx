@@ -16,6 +16,7 @@ import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { eventBulkFields } from "@/lib/crm/bulk-fields";
 import { listEvents } from "@/lib/crm/event-queries";
+import { CHIP_ROW } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Events" };
@@ -131,7 +132,7 @@ export default async function EventsPage({
       </header>
 
       {access.isSuperAdmin ? (
-      <nav className="flex flex-wrap gap-2" aria-label="Event list scope">
+      <nav className={CHIP_ROW} aria-label="Event list scope">
         <Link
           href={buildSearchHref("/events", current, { scope: "client", page: null })}
           className={`rounded-full px-3 py-1.5 text-sm ring-1 ${
