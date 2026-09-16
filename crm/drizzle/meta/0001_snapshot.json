@@ -1,0 +1,1340 @@
+{
+  "id": "b9a05994-bbb4-4c3c-8bab-c63b7616e738",
+  "prevId": "fd54a280-095e-4842-8d98-e68cc3e394ef",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "crm.activities": {
+      "name": "activities",
+      "schema": "crm",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "prospect_id": {
+          "name": "prospect_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "activity_type",
+          "typeSchema": "crm",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "disposition": {
+          "name": "disposition",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "actor_type",
+          "typeSchema": "crm",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_name": {
+          "name": "actor_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "activities_prospect_occurred_idx": {
+          "name": "activities_prospect_occurred_idx",
+          "columns": [
+            {
+              "expression": "prospect_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "activities_prospect_id_prospects_id_fk": {
+          "name": "activities_prospect_id_prospects_id_fk",
+          "tableFrom": "activities",
+          "tableTo": "prospects",
+          "schemaTo": "crm",
+          "columnsFrom": [
+            "prospect_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "activities_actor_user_id_users_id_fk": {
+          "name": "activities_actor_user_id_users_id_fk",
+          "tableFrom": "activities",
+          "tableTo": "users",
+          "schemaTo": "crm",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "activities_human_actor_check": {
+          "name": "activities_human_actor_check",
+          "value": "\"crm\".\"activities\".\"actor_type\" <> 'human' OR \"crm\".\"activities\".\"actor_user_id\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "catalog.lead_notes": {
+      "name": "lead_notes",
+      "schema": "catalog",
+      "columns": {
+        "race_listing_id": {
+          "name": "race_listing_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qualification_status": {
+          "name": "qualification_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "lead_notes_race_listing_id_race_listings_id_fk": {
+          "name": "lead_notes_race_listing_id_race_listings_id_fk",
+          "tableFrom": "lead_notes",
+          "tableTo": "race_listings",
+          "schemaTo": "catalog",
+          "columnsFrom": [
+            "race_listing_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "catalog.race_editions": {
+      "name": "race_editions",
+      "schema": "catalog",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "race_listing_id": {
+          "name": "race_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "edition_year": {
+          "name": "edition_year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_future": {
+          "name": "is_future",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "race_editions_race_listing_id_race_listings_id_fk": {
+          "name": "race_editions_race_listing_id_race_listings_id_fk",
+          "tableFrom": "race_editions",
+          "tableTo": "race_listings",
+          "schemaTo": "catalog",
+          "columnsFrom": [
+            "race_listing_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "catalog.race_listings": {
+      "name": "race_listings",
+      "schema": "catalog",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description_html": {
+          "name": "description_html",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "registration_url": {
+          "name": "registration_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "external_race_url": {
+          "name": "external_race_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "street": {
+          "name": "street",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "street2": {
+          "name": "street2",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zipcode": {
+          "name": "zipcode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "next_start_at": {
+          "name": "next_start_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "crm.contact_extraction_state": {
+      "name": "contact_extraction_state",
+      "schema": "crm",
+      "columns": {
+        "race_listing_id": {
+          "name": "race_listing_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "source_content_hash": {
+          "name": "source_content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parser_version": {
+          "name": "parser_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "contact_extraction_status",
+          "typeSchema": "crm",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "extracted_count": {
+          "name": "extracted_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "contact_extraction_state_updated_idx": {
+          "name": "contact_extraction_state_updated_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "contact_extraction_state_race_listing_id_race_listings_id_fk": {
+          "name": "contact_extraction_state_race_listing_id_race_listings_id_fk",
+          "tableFrom": "contact_extraction_state",
+          "tableTo": "race_listings",
+          "schemaTo": "catalog",
+          "columnsFrom": [
+            "race_listing_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "crm.contact_methods": {
+      "name": "contact_methods",
+      "schema": "crm",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "prospect_id": {
+          "name": "prospect_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "race_listing_id": {
+          "name": "race_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "contact_method_type",
+          "typeSchema": "crm",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raw_value": {
+          "name": "raw_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "normalized_value": {
+          "name": "normalized_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "contact_method_source",
+          "typeSchema": "crm",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_field": {
+          "name": "source_field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_content_hash": {
+          "name": "source_content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_primary": {
+          "name": "is_primary",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "status": {
+          "name": "status",
+          "type": "contact_method_status",
+          "typeSchema": "crm",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "contact_methods_listing_type_value_uidx": {
+          "name": "contact_methods_listing_type_value_uidx",
+          "columns": [
+            {
+              "expression": "race_listing_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "normalized_value",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contact_methods_listing_primary_idx": {
+          "name": "contact_methods_listing_primary_idx",
+          "columns": [
+            {
+              "expression": "race_listing_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "is_primary",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contact_methods_prospect_idx": {
+          "name": "contact_methods_prospect_idx",
+          "columns": [
+            {
+              "expression": "prospect_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "contact_methods_prospect_id_prospects_id_fk": {
+          "name": "contact_methods_prospect_id_prospects_id_fk",
+          "tableFrom": "contact_methods",
+          "tableTo": "prospects",
+          "schemaTo": "crm",
+          "columnsFrom": [
+            "prospect_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "contact_methods_race_listing_id_race_listings_id_fk": {
+          "name": "contact_methods_race_listing_id_race_listings_id_fk",
+          "tableFrom": "contact_methods",
+          "tableTo": "race_listings",
+          "schemaTo": "catalog",
+          "columnsFrom": [
+            "race_listing_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "crm.pipeline_stages": {
+      "name": "pipeline_stages",
+      "schema": "crm",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "pipeline": {
+          "name": "pipeline",
+          "type": "pipeline_kind",
+          "typeSchema": "crm",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_terminal": {
+          "name": "is_terminal",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "pipeline_stages_pipeline_key_uidx": {
+          "name": "pipeline_stages_pipeline_key_uidx",
+          "columns": [
+            {
+              "expression": "pipeline",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pipeline_stages_pipeline_sort_uidx": {
+          "name": "pipeline_stages_pipeline_sort_uidx",
+          "columns": [
+            {
+              "expression": "pipeline",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sort_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "crm.prospects": {
+      "name": "prospects",
+      "schema": "crm",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "race_listing_id": {
+          "name": "race_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "race_edition_id": {
+          "name": "race_edition_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assigned_user_id": {
+          "name": "assigned_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stage_id": {
+          "name": "stage_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "do_not_contact": {
+          "name": "do_not_contact",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "converted_booking_id": {
+          "name": "converted_booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "prospects_source_uidx": {
+          "name": "prospects_source_uidx",
+          "columns": [
+            {
+              "expression": "race_listing_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"race_edition_id\", '')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "prospects_stage_idx": {
+          "name": "prospects_stage_idx",
+          "columns": [
+            {
+              "expression": "stage_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "prospects_assignee_idx": {
+          "name": "prospects_assignee_idx",
+          "columns": [
+            {
+              "expression": "assigned_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "prospects_created_at_idx": {
+          "name": "prospects_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "prospects_race_listing_id_race_listings_id_fk": {
+          "name": "prospects_race_listing_id_race_listings_id_fk",
+          "tableFrom": "prospects",
+          "tableTo": "race_listings",
+          "schemaTo": "catalog",
+          "columnsFrom": [
+            "race_listing_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "prospects_race_edition_id_race_editions_id_fk": {
+          "name": "prospects_race_edition_id_race_editions_id_fk",
+          "tableFrom": "prospects",
+          "tableTo": "race_editions",
+          "schemaTo": "catalog",
+          "columnsFrom": [
+            "race_edition_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "prospects_assigned_user_id_users_id_fk": {
+          "name": "prospects_assigned_user_id_users_id_fk",
+          "tableFrom": "prospects",
+          "tableTo": "users",
+          "schemaTo": "crm",
+          "columnsFrom": [
+            "assigned_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "prospects_stage_id_pipeline_stages_id_fk": {
+          "name": "prospects_stage_id_pipeline_stages_id_fk",
+          "tableFrom": "prospects",
+          "tableTo": "pipeline_stages",
+          "schemaTo": "crm",
+          "columnsFrom": [
+            "stage_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "crm.tasks": {
+      "name": "tasks",
+      "schema": "crm",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "prospect_id": {
+          "name": "prospect_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_activity_id": {
+          "name": "source_activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assigned_user_id": {
+          "name": "assigned_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "task_status",
+          "typeSchema": "crm",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tasks_assignee_status_due_idx": {
+          "name": "tasks_assignee_status_due_idx",
+          "columns": [
+            {
+              "expression": "assigned_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_prospect_status_due_idx": {
+          "name": "tasks_prospect_status_due_idx",
+          "columns": [
+            {
+              "expression": "prospect_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tasks_prospect_id_prospects_id_fk": {
+          "name": "tasks_prospect_id_prospects_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "prospects",
+          "schemaTo": "crm",
+          "columnsFrom": [
+            "prospect_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tasks_source_activity_id_activities_id_fk": {
+          "name": "tasks_source_activity_id_activities_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "activities",
+          "schemaTo": "crm",
+          "columnsFrom": [
+            "source_activity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tasks_assigned_user_id_users_id_fk": {
+          "name": "tasks_assigned_user_id_users_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "users",
+          "schemaTo": "crm",
+          "columnsFrom": [
+            "assigned_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tasks_completed_at_check": {
+          "name": "tasks_completed_at_check",
+          "value": "\"crm\".\"tasks\".\"status\" <> 'complete' OR \"crm\".\"tasks\".\"completed_at\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "crm.users": {
+      "name": "users",
+      "schema": "crm",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "auth_provider_id": {
+          "name": "auth_provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "user_role",
+          "typeSchema": "crm",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'prospecting_user'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "users_email_idx": {
+          "name": "users_email_idx",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_auth_provider_id_unique": {
+          "name": "users_auth_provider_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "auth_provider_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "crm.activity_type": {
+      "name": "activity_type",
+      "schema": "crm",
+      "values": [
+        "phone_call",
+        "email",
+        "meeting",
+        "note",
+        "stage_change"
+      ]
+    },
+    "crm.actor_type": {
+      "name": "actor_type",
+      "schema": "crm",
+      "values": [
+        "human",
+        "ai",
+        "system"
+      ]
+    },
+    "crm.contact_extraction_status": {
+      "name": "contact_extraction_status",
+      "schema": "crm",
+      "values": [
+        "processed",
+        "failed"
+      ]
+    },
+    "crm.contact_method_source": {
+      "name": "contact_method_source",
+      "schema": "crm",
+      "values": [
+        "extracted",
+        "manual",
+        "ai",
+        "imported"
+      ]
+    },
+    "crm.contact_method_status": {
+      "name": "contact_method_status",
+      "schema": "crm",
+      "values": [
+        "valid",
+        "invalid",
+        "unknown"
+      ]
+    },
+    "crm.contact_method_type": {
+      "name": "contact_method_type",
+      "schema": "crm",
+      "values": [
+        "email",
+        "phone"
+      ]
+    },
+    "crm.pipeline_kind": {
+      "name": "pipeline_kind",
+      "schema": "crm",
+      "values": [
+        "prospect",
+        "booking"
+      ]
+    },
+    "crm.task_status": {
+      "name": "task_status",
+      "schema": "crm",
+      "values": [
+        "open",
+        "complete",
+        "canceled"
+      ]
+    },
+    "crm.user_role": {
+      "name": "user_role",
+      "schema": "crm",
+      "values": [
+        "admin",
+        "prospecting_user"
+      ]
+    }
+  },
+  "schemas": {
+    "catalog": "catalog",
+    "crm": "crm"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

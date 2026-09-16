@@ -1,0 +1,153 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789486850110,
+      "tag": "0000_friendly_wendell_vaughn",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789492154354,
+      "tag": "0001_clear_warbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789493770445,
+      "tag": "0002_tranquil_moira_mactaggert",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789493798707,
+      "tag": "0003_tricky_kylun",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789494847078,
+      "tag": "0004_same_sprite",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789497023564,
+      "tag": "0005_minor_shiver_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789497908672,
+      "tag": "0006_groovy_famine",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789501134998,
+      "tag": "0007_odd_newton_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789502094986,
+      "tag": "0008_faulty_gorgon",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789504199375,
+      "tag": "0009_lazy_ironclad",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789550000000,
+      "tag": "0010_prospect_stage_flow",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789554000000,
+      "tag": "0011_legacy_qualification_stages",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789560000000,
+      "tag": "0012_catalog_match_dismissed",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789564000000,
+      "tag": "0013_past_event_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789568000000,
+      "tag": "0014_google_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789572000000,
+      "tag": "0015_google_multi_account",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789580000000,
+      "tag": "0016_org_memberships",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789588000000,
+      "tag": "0017_prospect_glance_steps",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789596000000,
+      "tag": "0018_person_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789604000000,
+      "tag": "0019_closed_lost_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789612000000,
+      "tag": "0020_outcome_reasons",
+      "breakpoints": true
+    }
+  ]
+}

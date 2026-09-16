@@ -1,0 +1,1 @@
+ALTER TABLE "crm"."booking_prep_items" ADD COLUMN "notes" text;

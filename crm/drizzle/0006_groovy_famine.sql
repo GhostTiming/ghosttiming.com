@@ -1,0 +1,4 @@
+ALTER TABLE "crm"."bookings" ADD COLUMN "primary_contact_person_id" uuid;--> statement-breakpoint
+ALTER TABLE "crm"."prospects" ADD COLUMN "primary_contact_person_id" uuid;--> statement-breakpoint
+ALTER TABLE "crm"."bookings" ADD CONSTRAINT "bookings_primary_contact_person_id_people_id_fk" FOREIGN KEY ("primary_contact_person_id") REFERENCES "crm"."people"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "crm"."prospects" ADD CONSTRAINT "prospects_primary_contact_person_id_people_id_fk" FOREIGN KEY ("primary_contact_person_id") REFERENCES "crm"."people"("id") ON DELETE set null ON UPDATE no action;

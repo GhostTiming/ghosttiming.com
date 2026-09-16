@@ -1,0 +1,1 @@
+ALTER TABLE "crm"."prospects" ADD CONSTRAINT "prospects_converted_booking_id_bookings_id_fk" FOREIGN KEY ("converted_booking_id") REFERENCES "crm"."bookings"("id") ON DELETE no action ON UPDATE no action;
