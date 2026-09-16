@@ -5,7 +5,7 @@ import {
   parseRaceRosterUrl,
   resolveRaceRosterNumericId,
 } from "./ids";
-import { mapRaceRosterEvent } from "./map-event";
+import { clockFromDate, mapRaceRosterEvent } from "./map-event";
 import type { RaceRosterEvent } from "./types";
 
 const sampleEvent: RaceRosterEvent = {
@@ -83,6 +83,24 @@ describe("resolveRaceRosterNumericId", () => {
   });
 });
 
+describe("clockFromDate", () => {
+  it("uses the event timezone instead of UTC hours", () => {
+    // Race Roster Black Bear style: 8:00 AM Eastern arrives as -0400 offset.
+    expect(
+      clockFromDate("2026-10-11T08:00:00-0400", "America/New_York"),
+    ).toBe("8:00 AM");
+    expect(
+      clockFromDate("2026-10-11T08:00:00-0400", "UTC"),
+    ).toBe("12:00 PM");
+  });
+
+  it("treats local midnight as an absent clock", () => {
+    expect(
+      clockFromDate("2026-10-11T00:00:00-0400", "America/New_York"),
+    ).toBeNull();
+  });
+});
+
 describe("mapRaceRosterEvent", () => {
   it("maps listing, edition, and offerings for catalog upsert", () => {
     const mapped = mapRaceRosterEvent(sampleEvent, new Date("2026-09-16T12:00:00Z"));
@@ -102,6 +120,7 @@ describe("mapRaceRosterEvent", () => {
       sourceEventId: 12,
       distanceLabel: "5 km",
       distanceMeters: 5000,
+      startTimeRaw: "8:19 AM",
       isRealRaceDistance: true,
       isVolunteer: false,
     });
@@ -110,6 +129,46 @@ describe("mapRaceRosterEvent", () => {
       isVolunteer: true,
       isRealRaceDistance: false,
     });
+  });
+
+  it("keeps Race Roster wall-clock times in the event timezone", () => {
+    const mapped = mapRaceRosterEvent(
+      {
+        eventId: "black-bear",
+        name: "Black Bear Half Marathon & 8K",
+        startDate: "2026-10-11T08:00:00-0400",
+        timeZone: "America/New_York",
+        url: "https://raceroster.com/events/2026/12345/black-bear-half-marathon-8k",
+        subEvents: {
+          data: [
+            {
+              subEventId: 1,
+              name: "8K",
+              subEventDistance: {
+                type: "running",
+                label: "8 km",
+                inMeters: "8000",
+              },
+              customSubEventDate: null,
+            },
+            {
+              subEventId: 2,
+              name: "Half Marathon",
+              subEventDistance: {
+                type: "running",
+                label: "Half Marathon",
+                inMeters: "21097",
+              },
+            },
+          ],
+        },
+      },
+      new Date("2026-09-16T12:00:00Z"),
+    );
+    expect(mapped.offerings.map((offering) => offering.startTimeRaw)).toEqual([
+      "8:00 AM",
+      "8:00 AM",
+    ]);
   });
 
   it("builds a provider-scoped slug from the event name when needed", () => {

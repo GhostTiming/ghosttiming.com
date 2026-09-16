@@ -65,15 +65,30 @@ function isoTimestamp(value?: string | null) {
   return date ? date.toISOString() : null;
 }
 
-function clockFromDate(value?: string | null) {
+/** Wall-clock label in the event timezone (not UTC). */
+export function clockFromDate(
+  value?: string | null,
+  timeZone?: string | null,
+) {
   const date = parseDate(value);
   if (!date) return null;
-  const hours = date.getUTCHours();
-  const minutes = date.getUTCMinutes();
-  if (hours === 0 && minutes === 0) return null;
-  const period = hours >= 12 ? "PM" : "AM";
-  const hour12 = hours % 12 || 12;
-  return `${hour12}:${String(minutes).padStart(2, "0")} ${period}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timeZone?.trim() || "UTC",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(date);
+  const hourPart = parts.find((part) => part.type === "hour")?.value;
+  const minutePart = parts.find((part) => part.type === "minute")?.value;
+  const dayPeriod = parts.find((part) => part.type === "dayPeriod")?.value;
+  if (!hourPart || !minutePart || !dayPeriod) return null;
+  const hours = Number(hourPart);
+  const minutes = Number(minutePart);
+  // Date-only placeholders often land at local midnight.
+  if (hours === 12 && minutes === 0 && dayPeriod.toUpperCase() === "AM") {
+    return null;
+  }
+  return `${hours}:${minutePart.padStart(2, "0")} ${dayPeriod.toUpperCase()}`;
 }
 
 function normalizeFamily(type?: string | null) {
@@ -131,13 +146,21 @@ export function mapRaceRosterEvent(
   fetchedAt = new Date(),
 ): MappedRaceRosterEvent {
   const sourceRaceId = resolveRaceRosterNumericId(event);
+  const timeZone = event.timeZone?.trim() || null;
   const start = parseDate(event.startDate);
   const startIso = start?.toISOString() ?? null;
   const now = fetchedAt;
   const isFuture = Boolean(start && start.getTime() >= now.getTime() - 12 * 60 * 60 * 1000);
   const address = parseAddress(event.address);
   const offeringsSource = subEventsOf(event);
-  const editionYear = start?.getUTCFullYear() ?? null;
+  const editionYear = start
+    ? Number(
+        new Intl.DateTimeFormat("en-US", {
+          timeZone: timeZone || "UTC",
+          year: "numeric",
+        }).format(start),
+      )
+    : null;
   const sourceRaceEventDaysId = editionYear && editionYear > 0 ? editionYear : 0;
 
   const offerings = offeringsSource.map((subEvent) => {
@@ -181,7 +204,10 @@ export function mapRaceRosterEvent(
       name,
       distanceLabel,
       distanceMeters: meters,
-      startTimeRaw: clockFromDate(subEvent.customSubEventDate ?? event.startDate),
+      startTimeRaw: clockFromDate(
+        subEvent.customSubEventDate ?? event.startDate,
+        timeZone,
+      ),
       startsAt: offeringStart,
       eventType,
       normalizedEventFamily: normalizeFamily(eventType),
