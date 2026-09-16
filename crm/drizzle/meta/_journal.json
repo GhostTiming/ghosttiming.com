@@ -148,6 +148,13 @@
       "when": 1789612000000,
       "tag": "0020_outcome_reasons",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789620000000,
+      "tag": "0021_race_roster_catalog_provider",
+      "breakpoints": true
     }
   ]
 }

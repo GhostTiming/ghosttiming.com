@@ -13,6 +13,7 @@
     "bigin:audit": "node scripts/bigin/audit.mjs",
     "bigin:import": "node scripts/bigin/import.mjs",
     "bigin:verify": "node scripts/bigin/verify.mjs",
+    "sync:race-roster": "node --env-file=.env.local scripts/sync-race-roster.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
