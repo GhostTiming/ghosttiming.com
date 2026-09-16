@@ -41,7 +41,9 @@ export function listingEventYear(
 }
 
 export function listingSearchText(listing: {
+  id?: string | number | null;
   name: string;
+  slug?: string | null;
   street?: string | null;
   city?: string | null;
   state?: string | null;
@@ -51,6 +53,8 @@ export function listingSearchText(listing: {
 }) {
   return [
     listing.name,
+    listing.slug,
+    listing.id == null ? null : String(listing.id),
     listing.street,
     listing.city,
     listing.state,
@@ -72,7 +76,7 @@ export function listingMatchesSearch(
   return tokens.every((token) => haystack.includes(token));
 }
 
-export const catalogListingSearchHaystackSql = `lower(concat_ws(' ', name, street, city, state, zipcode, to_char(next_start_at, 'YYYY'), (
+export const catalogListingSearchHaystackSql = `lower(concat_ws(' ', name, slug, id::text, street, city, state, zipcode, to_char(next_start_at, 'YYYY'), (
   SELECT MAX(edition_year)::text
   FROM catalog.race_editions
   WHERE race_listing_id = catalog.race_listings.id

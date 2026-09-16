@@ -169,6 +169,25 @@ describe("catalog listing matching", () => {
       resolveCatalogListingQuery("Daytona", [firecracker, hannah]).match?.id,
     ).toBe("listing-firecracker");
   });
+
+  it("resolves a search by slug brand tokens or listing id", () => {
+    const church = {
+      id: "1081007",
+      name: "Church of Our Saviour",
+      slug: "svdp-church-of-our-saviour-1081007",
+      city: "Cincinnati",
+      state: "OH",
+    };
+    expect(
+      resolveCatalogListingQuery("SVDP Church of Our Saviour", [
+        church,
+        hannah,
+      ]).match?.id,
+    ).toBe("1081007");
+    expect(
+      resolveCatalogListingQuery("1081007", [church, hannah]).match?.id,
+    ).toBe("1081007");
+  });
 });
 
 describe("Get Run Vibes lead-contact flags", () => {

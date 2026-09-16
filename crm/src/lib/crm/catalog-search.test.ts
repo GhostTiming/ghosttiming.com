@@ -50,8 +50,10 @@ describe("catalog listing search", () => {
     expect(listingMatchesSearch(firecracker, "Hannah Heroes")).toBe(false);
   });
 
-  it("searches name, street, city, state, and zip in SQL", () => {
+  it("searches name, slug, id, street, city, state, and zip in SQL", () => {
     expect(catalogListingSearchHaystackSql).toContain("name");
+    expect(catalogListingSearchHaystackSql).toContain("slug");
+    expect(catalogListingSearchHaystackSql).toContain("id::text");
     expect(catalogListingSearchHaystackSql).toContain("street");
     expect(catalogListingSearchHaystackSql).toContain("city");
     expect(catalogListingSearchHaystackSql).toContain("state");
@@ -60,6 +62,27 @@ describe("catalog listing search", () => {
     expect(catalogListingSearchHaystackSql).toContain("edition_year");
     expect(catalogListingSearchWhereSql(2)).toContain("$1");
     expect(catalogListingSearchWhereSql(2)).toContain("$2");
+  });
+
+  it("matches brand tokens and listing ids that live in the slug", () => {
+    const church = {
+      id: "1081007",
+      name: "Church of Our Saviour",
+      slug: "svdp-church-of-our-saviour-1081007",
+      city: "Cincinnati",
+      state: "OH",
+    };
+    expect(listingMatchesSearch(church, "SVDP Church of Our Saviour")).toBe(
+      true,
+    );
+    expect(listingMatchesSearch(church, "1081007")).toBe(true);
+    expect(listingMatchesSearch(church, "svdp")).toBe(true);
+    expect(
+      listingMatchesSearch(
+        { ...church, slug: null },
+        "SVDP Church of Our Saviour",
+      ),
+    ).toBe(false);
   });
 
   it("includes the listing year in search text and labels", () => {

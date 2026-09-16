@@ -38,6 +38,7 @@ const NAME_STOP_WORDS = new Set([
 export type CatalogListingCandidate = {
   id: string;
   name: string;
+  slug?: string | null;
   city: string | null;
   state: string | null;
   zipcode?: string | null;
@@ -333,7 +334,7 @@ export async function loadCatalogListingCandidates(
   const keys = [
     ...new Set((options.names ?? []).map((name) => eventMatchKey(name)).filter(Boolean)),
   ];
-  const listingSql = `SELECT id, name, city, state, zipcode, next_start_at::text,
+  const listingSql = `SELECT id, name, slug, city, state, zipcode, next_start_at::text,
           ${listingYearSubselectSql()} AS edition_year
      FROM catalog.race_listings`;
   const searchNeedles = catalogSearchLikeNeedles(search);
@@ -386,7 +387,7 @@ async function loadCatalogListingsForNames(
   ];
   if (!keys.length) return [] as CatalogListingCandidate[];
   const result = await client.query<CatalogListingCandidate>(
-    `SELECT id, name, city, state, zipcode, next_start_at::text,
+    `SELECT id, name, slug, city, state, zipcode, next_start_at::text,
             ${listingYearSubselectSql()} AS edition_year
      FROM catalog.race_listings
      WHERE ${catalogNameMatchKeySql} = ANY($1::text[])`,
@@ -483,7 +484,7 @@ export async function archiveUnmatchedProspectsForLiveBookedListings(
   actor: { id: string; name: string },
 ) {
   const booked = await client.query<CatalogListingCandidate>(
-    `SELECT rl.id, rl.name, rl.city, rl.state, rl.next_start_at::text,
+    `SELECT rl.id, rl.name, rl.slug, rl.city, rl.state, rl.next_start_at::text,
             ${listingYearSubselectSql("rl.id")} AS edition_year
      FROM catalog.race_listings rl
      WHERE ${liveBookingOwnsListingSql("rl.id")}`,
