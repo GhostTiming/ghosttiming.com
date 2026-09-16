@@ -149,7 +149,7 @@ export function RenewBookingDialog({
                       className="mt-1"
                     />
                     <span>
-                      Refresh from Get Run Vibes
+                      Refresh from catalog
                       <span className="block font-normal text-slate-500">
                         Pull the current year’s listing details (dates, location,
                         logo, race offerings, name) into the new booking.
@@ -158,7 +158,7 @@ export function RenewBookingDialog({
                   </label>
                 ) : (
                   <p className="text-sm text-slate-500 sm:col-span-2">
-                    This booking is not linked to Get Run Vibes. Dates and
+                    This booking is not linked to a catalog listing. Dates and
                     location can be edited below; the rest still copies.
                   </p>
                 )}

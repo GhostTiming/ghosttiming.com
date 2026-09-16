@@ -219,7 +219,7 @@ export default async function ProspectDetailPage({
               <h2 className="text-lg font-bold">Edit private event details</h2>
               <Link href={`/prospecting/${prospect.id}`} className="text-sm font-semibold">Cancel</Link>
             </div>
-            <p className="mt-1 text-sm text-slate-500">Catalog/Get Run Vibes source data will not be changed.</p>
+            <p className="mt-1 text-sm text-slate-500">Catalog source data will not be changed.</p>
             <form action={updateProspectEventAction} className="mt-4 grid gap-3 sm:grid-cols-2">
               <input type="hidden" name="prospectId" value={prospect.id} />
               <input type="hidden" name="eventId" value={prospect.event_id} />
@@ -312,7 +312,7 @@ export default async function ProspectDetailPage({
             Event overview
           </h2>
           <p className="mt-2 text-sm text-slate-600">
-            Marked as not a Get Run Vibes race.
+            Marked as not in the catalog.
           </p>
           <form action={restoreProspectCatalogMatchAction} className="mt-2">
             <input type="hidden" name="prospectId" value={prospect.id} />
@@ -324,11 +324,11 @@ export default async function ProspectDetailPage({
       ) : (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
-            Match Get Run Vibes listing
+            Match catalog listing
           </h2>
           <p className="mt-1 mb-3 text-sm text-slate-600">
-            Search by name, location, or year, then match so event details,
-            distances, and tags fill in from Get Run Vibes.
+            Search Get Run Vibes or Race Roster by name, location, or year, then
+            match so event details, distances, and tags fill in from the catalog.
           </p>
           <CatalogMatchControls
             prospectId={prospect.id}

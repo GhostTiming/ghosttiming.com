@@ -358,7 +358,7 @@ export default async function BookingsPage({
           })}
           {!rows.length ? (
             <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
-              Every booking is linked or marked as not in Get Run Vibes.
+              Every booking is linked or marked as not in the catalog.
             </p>
           ) : null}
         </div>
@@ -439,7 +439,7 @@ export default async function BookingsPage({
               {!rows.length ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
-                    Every booking is linked or marked as not in Get Run Vibes.
+                    Every booking is linked or marked as not in the catalog.
                   </td>
                 </tr>
               ) : null}

@@ -618,6 +618,9 @@ export default async function BookingDetailPage({
                   timezone: catalogOverview.listing.timezone ?? booking.timezone,
                   event_date: booking.race_date,
                   event_date_local: booking.race_date_local,
+                  source_provider: catalogOverview.listing.source_provider,
+                  registration_url: catalogOverview.listing.registration_url,
+                  external_race_url: catalogOverview.listing.external_race_url,
                 }}
                 tags={catalogOverview.tags}
                 offerings={catalogOverview.offerings}
@@ -634,12 +637,12 @@ export default async function BookingDetailPage({
                 className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4"
               >
                 <h3 className="text-sm font-semibold text-amber-950">
-                  Marked as not a Get Run Vibes race
+                  Marked as not in the catalog
                 </h3>
                 <p className="mt-1 text-sm text-amber-900">
                   Undo that if it was a mistake, then search by name or location
                   and match the listing. Event details and the logo will sync
-                  the same way as other Get Run Vibes links.
+                  the same way as other catalog links.
                 </p>
                 <form action={restoreBookingCatalogMatchAction} className="mt-3">
                   <input type="hidden" name="bookingId" value={booking.id} />
@@ -647,18 +650,18 @@ export default async function BookingDetailPage({
                     pendingLabel="Opening matcher…"
                     className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-60"
                   >
-                    Match Get Run Vibes listing
+                    Match catalog listing
                   </PendingSubmitButton>
                 </form>
               </div>
             ) : (
               <div id="catalog-match" className="mt-5 border-t border-slate-200 pt-5">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Match Get Run Vibes listing
+                  Match catalog listing
                 </h3>
                 <p className="mt-1 mb-3 text-sm text-slate-600">
-                  Search by name, location, or year, then match so event details
-                  and the logo fill in from Get Run Vibes.
+                  Search Get Run Vibes or Race Roster by name, location, or year,
+                  then match so event details and the logo fill in from the catalog.
                 </p>
                 <CatalogMatchControls
                   bookingId={booking.id}

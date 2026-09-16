@@ -22,10 +22,10 @@ export function BookingBulkBar({
       extraActions={[
         {
           key: "grv_refresh",
-          label: "Refresh from Get Run Vibes",
+          label: "Refresh from catalog",
           pendingLabel: "Refreshing…",
           confirm:
-            "Refresh Get Run Vibes data for {n} selected bookings? This can take a while.",
+            "Refresh catalog data for {n} selected bookings? This can take a while.",
           action: (ids) => refreshSelectedBookingsFromCatalogAction({ ids }),
         },
       ]}

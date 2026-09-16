@@ -640,7 +640,7 @@ export async function resyncBookingCatalogRacesAction(formData: FormData) {
     );
     if (!booking.rows[0]) throw new Error("Booking occurrence not found.");
     if (!booking.rows[0].listing_id) {
-      throw new Error("Match a Get Run Vibes listing before re-syncing races.");
+      throw new Error("Match a catalog listing before re-syncing races.");
     }
     const result = await syncOccurrenceRacesFromCatalog(client, occurrenceId);
     await appendAuditActivity(
@@ -648,8 +648,8 @@ export async function resyncBookingCatalogRacesAction(formData: FormData) {
       { bookingId },
       user,
       result.inserted
-        ? `Re-synced ${result.inserted} race${result.inserted === 1 ? "" : "s"} from Get Run Vibes`
-        : "Re-synced races from Get Run Vibes",
+        ? `Re-synced ${result.inserted} race${result.inserted === 1 ? "" : "s"} from catalog`
+        : "Re-synced races from catalog",
     );
     await client.query("COMMIT");
   } catch (error) {

@@ -65,7 +65,7 @@ export async function refreshBookingFromCatalog(
     return {
       bookingId: input.bookingId,
       status: "skipped",
-      error: "Not linked to Get Run Vibes.",
+      error: "Not linked to a catalog listing.",
     };
   }
   const result = await syncOccurrenceRacesFromCatalog(client, row.occurrence_id);
@@ -74,8 +74,8 @@ export async function refreshBookingFromCatalog(
     { bookingId: input.bookingId },
     input.actor,
     result.inserted
-      ? `Refreshed ${result.inserted} race${result.inserted === 1 ? "" : "s"} from Get Run Vibes`
-      : "Refreshed from Get Run Vibes",
+      ? `Refreshed ${result.inserted} race${result.inserted === 1 ? "" : "s"} from catalog`
+      : "Refreshed from catalog",
   );
   return { bookingId: input.bookingId, status: "updated" };
 }

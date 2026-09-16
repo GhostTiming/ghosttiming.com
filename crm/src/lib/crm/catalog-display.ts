@@ -90,6 +90,35 @@ export function getRunVibesEventUrl(slug: string | null | undefined) {
   return `https://getrunvibes.com/events/${slug.trim()}`;
 }
 
+export type CatalogSourceProvider = "runsignup" | "race_roster" | string | null | undefined;
+
+export function catalogProviderLabel(provider: CatalogSourceProvider) {
+  if (provider === "race_roster") return "Race Roster";
+  if (provider === "runsignup") return "Get Run Vibes";
+  if (provider?.trim()) return provider.replaceAll("_", " ");
+  return "Catalog";
+}
+
+export function catalogListingOpenLabel(provider: CatalogSourceProvider) {
+  if (provider === "race_roster") return "Open on Race Roster";
+  if (provider === "runsignup") return "Open on Get Run Vibes";
+  return "Open listing";
+}
+
+/** Prefer the provider registration/external URL; fall back to GRV for RunSignUp slugs. */
+export function catalogListingExternalUrl(input: {
+  sourceProvider?: CatalogSourceProvider;
+  registrationUrl?: string | null;
+  externalRaceUrl?: string | null;
+  catalogSlug?: string | null;
+}) {
+  const direct =
+    input.registrationUrl?.trim() || input.externalRaceUrl?.trim() || null;
+  if (direct) return direct;
+  if (input.sourceProvider === "race_roster") return null;
+  return getRunVibesEventUrl(input.catalogSlug);
+}
+
 function isMidnightClock(label: string) {
   return /12:00\s*AM/i.test(label) || /^00:00/.test(label);
 }

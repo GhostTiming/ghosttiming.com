@@ -20,6 +20,7 @@ import {
   listingEventYear,
   listingMatchesSearch,
 } from "@/lib/crm/catalog-search";
+import { catalogProviderLabel } from "@/lib/crm/catalog-display";
 
 function listingPlace(listing: {
   city: string | null;
@@ -27,11 +28,13 @@ function listingPlace(listing: {
   zipcode?: string | null;
   next_start_at?: string | Date | null;
   edition_year?: number | null;
+  source_provider?: string | null;
 }) {
   const cityState = [listing.city, listing.state].filter(Boolean).join(", ");
   const place = [cityState, listing.zipcode].filter(Boolean).join(" ") || "Location unknown";
   const year = listingEventYear(listing.next_start_at, listing.edition_year);
-  return year ? `${place} · ${year}` : place;
+  const provider = catalogProviderLabel(listing.source_provider);
+  return [place, year, provider].filter(Boolean).join(" · ");
 }
 
 function asSuggestion(
@@ -126,9 +129,9 @@ export function CatalogMatchControls({
 
   const emptyLabel = query.trim()
     ? searching
-      ? "Searching Get Run Vibes…"
-      : "No Get Run Vibes listings match that search."
-    : "No close Get Run Vibes matches.";
+      ? "Searching catalog…"
+      : "No catalog listings match that search."
+    : "No close catalog matches.";
   const matchAction = prospectId
     ? matchProspectCatalogListingAction
     : matchBookingCatalogListingAction;
@@ -202,7 +205,7 @@ export function CatalogMatchControls({
       <form action={dismissAction}>
         {entityFields()}
         <PendingSubmitButton className="text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-60">
-          Not in Get Run Vibes
+          Not in catalog
         </PendingSubmitButton>
       </form>
     </div>

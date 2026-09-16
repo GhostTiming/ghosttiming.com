@@ -50,6 +50,9 @@ export type CatalogListingCandidate = {
   edition_year?: number | null;
   /** True when a live booking already owns this listing (prospect links do not count). */
   taken?: boolean;
+  source_provider?: string | null;
+  registration_url?: string | null;
+  external_race_url?: string | null;
 };
 
 export type CatalogListingSuggestion = CatalogListingCandidate & {
@@ -356,6 +359,7 @@ const listingCandidateSelectSql = `SELECT id, name, slug, source_race_id::text,
             WHERE race_listing_id = catalog.race_listings.id
           ) AS source_event_ids,
           city, state, zipcode, next_start_at::text,
+          source_provider, registration_url, external_race_url,
           ${listingYearSubselectSql()} AS edition_year
      FROM catalog.race_listings`;
 
@@ -613,7 +617,7 @@ export async function linkEventToCatalogListing(
   );
   if (ownedByOtherBooking.rows[0]?.owned) {
     throw new Error(
-      "That Get Run Vibes listing is already linked to another booking.",
+      "That catalog listing is already linked to another booking.",
     );
   }
 
@@ -675,7 +679,7 @@ export async function unlinkEventFromCatalogListing(
     [eventId],
   );
   if (!updated.rowCount) {
-    throw new Error("This event is not linked to Get Run Vibes.");
+    throw new Error("This event is not linked to a catalog listing.");
   }
   await client.query(
     `UPDATE crm.event_occurrences
