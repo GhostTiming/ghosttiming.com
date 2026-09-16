@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import { bulkUpdateOrganizationsAction } from "@/app/bulk-actions";
 import { createOrganizationAction } from "@/app/organization-actions";
+import { DatasetFilterNav } from "@/components/dataset-filter-nav";
 import {
   DatasetBulkBar,
   DatasetBulkRoot,
@@ -15,7 +16,7 @@ import { getPool } from "@/db";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { organizationBulkFields } from "@/lib/crm/bulk-fields";
-import { CHIP_ROW } from "@/lib/crm/layout";
+import { TABLE_SCROLL } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 const roleFilters = [
@@ -156,12 +157,9 @@ export default async function OrganizationsPage({
       align={align}
     />
   );
-  const chipClass = (active: boolean) =>
-    `rounded-full px-3 py-1.5 text-sm ring-1 ${
-      active
-        ? "bg-slate-900 text-white ring-slate-900"
-        : "bg-white ring-slate-200"
-    }`;
+  const orgFilterValue = showArchived
+    ? "archived"
+    : current.role ?? "all";
 
   return (
     <div className="space-y-6">
@@ -170,7 +168,7 @@ export default async function OrganizationsPage({
           <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
             Relationships
           </p>
-          <h1 className="text-3xl font-bold text-slate-950">Organizations</h1>
+          <h1 className="text-2xl font-bold text-slate-950 md:text-3xl">Organizations</h1>
           <p className="mt-1 text-slate-600">
             Clients, event owners, timing companies, and their people.
           </p>
@@ -183,38 +181,36 @@ export default async function OrganizationsPage({
         ) : null}
       </header>
 
-      <nav className={CHIP_ROW}>
-        <Link
-          href={buildSearchHref("/organizations", current, {
-            role: null,
-            archived: null,
-          })}
-          className={chipClass(!current.role && !showArchived)}
-        >
-          All
-        </Link>
-        {roleFilters.map(([key, label]) => (
-          <Link
-            key={key}
-            href={buildSearchHref("/organizations", current, {
+      <DatasetFilterNav
+        ariaLabel="Organization type"
+        value={orgFilterValue}
+        options={[
+          {
+            value: "all",
+            label: "All",
+            href: buildSearchHref("/organizations", current, {
+              role: null,
+              archived: null,
+            }),
+          },
+          ...roleFilters.map(([key, label]) => ({
+            value: key,
+            label,
+            href: buildSearchHref("/organizations", current, {
               role: key,
               archived: null,
-            })}
-            className={chipClass(current.role === key && !showArchived)}
-          >
-            {label}
-          </Link>
-        ))}
-        <Link
-          href={buildSearchHref("/organizations", current, {
-            archived: "1",
-            role: null,
-          })}
-          className={chipClass(showArchived)}
-        >
-          Archived
-        </Link>
-      </nav>
+            }),
+          })),
+          {
+            value: "archived",
+            label: "Archived",
+            href: buildSearchHref("/organizations", current, {
+              archived: "1",
+              role: null,
+            }),
+          },
+        ]}
+      />
 
       <div className={`grid gap-6 ${access.isSuperAdmin ? "lg:grid-cols-[1fr_23rem]" : ""}`}>
         <DatasetBulkRoot>
@@ -227,7 +223,7 @@ export default async function OrganizationsPage({
           />
         ) : null}
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
+          <div className={TABLE_SCROLL}>
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>

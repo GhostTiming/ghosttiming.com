@@ -17,6 +17,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Prevent accidental page zoom from overflow; users can still zoom accessibility settings.
 };
 
 export const metadata: Metadata = {

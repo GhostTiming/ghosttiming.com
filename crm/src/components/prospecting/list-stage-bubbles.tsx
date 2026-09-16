@@ -14,7 +14,7 @@ import {
 } from "@/lib/crm/domain";
 
 function bubbleClass(active: boolean) {
-  return `rounded-full px-2 py-0.5 text-[11px] font-semibold leading-tight ring-1 ${
+  return `rounded-md px-2 py-1 text-xs font-semibold leading-tight ring-1 ${
     active
       ? "bg-slate-900 text-white ring-slate-900"
       : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 hover:ring-slate-300"
@@ -70,13 +70,62 @@ export function ProspectListStageBubbles({
     }
   }
 
+  function onOutcomeSelect(value: string) {
+    if (!value || value === currentStageKey) return;
+    if (value === "closed_lost") {
+      setLostOpen(true);
+      return;
+    }
+    if (value === "unqualified" || value === "disqualified") {
+      setOutcomeOpen(value);
+      return;
+    }
+    const formData = new FormData();
+    formData.set("prospectId", prospectId);
+    formData.set("stageKey", value);
+    void submit(formData);
+  }
+
   return (
     <>
+      <div
+        className="relative z-10 md:hidden"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Outcome
+          </span>
+          <select
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium"
+            aria-label="Mark prospect outcome"
+            value=""
+            onChange={(event) => {
+              onOutcomeSelect(event.target.value);
+              event.currentTarget.value = "";
+            }}
+          >
+            <option value="">Choose outcome…</option>
+            {prospectListOutcomeStages.map((stage) => (
+              <option
+                key={stage.key}
+                value={stage.key}
+                disabled={currentStageKey === stage.key}
+              >
+                {stage.label}
+                {currentStageKey === stage.key ? " (current)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <form
         action={submit}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
-        className="relative z-10 flex flex-wrap justify-end gap-1"
+        className="relative z-10 hidden flex-wrap justify-end gap-1 md:flex"
         aria-label="Mark prospect outcome"
       >
         <input type="hidden" name="prospectId" value={prospectId} />
