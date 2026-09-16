@@ -54,9 +54,13 @@ export function ProspectingLocationFilter({
     const popover = popoverRef.current;
     if (!button || !popover) return;
     const rect = button.getBoundingClientRect();
-    const width = 280;
+    const width = Math.min(280, window.innerWidth - 16);
+    const left = Math.min(
+      Math.max(8, rect.left),
+      Math.max(8, window.innerWidth - width - 8),
+    );
     popover.style.top = `${rect.bottom + 6}px`;
-    popover.style.left = `${Math.max(8, rect.left)}px`;
+    popover.style.left = `${left}px`;
     popover.style.width = `${width}px`;
   }
 
@@ -66,14 +70,14 @@ export function ProspectingLocationFilter({
         ref={buttonRef}
         type="button"
         popoverTarget={popoverId}
-        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ring-1 ${
+        className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium ring-1 md:w-auto md:justify-start md:rounded-md md:py-1.5 ${
           active
             ? "bg-cyan-700 text-white ring-cyan-700"
-            : "bg-white ring-slate-200 hover:bg-slate-50"
+            : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50"
         }`}
       >
         <ListFilter aria-hidden className="size-3.5" />
-        Filter
+        {active ? "Location filter on" : "Filter by location"}
       </button>
       {mounted ? (
         <div

@@ -136,13 +136,13 @@ function FieldControl({
           value={current}
           placeholder={field.placeholder ?? field.label}
           onChange={(event) => onChange(field.key, event.target.value, nestedKeys)}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm w-full min-w-0 sm:w-auto"
         />
       ) : (
         <select
           value={current}
           onChange={(event) => onChange(field.key, event.target.value, nestedKeys)}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm w-full min-w-0 sm:w-auto"
         >
           <option value="">
             {field.options?.some((option) => option.value === "")
@@ -283,7 +283,7 @@ export function DatasetBulkBar({
   if (!ids.length && !message) return null;
 
   return (
-    <div className="sticky top-[6.75rem] z-20 flex flex-wrap items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm shadow-sm md:top-0">
+    <div className="sticky top-[6.75rem] z-20 flex min-w-0 flex-col gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm shadow-sm sm:flex-row sm:flex-wrap sm:items-center md:top-0">
       <p className="font-semibold text-cyan-950">
         {ids.length} {noun} selected
       </p>
@@ -295,7 +295,7 @@ export function DatasetBulkBar({
               setFieldKey(event.target.value);
               setValues({});
             }}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2"
+            className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 sm:w-auto"
           >
             {fields.map((item) => (
               <option key={item.key} value={item.key}>
@@ -304,13 +304,15 @@ export function DatasetBulkBar({
             ))}
           </select>
           {field ? (
-            <FieldControl field={field} value={values} onChange={setValue} />
+            <div className="flex min-w-0 w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+              <FieldControl field={field} value={values} onChange={setValue} />
+            </div>
           ) : null}
           <button
             type="button"
             disabled={!canApply}
             onClick={() => void apply()}
-            className="rounded-lg bg-slate-900 px-3 py-2 font-semibold text-white disabled:opacity-50"
+            className="w-full rounded-lg bg-slate-900 px-3 py-2 font-semibold text-white disabled:opacity-50 sm:w-auto"
           >
             {pending ? "Updating…" : "Update"}
           </button>
@@ -322,7 +324,7 @@ export function DatasetBulkBar({
           type="button"
           disabled={!ids.length || pending}
           onClick={() => void runExtra(action)}
-          className="rounded-lg border border-cyan-700 px-3 py-2 font-semibold text-cyan-800 disabled:opacity-50"
+          className="w-full rounded-lg border border-cyan-700 px-3 py-2 font-semibold text-cyan-800 disabled:opacity-50 sm:w-auto"
         >
           {pending ? action.pendingLabel ?? "Working…" : action.label}
         </button>
