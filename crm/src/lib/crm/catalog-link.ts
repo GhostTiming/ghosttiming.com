@@ -1,7 +1,9 @@
 import type { PoolClient } from "pg";
 import { appendAuditActivity } from "./audit";
 import {
+  catalogListingSearchIdWhereSql,
   catalogListingSearchWhereSql,
+  catalogSearchIdNeedle,
   catalogSearchLikeNeedles,
   listingMatchesSearch,
 } from "./catalog-search";
@@ -39,11 +41,15 @@ export type CatalogListingCandidate = {
   id: string;
   name: string;
   slug?: string | null;
+  source_race_id?: string | number | null;
+  source_event_ids?: string[] | null;
   city: string | null;
   state: string | null;
   zipcode?: string | null;
   next_start_at?: string | Date | null;
   edition_year?: number | null;
+  /** True when another live CRM event already owns this listing. */
+  taken?: boolean;
 };
 
 export type CatalogListingSuggestion = CatalogListingCandidate & {
@@ -326,6 +332,20 @@ function listingYearSubselectSql(listingIdExpr = "catalog.race_listings.id") {
   )`;
 }
 
+const listingCandidateSelectSql = `SELECT id, name, slug, source_race_id::text,
+          (
+            SELECT coalesce(
+              array_agg(DISTINCT source_event_id::text)
+                FILTER (WHERE source_event_id IS NOT NULL),
+              '{}'::text[]
+            )
+            FROM catalog.legacy_event_identity_map
+            WHERE race_listing_id = catalog.race_listings.id
+          ) AS source_event_ids,
+          city, state, zipcode, next_start_at::text,
+          ${listingYearSubselectSql()} AS edition_year
+     FROM catalog.race_listings`;
+
 export async function loadCatalogListingCandidates(
   query: QueryFn,
   options: { names?: string[]; search?: string } = {},
@@ -334,22 +354,24 @@ export async function loadCatalogListingCandidates(
   const keys = [
     ...new Set((options.names ?? []).map((name) => eventMatchKey(name)).filter(Boolean)),
   ];
-  const listingSql = `SELECT id, name, slug, city, state, zipcode, next_start_at::text,
-          ${listingYearSubselectSql()} AS edition_year
-     FROM catalog.race_listings`;
-  const searchNeedles = catalogSearchLikeNeedles(search);
+  const idNeedle = catalogSearchIdNeedle(search);
+  const searchNeedles = idNeedle ? [idNeedle] : catalogSearchLikeNeedles(search);
   const [listings, taken] = await Promise.all([
     searchNeedles.length
       ? query<CatalogListingCandidate>(
-          `${listingSql}
-           WHERE ${catalogListingSearchWhereSql(searchNeedles.length)}
+          `${listingCandidateSelectSql}
+           WHERE ${
+             idNeedle
+               ? catalogListingSearchIdWhereSql()
+               : catalogListingSearchWhereSql(searchNeedles.length)
+           }
            ORDER BY next_start_at DESC NULLS LAST
            LIMIT 50`,
           searchNeedles,
         )
       : keys.length
         ? query<CatalogListingCandidate>(
-            `${listingSql}
+            `${listingCandidateSelectSql}
              WHERE ${catalogNameMatchKeySql} = ANY($1::text[])`,
             [keys],
           )
@@ -357,12 +379,17 @@ export async function loadCatalogListingCandidates(
     query<{ id: string }>(
       `SELECT catalog_race_listing_id AS id
        FROM crm.events
-       WHERE catalog_race_listing_id IS NOT NULL`,
+       WHERE catalog_race_listing_id IS NOT NULL
+         AND archived_at IS NULL`,
     ),
   ]);
+  const takenIds = new Set(taken.rows.map((row) => row.id));
   return {
-    listings: listings.rows,
-    takenIds: new Set(taken.rows.map((row) => row.id)),
+    listings: listings.rows.map((listing) => ({
+      ...listing,
+      taken: takenIds.has(listing.id),
+    })),
+    takenIds,
   };
 }
 
@@ -387,9 +414,7 @@ async function loadCatalogListingsForNames(
   ];
   if (!keys.length) return [] as CatalogListingCandidate[];
   const result = await client.query<CatalogListingCandidate>(
-    `SELECT id, name, slug, city, state, zipcode, next_start_at::text,
-            ${listingYearSubselectSql()} AS edition_year
-     FROM catalog.race_listings
+    `${listingCandidateSelectSql}
      WHERE ${catalogNameMatchKeySql} = ANY($1::text[])`,
     [keys],
   );
@@ -566,7 +591,8 @@ export async function linkEventToCatalogListing(
     `SELECT id::text
      FROM crm.events
      WHERE catalog_race_listing_id = $1
-       AND id <> $2::uuid`,
+       AND id <> $2::uuid
+       AND archived_at IS NULL`,
     [input.listingId, input.eventId],
   );
   if (taken.rows[0]) {

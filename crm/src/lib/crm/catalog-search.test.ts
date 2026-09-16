@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   catalogListingSearchHaystackSql,
+  catalogListingSearchIdWhereSql,
   catalogListingSearchQuery,
   catalogListingSearchWhereSql,
+  catalogSearchIdNeedle,
   catalogSearchLikeNeedles,
   catalogSearchTokens,
   listingEventYear,
   listingMatchesSearch,
+  slugSearchExtras,
 } from "./catalog-search";
 
 const firecracker = {
@@ -14,6 +17,17 @@ const firecracker = {
   city: "Daytona Beach",
   state: "FL",
   zipcode: "32118",
+};
+
+/** Real GRV shape: UUID listing id, concatenated slug, RunSignup event id in slug suffix. */
+const church = {
+  id: "99772553-cef7-4f03-80e2-014ef4ca8c6f",
+  name: "SVDP Church of Our Saviour FOP 5K Run/Walk",
+  slug: "svdpchurchofoursaviourfoprunwalk-1081007",
+  source_race_id: "159997",
+  source_event_ids: ["1081007"],
+  city: "Cocoa Beach",
+  state: "FL",
 };
 
 describe("catalog listing search", () => {
@@ -25,6 +39,8 @@ describe("catalog listing search", () => {
       "beach",
     ]);
     expect(catalogSearchLikeNeedles("FL")).toEqual(["fl"]);
+    expect(catalogSearchIdNeedle("1081007")).toBe("1081007");
+    expect(catalogSearchIdNeedle("SVDP Church")).toBeNull();
   });
 
   it("builds a listing search from race profile fields", () => {
@@ -50,10 +66,16 @@ describe("catalog listing search", () => {
     expect(listingMatchesSearch(firecracker, "Hannah Heroes")).toBe(false);
   });
 
-  it("searches name, slug, id, street, city, state, and zip in SQL", () => {
+  it("searches name, slug, ids, street, city, state, and zip in SQL", () => {
     expect(catalogListingSearchHaystackSql).toContain("name");
     expect(catalogListingSearchHaystackSql).toContain("slug");
+    expect(catalogListingSearchHaystackSql).toContain("replace(slug, '-', ' ')");
     expect(catalogListingSearchHaystackSql).toContain("id::text");
+    expect(catalogListingSearchHaystackSql).toContain("source_race_id::text");
+    expect(catalogListingSearchHaystackSql).toContain(
+      "legacy_event_identity_map",
+    );
+    expect(catalogListingSearchHaystackSql).toContain("source_event_id");
     expect(catalogListingSearchHaystackSql).toContain("street");
     expect(catalogListingSearchHaystackSql).toContain("city");
     expect(catalogListingSearchHaystackSql).toContain("state");
@@ -62,27 +84,30 @@ describe("catalog listing search", () => {
     expect(catalogListingSearchHaystackSql).toContain("edition_year");
     expect(catalogListingSearchWhereSql(2)).toContain("$1");
     expect(catalogListingSearchWhereSql(2)).toContain("$2");
+    expect(catalogListingSearchIdWhereSql()).toContain("$1");
   });
 
-  it("matches brand tokens and listing ids that live in the slug", () => {
-    const church = {
-      id: "1081007",
-      name: "Church of Our Saviour",
-      slug: "svdp-church-of-our-saviour-1081007",
-      city: "Cincinnati",
-      state: "OH",
-    };
+  it("finds GRV listings by slug brand tokens and RunSignup event id", () => {
+    expect(slugSearchExtras(church.slug)).toEqual([
+      "svdpchurchofoursaviourfoprunwalk 1081007",
+      "1081007",
+    ]);
+    expect(listingMatchesSearch(church, "1081007")).toBe(true);
+    expect(listingMatchesSearch(church, "159997")).toBe(true);
     expect(listingMatchesSearch(church, "SVDP Church of Our Saviour")).toBe(
       true,
     );
-    expect(listingMatchesSearch(church, "1081007")).toBe(true);
     expect(listingMatchesSearch(church, "svdp")).toBe(true);
+
+    const nameWithoutBrand = {
+      ...church,
+      name: "Church of Our Saviour FOP 5K Run/Walk",
+      source_event_ids: null,
+    };
     expect(
-      listingMatchesSearch(
-        { ...church, slug: null },
-        "SVDP Church of Our Saviour",
-      ),
-    ).toBe(false);
+      listingMatchesSearch(nameWithoutBrand, "SVDP Church of Our Saviour"),
+    ).toBe(true);
+    expect(listingMatchesSearch(nameWithoutBrand, "1081007")).toBe(true);
   });
 
   it("includes the listing year in search text and labels", () => {

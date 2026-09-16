@@ -172,21 +172,26 @@ describe("catalog listing matching", () => {
 
   it("resolves a search by slug brand tokens or listing id", () => {
     const church = {
-      id: "1081007",
-      name: "Church of Our Saviour",
-      slug: "svdp-church-of-our-saviour-1081007",
-      city: "Cincinnati",
-      state: "OH",
+      id: "99772553-cef7-4f03-80e2-014ef4ca8c6f",
+      name: "SVDP Church of Our Saviour FOP 5K Run/Walk",
+      slug: "svdpchurchofoursaviourfoprunwalk-1081007",
+      source_race_id: "159997",
+      source_event_ids: ["1081007"],
+      city: "Cocoa Beach",
+      state: "FL",
     };
     expect(
       resolveCatalogListingQuery("SVDP Church of Our Saviour", [
         church,
         hannah,
       ]).match?.id,
-    ).toBe("1081007");
+    ).toBe(church.id);
     expect(
       resolveCatalogListingQuery("1081007", [church, hannah]).match?.id,
-    ).toBe("1081007");
+    ).toBe(church.id);
+    expect(
+      resolveCatalogListingQuery("159997", [church, hannah]).match?.id,
+    ).toBe(church.id);
   });
 });
 

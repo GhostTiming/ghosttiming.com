@@ -154,7 +154,7 @@ export function CatalogMatchControls({
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name, location, or year…"
+          placeholder="Search by name, location, year, or GRV id…"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
       </label>
@@ -174,16 +174,24 @@ export function CatalogMatchControls({
                 <p className="font-medium text-slate-950">{listing.name}</p>
                 <p className="text-xs text-slate-500">
                   {listingPlace(listing)}
-                  {listing.reason === "exact" ? " · Same name" : " · Similar"}
+                  {listing.taken
+                    ? " · Already linked"
+                    : listing.reason === "exact"
+                      ? " · Same name"
+                      : " · Similar"}
                 </p>
               </div>
-              <form action={matchAction}>
-                {entityFields()}
-                <input type="hidden" name="listingId" value={listing.id} />
-                <PendingSubmitButton className="rounded-md bg-cyan-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-60">
-                  Match
-                </PendingSubmitButton>
-              </form>
+              {listing.taken ? (
+                <span className="text-xs font-semibold text-slate-500">Taken</span>
+              ) : (
+                <form action={matchAction}>
+                  {entityFields()}
+                  <input type="hidden" name="listingId" value={listing.id} />
+                  <PendingSubmitButton className="rounded-md bg-cyan-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-60">
+                    Match
+                  </PendingSubmitButton>
+                </form>
+              )}
             </li>
           ))}
         </ul>
