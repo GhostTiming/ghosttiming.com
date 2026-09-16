@@ -6,6 +6,7 @@ import {
   uniqueCatalogMatchForEvent,
   candidateHasUsableContactSql,
   listingHasGrvContactFlagSql,
+  liveBookedCatalogListingIdsSql,
   liveBookingOwnsEventSql,
 } from "./catalog-link";
 import { eventMatchKey } from "./event-matching";
@@ -222,5 +223,13 @@ describe("live booking ownership", () => {
     expect(sql).toContain("booked_occurrence.event_id = event.id");
     expect(sql).toContain("booked.archived_at IS NULL");
     expect(sql).toContain("closed_lost");
+  });
+
+  it("only treats live bookings as taken catalog listings, not prospect links", () => {
+    const sql = liveBookedCatalogListingIdsSql();
+    expect(sql).toContain("crm.bookings");
+    expect(sql).toContain("closed_lost");
+    expect(sql).toContain("catalog_race_listing_id");
+    expect(sql).not.toContain("crm.prospects");
   });
 });

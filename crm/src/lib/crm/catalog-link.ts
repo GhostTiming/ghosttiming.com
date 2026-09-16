@@ -48,7 +48,7 @@ export type CatalogListingCandidate = {
   zipcode?: string | null;
   next_start_at?: string | Date | null;
   edition_year?: number | null;
-  /** True when another live CRM event already owns this listing. */
+  /** True when a live booking already owns this listing (prospect links do not count). */
   taken?: boolean;
 };
 
@@ -84,6 +84,19 @@ export function liveBookingOwnsListingSql(listingIdExpr: string) {
       AND booked.archived_at IS NULL
       AND booked_stage.key <> 'closed_lost'
   )`;
+}
+
+/** Listings already claimed by a live booking (not prospect-only links). */
+export function liveBookedCatalogListingIdsSql() {
+  return `SELECT DISTINCT event.catalog_race_listing_id AS id
+     FROM crm.events event
+     JOIN crm.event_occurrences occurrence ON occurrence.event_id = event.id
+     JOIN crm.bookings booking ON booking.occurrence_id = occurrence.id
+     JOIN crm.pipeline_stages stage ON stage.id = booking.stage_id
+     WHERE event.catalog_race_listing_id IS NOT NULL
+       AND event.archived_at IS NULL
+       AND booking.archived_at IS NULL
+       AND stage.key <> 'closed_lost'`;
 }
 
 export function liveBookingOwnsEventSql(eventIdExpr: string) {
@@ -376,12 +389,7 @@ export async function loadCatalogListingCandidates(
             [keys],
           )
         : Promise.resolve({ rows: [] as CatalogListingCandidate[] }),
-    query<{ id: string }>(
-      `SELECT catalog_race_listing_id AS id
-       FROM crm.events
-       WHERE catalog_race_listing_id IS NOT NULL
-         AND archived_at IS NULL`,
-    ),
+    query<{ id: string }>(liveBookedCatalogListingIdsSql()),
   ]);
   const takenIds = new Set(taken.rows.map((row) => row.id));
   return {
@@ -587,7 +595,31 @@ export async function linkEventToCatalogListing(
     archiveProspects?: boolean;
   },
 ) {
-  const taken = await client.query<{ id: string }>(
+  const ownedByOtherBooking = await client.query<{ owned: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM crm.events booked_event
+       JOIN crm.event_occurrences booked_occurrence
+         ON booked_occurrence.event_id = booked_event.id
+       JOIN crm.bookings booked ON booked.occurrence_id = booked_occurrence.id
+       JOIN crm.pipeline_stages booked_stage ON booked_stage.id = booked.stage_id
+       WHERE booked_event.catalog_race_listing_id = $1
+         AND booked_event.id <> $2::uuid
+         AND booked_event.archived_at IS NULL
+         AND booked.archived_at IS NULL
+         AND booked_stage.key <> 'closed_lost'
+     ) AS owned`,
+    [input.listingId, input.eventId],
+  );
+  if (ownedByOtherBooking.rows[0]?.owned) {
+    throw new Error(
+      "That Get Run Vibes listing is already linked to another booking.",
+    );
+  }
+
+  // Prospect (or other non-booking) events may already hold this listing.
+  // Release them so the booking can claim it; prospects are archived below.
+  const holders = await client.query<{ id: string }>(
     `SELECT id::text
      FROM crm.events
      WHERE catalog_race_listing_id = $1
@@ -595,11 +627,10 @@ export async function linkEventToCatalogListing(
        AND archived_at IS NULL`,
     [input.listingId, input.eventId],
   );
-  if (taken.rows[0]) {
-    throw new Error(
-      "That Get Run Vibes listing is already linked to another event.",
-    );
+  for (const holder of holders.rows) {
+    await unlinkEventFromCatalogListing(client, holder.id);
   }
+
   const updated = await client.query(
     `UPDATE crm.events
      SET catalog_race_listing_id = $2,
@@ -702,11 +733,7 @@ async function autoLinkEvents(
   const listingsByKey = listingsByMatchKey(listings);
   const taken = new Set(
     (
-      await client.query<{ id: string }>(
-        `SELECT catalog_race_listing_id AS id
-         FROM crm.events
-         WHERE catalog_race_listing_id IS NOT NULL`,
-      )
+      await client.query<{ id: string }>(liveBookedCatalogListingIdsSql())
     ).rows.map((row) => row.id),
   );
   let linked = 0;

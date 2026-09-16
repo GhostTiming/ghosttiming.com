@@ -175,14 +175,14 @@ export function CatalogMatchControls({
                 <p className="text-xs text-slate-500">
                   {listingPlace(listing)}
                   {listing.taken
-                    ? " · Already linked"
+                    ? " · Already booked"
                     : listing.reason === "exact"
                       ? " · Same name"
                       : " · Similar"}
                 </p>
               </div>
               {listing.taken ? (
-                <span className="text-xs font-semibold text-slate-500">Taken</span>
+                <span className="text-xs font-semibold text-slate-500">Booked</span>
               ) : (
                 <form action={matchAction}>
                   {entityFields()}
