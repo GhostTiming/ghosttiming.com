@@ -90,13 +90,16 @@ export async function refreshBookingsFromCatalog(
   const rows: CatalogRefreshRow[] = [];
   for (const bookingId of input.bookingIds) {
     try {
+      await client.query("SAVEPOINT catalog_refresh");
       rows.push(
         await refreshBookingFromCatalog(client, {
           bookingId,
           actor: input.actor,
         }),
       );
+      await client.query("RELEASE SAVEPOINT catalog_refresh");
     } catch (error) {
+      await client.query("ROLLBACK TO SAVEPOINT catalog_refresh");
       rows.push({
         bookingId,
         status: "failed",

@@ -6,7 +6,10 @@ import {
   listingMatchesSearch,
 } from "./catalog-search";
 import { eventMatchKey, isGenericEventName, calendarDateInZone } from "./event-matching";
-import { syncOccurrenceRacesFromCatalog } from "./race-operations";
+import {
+  preferredCatalogEditionSql,
+  syncOccurrenceRacesFromCatalog,
+} from "./race-operations";
 
 type CatalogCandidate = { id: string; name: string };
 type EventCandidate = {
@@ -39,6 +42,7 @@ export type CatalogListingCandidate = {
   state: string | null;
   zipcode?: string | null;
   next_start_at?: string | Date | null;
+  edition_year?: number | null;
 };
 
 export type CatalogListingSuggestion = CatalogListingCandidate & {
@@ -311,6 +315,16 @@ const catalogNameMatchKeySql = `btrim(regexp_replace(
   '\\s+', ' ', 'g'
 ))`;
 
+function listingYearSubselectSql(listingIdExpr = "catalog.race_listings.id") {
+  return `(
+    SELECT edition_year
+    FROM catalog.race_editions
+    WHERE race_listing_id = ${listingIdExpr}
+    ORDER BY edition_year DESC NULLS LAST
+    LIMIT 1
+  )`;
+}
+
 export async function loadCatalogListingCandidates(
   query: QueryFn,
   options: { names?: string[]; search?: string } = {},
@@ -319,7 +333,9 @@ export async function loadCatalogListingCandidates(
   const keys = [
     ...new Set((options.names ?? []).map((name) => eventMatchKey(name)).filter(Boolean)),
   ];
-  const listingSql = `SELECT id, name, city, state, zipcode, next_start_at::text FROM catalog.race_listings`;
+  const listingSql = `SELECT id, name, city, state, zipcode, next_start_at::text,
+          ${listingYearSubselectSql()} AS edition_year
+     FROM catalog.race_listings`;
   const searchNeedles = catalogSearchLikeNeedles(search);
   const [listings, taken] = await Promise.all([
     searchNeedles.length
@@ -370,7 +386,8 @@ async function loadCatalogListingsForNames(
   ];
   if (!keys.length) return [] as CatalogListingCandidate[];
   const result = await client.query<CatalogListingCandidate>(
-    `SELECT id, name, city, state, zipcode, next_start_at::text
+    `SELECT id, name, city, state, zipcode, next_start_at::text,
+            ${listingYearSubselectSql()} AS edition_year
      FROM catalog.race_listings
      WHERE ${catalogNameMatchKeySql} = ANY($1::text[])`,
     [keys],
@@ -466,7 +483,8 @@ export async function archiveUnmatchedProspectsForLiveBookedListings(
   actor: { id: string; name: string },
 ) {
   const booked = await client.query<CatalogListingCandidate>(
-    `SELECT rl.id, rl.name, rl.city, rl.state, rl.next_start_at::text
+    `SELECT rl.id, rl.name, rl.city, rl.state, rl.next_start_at::text,
+            ${listingYearSubselectSql("rl.id")} AS edition_year
      FROM catalog.race_listings rl
      WHERE ${liveBookingOwnsListingSql("rl.id")}`,
   );
@@ -519,35 +537,17 @@ async function linkOccurrenceEditionIfUnique(
   occurrenceId: string,
   listingId: string,
 ) {
-  const editions = await client.query<{ id: string }>(
-    `SELECT edition.id
-     FROM catalog.race_editions edition
-     JOIN crm.event_occurrences occurrence ON occurrence.id = $1::uuid
-     WHERE edition.race_listing_id = $2
-       AND (
-         edition.edition_year = occurrence.occurrence_year
-         OR (
-           occurrence.race_date IS NOT NULL
-           AND edition.starts_at IS NOT NULL
-           AND EXTRACT(YEAR FROM edition.starts_at) =
-             EXTRACT(YEAR FROM occurrence.race_date)
-         )
-       )
-       AND NOT EXISTS (
-         SELECT 1
-         FROM crm.event_occurrences other
-         WHERE other.catalog_race_edition_id = edition.id
-           AND other.id <> occurrence.id
-       )`,
-    [occurrenceId, listingId],
+  const preferred = await client.query<{ id: string | null }>(
+    `SELECT ${preferredCatalogEditionSql("$1")} AS id`,
+    [listingId],
   );
-  if (editions.rows.length !== 1) return;
+  const editionId = preferred.rows[0]?.id;
+  if (!editionId) return;
   await client.query(
     `UPDATE crm.event_occurrences
      SET catalog_race_edition_id = $2, updated_at = now()
-     WHERE id = $1::uuid
-       AND catalog_race_edition_id IS NULL`,
-    [occurrenceId, editions.rows[0].id],
+     WHERE id = $1::uuid`,
+    [occurrenceId, editionId],
   );
 }
 
@@ -601,6 +601,31 @@ export async function linkEventToCatalogListing(
       ? 0
       : await archiveProspectsForListing(client, input.listingId, input.actor);
   return { archivedCount };
+}
+
+export async function unlinkEventFromCatalogListing(
+  client: PoolClient,
+  eventId: string,
+) {
+  const updated = await client.query(
+    `UPDATE crm.events
+     SET catalog_race_listing_id = NULL,
+         catalog_match_dismissed_at = NULL,
+         updated_at = now()
+     WHERE id = $1::uuid
+       AND catalog_race_listing_id IS NOT NULL`,
+    [eventId],
+  );
+  if (!updated.rowCount) {
+    throw new Error("This event is not linked to Get Run Vibes.");
+  }
+  await client.query(
+    `UPDATE crm.event_occurrences
+     SET catalog_race_edition_id = NULL, updated_at = now()
+     WHERE event_id = $1::uuid
+       AND catalog_race_edition_id IS NOT NULL`,
+    [eventId],
+  );
 }
 
 export async function dismissCatalogMatch(

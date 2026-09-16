@@ -224,6 +224,53 @@ export type CatalogOfferingRow = CatalogOfferingStartLike & {
   is_virtual: boolean | null;
 };
 
+export function preferredCatalogEditionId<
+  T extends {
+    id: string;
+    is_future?: boolean | null;
+    starts_at?: string | Date | null;
+    edition_year?: number | null;
+  },
+>(editions: T[], nextStartAt?: string | Date | null) {
+  if (!editions.length) return null;
+  const nextMs = nextStartAt ? new Date(nextStartAt).valueOf() : Number.NaN;
+  const distance = (startsAt: string | Date | null | undefined) => {
+    if (!startsAt || Number.isNaN(nextMs)) return Number.POSITIVE_INFINITY;
+    const ms = new Date(startsAt).valueOf();
+    return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : Math.abs(ms - nextMs);
+  };
+  const ranked = [...editions].sort((left, right) => {
+    const futureDiff = Number(!left.is_future) - Number(!right.is_future);
+    if (futureDiff !== 0) return futureDiff;
+    const startDiff = distance(left.starts_at) - distance(right.starts_at);
+    if (startDiff !== 0) return startDiff;
+    return (right.edition_year ?? 0) - (left.edition_year ?? 0);
+  });
+  return ranked[0]?.id ?? null;
+}
+
+export function preferredCatalogEditionSql(listingIdExpr: string) {
+  return `(
+    SELECT re.id
+    FROM catalog.race_editions re
+    WHERE re.race_listing_id = ${listingIdExpr}
+    ORDER BY
+      CASE WHEN re.is_future THEN 0 ELSE 1 END,
+      abs(extract(epoch from (
+        re.starts_at - COALESCE(
+          (
+            SELECT listing.next_start_at
+            FROM catalog.race_listings listing
+            WHERE listing.id = ${listingIdExpr}
+          ),
+          now()
+        )
+      ))) NULLS LAST,
+      re.edition_year DESC NULLS LAST
+    LIMIT 1
+  )`;
+}
+
 export async function loadCatalogOfferingsForListing(
   client: PoolClient,
   listingId: string,
@@ -246,20 +293,12 @@ export async function loadCatalogOfferingsForListing(
         AND COALESCE(offering.is_merch_only, false) = false
         AND COALESCE(offering.is_volunteer, false) = false
         AND offering.race_edition_id = COALESCE(
-          $3,
-          (
-            SELECT re.id
-            FROM catalog.race_editions re
-            WHERE re.race_listing_id = $1
-            ORDER BY abs(extract(epoch from (
-              re.starts_at - COALESCE($2::timestamptz, now())
-            )))
-            LIMIT 1
-          )
+          $2,
+          ${preferredCatalogEditionSql("$1")}
         )
       ORDER BY offering.starts_at NULLS LAST, offering.name
     `,
-    [listingId, options.raceDate ?? null, options.editionId ?? null],
+    [listingId, options.editionId ?? null],
   );
   return offerings.rows;
 }
@@ -309,7 +348,24 @@ export async function syncOccurrenceRacesFromCatalog(
     return { inserted: 0 };
   }
 
+  const preferredEdition = await client.query<{ id: string | null }>(
+    `SELECT ${preferredCatalogEditionSql("$1")} AS id`,
+    [listingId],
+  );
+  const editionId = preferredEdition.rows[0]?.id ?? null;
+  if (editionId) {
+    await client.query(
+      `
+        UPDATE crm.event_occurrences
+        SET catalog_race_edition_id = $2, updated_at = now()
+        WHERE id = $1::uuid
+      `,
+      [occurrenceId, editionId],
+    );
+  }
+
   const offerings = await loadCatalogOfferingsForListing(client, listingId, {
+    editionId,
     raceDate: occurrence.rows[0]?.race_date ?? null,
   });
   const earliestStart = earliestNonVirtualCatalogStart(offerings);

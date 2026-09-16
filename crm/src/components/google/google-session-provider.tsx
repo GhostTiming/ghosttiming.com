@@ -89,9 +89,23 @@ type GoogleSessionValue = {
 const GoogleSessionContext = createContext<GoogleSessionValue | null>(null);
 
 async function readJson<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as T & { error?: string };
+  const text = await response.text();
+  let payload: (T & { error?: string }) | null = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text) as T & { error?: string };
+    } catch {
+      payload = null;
+    }
+  }
   if (!response.ok) {
-    throw new Error(payload.error || response.statusText);
+    throw new Error(
+      payload?.error ||
+        `Google Calendar request failed (${response.status}). Refresh the page and try again.`,
+    );
+  }
+  if (!payload) {
+    throw new Error("Google Calendar returned an empty response. Refresh the page and try again.");
   }
   return payload;
 }

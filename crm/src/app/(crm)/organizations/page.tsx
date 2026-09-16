@@ -1,12 +1,20 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { bulkUpdateOrganizationsAction } from "@/app/bulk-actions";
 import { createOrganizationAction } from "@/app/organization-actions";
+import {
+  DatasetBulkBar,
+  DatasetBulkRoot,
+  DatasetCheckbox,
+  DatasetHeaderCheckbox,
+} from "@/components/dataset-bulk";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
 import { TableColumnHeader } from "@/components/table-column-header";
 import { getPool } from "@/db";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
+import { organizationBulkFields } from "@/lib/crm/bulk-fields";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 const roleFilters = [
@@ -208,11 +216,27 @@ export default async function OrganizationsPage({
       </nav>
 
       <div className={`grid gap-6 ${access.isSuperAdmin ? "lg:grid-cols-[1fr_23rem]" : ""}`}>
+        <DatasetBulkRoot>
+        <div className="space-y-3">
+        {access.isSuperAdmin ? (
+          <DatasetBulkBar
+            noun="organizations"
+            fields={organizationBulkFields}
+            updateAction={bulkUpdateOrganizationsAction}
+          />
+        ) : null}
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
+                  {access.isSuperAdmin ? (
+                  <th className="w-10 px-4 py-3">
+                    <DatasetHeaderCheckbox
+                      ids={organizations.rows.map((organization) => organization.id)}
+                    />
+                  </th>
+                  ) : null}
                   <th className="px-4 py-3">
                     {column("Organization", "name", [
                       {
@@ -270,6 +294,11 @@ export default async function OrganizationsPage({
               <tbody className="divide-y divide-slate-100">
                 {organizations.rows.map((organization) => (
                   <tr key={organization.id} className={listRowClassName()}>
+                    {access.isSuperAdmin ? (
+                    <td className="px-4 py-3">
+                      <DatasetCheckbox id={organization.id} />
+                    </td>
+                    ) : null}
                     <td className="px-4 py-3">
                       <ListRowLink
                         href={`/organizations/${organization.id}`}
@@ -291,7 +320,7 @@ export default async function OrganizationsPage({
                 ))}
                 {!organizations.rows.length ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={access.isSuperAdmin ? 6 : 5} className="px-4 py-12 text-center text-slate-500">
                       No organizations match this view and its filters.
                     </td>
                   </tr>
@@ -300,6 +329,8 @@ export default async function OrganizationsPage({
             </table>
           </div>
         </section>
+        </div>
+        </DatasetBulkRoot>
 
         {access.isSuperAdmin ? (
         <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -11,6 +11,9 @@ export const SEARCH_GROUPS = [
   { key: "tasks", label: "Tasks", access: "tasks" },
 ] as const;
 
+export const SEARCH_PRIMARY_GROUP_KEYS = ["bookings", "prospects", "tasks"] as const;
+export const SEARCH_MORE_GROUP_KEYS = ["contacts", "organizations", "events"] as const;
+
 export type SearchGroupKey = (typeof SEARCH_GROUPS)[number]["key"];
 
 export type SearchAccess = {
@@ -116,6 +119,16 @@ export function groupedSearchResults(
 }
 
 export type SearchGroupList = ReturnType<typeof groupedSearchResults>;
+
+export function partitionSearchGroups(groups: SearchGroupList) {
+  const primary = groups.filter((group) =>
+    (SEARCH_PRIMARY_GROUP_KEYS as readonly string[]).includes(group.key),
+  );
+  const more = groups.filter((group) =>
+    (SEARCH_MORE_GROUP_KEYS as readonly string[]).includes(group.key),
+  );
+  return { primary, more };
+}
 
 export function flattenSearchHits(
   groups: ReturnType<typeof groupedSearchResults>,

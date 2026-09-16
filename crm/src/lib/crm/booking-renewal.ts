@@ -3,6 +3,8 @@ import { appendAuditActivity } from "./audit";
 import { linkEventToCatalogListing } from "./catalog-link";
 import { eventMatchKey } from "./event-matching";
 import {
+  earliestNonVirtualCatalogStart,
+  loadCatalogOfferingsForListing,
   recalculateOccurrenceTimes,
   syncOccurrenceRacesFromCatalog,
 } from "./race-operations";
@@ -531,15 +533,24 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
     (refreshFromCatalog
       ? edition?.timezone || listing?.timezone || source.timezone
       : input.timezone?.trim() || source.timezone) || "America/New_York";
-  const raceDateLocal = refreshFromCatalog
+  const catalogOfferings =
+    refreshFromCatalog && listing
+      ? await loadCatalogOfferingsForListing(client, listing.id, {
+          editionId: edition?.id ?? null,
+          raceDate: edition?.starts_at ?? listing.next_start_at,
+        })
+      : [];
+  const earliestNonVirtualStart = earliestNonVirtualCatalogStart(catalogOfferings);
+  const catalogStart = earliestNonVirtualStart
     ? null
+    : edition?.starts_at ||
+      (calendarYearFromValue(listing?.next_start_at) === input.targetYear
+        ? listing?.next_start_at
+        : null);
+  const raceDateLocal = refreshFromCatalog
+    ? earliestNonVirtualStart
     : (input.raceDateLocal?.trim() ||
         shiftLocalDateTimeByYears(source.race_date, yearDelta));
-  const catalogStart =
-    edition?.starts_at ||
-    (calendarYearFromValue(listing?.next_start_at) === input.targetYear
-      ? listing?.next_start_at
-      : null);
   const editionAvailable = await editionIsAvailable(client, edition?.id ?? null);
 
   const occurrence = existing

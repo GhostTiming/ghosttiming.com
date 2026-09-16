@@ -1,9 +1,17 @@
 import { ArrowLeft, ArrowRight, Ban, CheckCircle2, Clock3 } from "lucide-react";
 import Link from "next/link";
 import { updateTaskStatusAction } from "@/app/actions";
+import { bulkUpdateTasksAction } from "@/app/bulk-actions";
 import { removeTaskAction } from "@/app/task-actions";
+import {
+  DatasetBulkBar,
+  DatasetBulkRoot,
+  DatasetCheckbox,
+  DatasetHeaderCheckbox,
+} from "@/components/dataset-bulk";
 import { effectiveAccessUserId } from "@/lib/auth/access";
 import { requireTasksAccess } from "@/lib/auth/server";
+import { taskBulkFields } from "@/lib/crm/bulk-fields";
 import { formatTaskHeadline } from "@/lib/crm/domain";
 import { filePastProspectsWithPool, listTasks, type TaskListRow } from "@/lib/crm/queries";
 
@@ -72,7 +80,8 @@ function TaskSection({
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-5 py-4">
+      <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4">
+        <DatasetHeaderCheckbox ids={visible.map((task) => task.id)} />
         <h2 className="font-bold">
           {title}{" "}
           <span className="font-normal text-slate-400">({tasks.length})</span>
@@ -82,8 +91,9 @@ function TaskSection({
         {visible.map((task) => (
           <article
             key={task.id}
-            className="grid gap-3 px-5 py-4 sm:grid-cols-[1fr_auto] sm:items-center"
+            className="grid gap-3 px-5 py-4 sm:grid-cols-[auto_1fr_auto] sm:items-center"
           >
+            <DatasetCheckbox id={task.id} />
             <div>
               <Link
                 href={
@@ -231,6 +241,13 @@ export default async function TasksPage({
           Tasks
         </h1>
       </div>
+      <DatasetBulkRoot>
+      <div className="space-y-3">
+      <DatasetBulkBar
+        noun="tasks"
+        fields={taskBulkFields}
+        updateAction={bulkUpdateTasksAction}
+      />
       <div className="grid gap-5 xl:grid-cols-2">
         {sections.map((section) => (
           <TaskSection
@@ -243,6 +260,8 @@ export default async function TasksPage({
           />
         ))}
       </div>
+      </div>
+      </DatasetBulkRoot>
     </div>
   );
 }

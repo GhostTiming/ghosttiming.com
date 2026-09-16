@@ -110,21 +110,23 @@ export function validateProspectBulkUpdate(input: {
       return result.success ? { success: true } : result;
     }
     if (input.value === "unqualified") {
-      return validateUnqualifiedDetails({
+      const result = validateUnqualifiedDetails({
         reason: extraValue(input.extra, "reason"),
         note: extraValue(input.extra, "note"),
       });
+      return result.success ? { success: true } : result;
     }
     if (input.value === "disqualified") {
-      return validateDisqualifiedDetails({
+      const result = validateDisqualifiedDetails({
         reason: extraValue(input.extra, "reason"),
         note: extraValue(input.extra, "note"),
       });
+      return result.success ? { success: true } : result;
     }
     return { success: true };
   }
   if (input.field === "assignee") {
-    if (!input.value) return { success: true };
+    if (!input.value || input.value === "__unassigned__") return { success: true };
     if (!uuid.safeParse(input.value).success) {
       return { success: false, error: "Choose a valid assignee." };
     }
@@ -144,9 +146,15 @@ export function validateBookingBulkUpdate(input: {
     return { success: true };
   }
   if (input.field === "assignee") {
-    if (!input.value) return { success: true };
+    if (!input.value || input.value === "__unassigned__") return { success: true };
     if (!uuid.safeParse(input.value).success) {
       return { success: false, error: "Choose a valid assignee." };
+    }
+    return { success: true };
+  }
+  if (input.field === "timer_location") {
+    if (input.value !== "on_site" && input.value !== "remote") {
+      return { success: false, error: "Choose on site or remote." };
     }
     return { success: true };
   }
@@ -186,7 +194,7 @@ export function validateEventBulkUpdate(input: {
   if (input.field !== "owner") {
     return { success: false, error: "That event field cannot be mass-updated." };
   }
-  if (!input.value) return { success: true };
+  if (!input.value || input.value === "__unassigned__") return { success: true };
   if (!uuid.safeParse(input.value).success) {
     return { success: false, error: "Choose a valid owner organization." };
   }

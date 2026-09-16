@@ -2,14 +2,12 @@ import { stopViewAsUserAction } from "@/app/admin-actions";
 import { GlobalSearch } from "@/components/global-search";
 import { GoogleConnectionControl } from "@/components/google/google-connection-control";
 import { GoogleSessionProvider } from "@/components/google/google-session-provider";
+import { HeaderMoreNav } from "@/components/header-more-nav";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { SignOutForm } from "@/components/sign-out-form";
 import {
   BriefcaseBusiness,
-  Building2,
-  CalendarDays,
   ClipboardList,
-  Contact,
   LayoutDashboard,
   Search,
   Shield,
@@ -54,7 +52,7 @@ export function AppShell({
     >
     <div className="min-h-screen bg-slate-100">
       <header className="border-b border-slate-800 bg-slate-950 text-white">
-        <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3 sm:px-6">
           <Link href="/dashboard" className="flex shrink-0 items-center gap-2">
             <Image
               src={GHOST_TIMING_LOGO_WHITE}
@@ -66,7 +64,7 @@ export function AppShell({
             />
             <span className="text-sm font-semibold tracking-wide">CRM</span>
           </Link>
-          <nav className="flex flex-wrap items-center gap-1" aria-label="Main navigation">
+          <nav className="flex shrink-0 flex-wrap items-center gap-1" aria-label="Main navigation">
             <Link
               href="/dashboard"
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
@@ -75,39 +73,12 @@ export function AppShell({
               Dashboard
             </Link>
             {canAccessOperations ? (
-              <>
-                <Link
-                  href="/bookings"
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
-                >
-                  <BriefcaseBusiness aria-hidden className="size-4" />
-                  Bookings
-                </Link>
-                <Link
-                  href="/organizations"
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
-                >
-                  <Building2 aria-hidden className="size-4" />
-                  Organizations
-                </Link>
-              </>
-            ) : null}
-            {canAccessOperations || canAccessProspecting ? (
               <Link
-                href="/contacts"
+                href="/bookings"
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
               >
-                <Contact aria-hidden className="size-4" />
-                Contacts
-              </Link>
-            ) : null}
-            {canAccessOperations ? (
-              <Link
-                href="/events"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
-              >
-                <CalendarDays aria-hidden className="size-4" />
-                Events
+                <BriefcaseBusiness aria-hidden className="size-4" />
+                Bookings
               </Link>
             ) : null}
             {canAccessProspecting ? (
@@ -128,6 +99,10 @@ export function AppShell({
                 Tasks
               </Link>
             ) : null}
+            <HeaderMoreNav
+              canAccessOperations={canAccessOperations}
+              canAccessProspecting={canAccessProspecting}
+            />
             {canAccessAdminConsole ? (
               <Link
                 href="/admin"
@@ -139,7 +114,7 @@ export function AppShell({
             ) : null}
           </nav>
           <GlobalSearch />
-          <div className="hidden text-right text-sm sm:block">
+          <div className="ml-auto hidden text-right text-sm sm:block">
             <p className="font-medium">{user.name}</p>
             <p className="text-xs capitalize text-slate-400">{displayRole}</p>
           </div>

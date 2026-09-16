@@ -18,6 +18,7 @@ import {
   linkEventToCatalogListing,
   loadCatalogListingCandidates,
   resolveCatalogListingQuery,
+  unlinkEventFromCatalogListing,
 } from "@/lib/crm/catalog-link";
 import { catalogListingSearchQuery } from "@/lib/crm/catalog-search";
 import { renewBooking } from "@/lib/crm/booking-renewal";
@@ -897,6 +898,58 @@ export async function restoreBookingCatalogMatchAction(formData: FormData) {
       { bookingId },
       user,
       "Undid not-a-Get-Run-Vibes mark",
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  refreshCatalogLinkedViews({ bookingId, eventId });
+  const listingQ = listingQuery
+    ? `?listingQ=${encodeURIComponent(listingQuery)}`
+    : "";
+  redirect(`/bookings/${bookingId}${listingQ}`);
+}
+
+export async function unlinkBookingCatalogListingAction(formData: FormData) {
+  const bookingId = uuid.parse(formData.get("bookingId"));
+  const { user } = await requireBookingOperator(bookingId);
+  const client = await getPool().connect();
+  let eventId: string | undefined;
+  let listingQuery = "";
+  try {
+    await client.query("BEGIN");
+    const booking = await client.query<{
+      event_id: string;
+      event_name: string;
+      city: string | null;
+      state: string | null;
+    }>(
+      `SELECT event.id::text AS event_id,
+              event.name AS event_name,
+              occurrence.city_override AS city,
+              occurrence.state_override AS state
+       FROM crm.bookings booking
+       JOIN crm.event_occurrences occurrence ON occurrence.id = booking.occurrence_id
+       JOIN crm.events event ON event.id = occurrence.event_id
+       WHERE booking.id = $1::uuid`,
+      [bookingId],
+    );
+    if (!booking.rows[0]) throw new Error("Booking not found.");
+    eventId = booking.rows[0].event_id;
+    listingQuery = catalogListingSearchQuery({
+      name: booking.rows[0].event_name,
+      city: booking.rows[0].city,
+      state: booking.rows[0].state,
+    });
+    await unlinkEventFromCatalogListing(client, eventId);
+    await appendAuditActivity(
+      client,
+      { bookingId },
+      user,
+      "Uncoupled Get Run Vibes listing",
     );
     await client.query("COMMIT");
   } catch (error) {

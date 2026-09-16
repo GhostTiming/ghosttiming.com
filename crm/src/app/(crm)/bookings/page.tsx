@@ -1,9 +1,16 @@
 import { CalendarDays, Columns3, List, WalletCards } from "lucide-react";
 import Link from "next/link";
+import { BookingBulkBar } from "@/components/booking-bulk-bar";
 import { CatalogMatchControls } from "@/components/catalog-match-controls";
+import {
+  DatasetBulkRoot,
+  DatasetCheckbox,
+  DatasetHeaderCheckbox,
+} from "@/components/dataset-bulk";
 import { EventLogo } from "@/components/event-logo";
 import { ListRowActions, ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
+import { RefreshAllGrvButton } from "@/components/refresh-all-grv-button";
 import { TableColumnHeader } from "@/components/table-column-header";
 import { getPool } from "@/db";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
@@ -16,6 +23,8 @@ import {
   suggestCatalogMatches,
 } from "@/lib/crm/catalog-link";
 import { buildSearchHref, firstParam } from "@/lib/crm/search-params";
+
+export const maxDuration = 120;
 
 type BookingRow = {
   id: string;
@@ -35,6 +44,7 @@ type BookingRow = {
   actual_revenue: string | null;
   amount_paid: string | null;
   payment_at: string | null;
+  catalog_race_listing_id: string | null;
 };
 
 type BookingParams = {
@@ -132,7 +142,8 @@ export default async function BookingsPage({
         b.expected_revenue::text,
         b.actual_revenue::text,
         b.amount_paid::text,
-        b.payment_at::text
+        b.payment_at::text,
+        event.catalog_race_listing_id
       FROM crm.bookings b
       JOIN crm.event_occurrences occurrence ON occurrence.id = b.occurrence_id
       JOIN crm.events event ON event.id = occurrence.event_id
@@ -177,7 +188,7 @@ export default async function BookingsPage({
       orgScope,
     ],
   );
-  const [catalogContext, stages] = await Promise.all([
+  const [catalogContext, stages, users] = await Promise.all([
     stageFilter === "needs_listing"
       ? loadCatalogListingCandidates(
           asCatalogQuery((sql, params) => getPool().query(sql, params)),
@@ -190,6 +201,9 @@ export default async function BookingsPage({
         WHERE pipeline = 'booking' AND is_active = true
         ORDER BY sort_order
       `,
+    ),
+    getPool().query<{ id: string; name: string }>(
+      `SELECT id::text, name FROM crm.users WHERE is_active ORDER BY name`,
     ),
   ]);
   const visibleStages =
@@ -257,6 +271,7 @@ export default async function BookingsPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <RefreshAllGrvButton />
           <Link href="/bookings/new"
             className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white">
             Add booking
@@ -290,12 +305,19 @@ export default async function BookingsPage({
         ))}
       </nav>
 
+      <DatasetBulkRoot>
+      <div className="space-y-3">
+      <BookingBulkBar stages={stages.rows} users={users.rows} />
+
       {stageFilter === "needs_listing" ? (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                <th className="w-10 px-3 py-3">
+                  <DatasetHeaderCheckbox ids={rows.map((row) => row.id)} />
+                </th>
                 <th className="px-4 py-3">{column("Event", "event", [
                   {
                     type: "text",
@@ -330,6 +352,9 @@ export default async function BookingsPage({
                   : [];
                 return (
                   <tr key={booking.id} className={`${listRowClassName()} align-top`}>
+                    <td className="px-3 py-3">
+                      <DatasetCheckbox id={booking.id} />
+                    </td>
                     <td className="px-4 py-3">
                       <ListRowLink className="font-semibold text-cyan-700" href={`/bookings/${booking.id}`}>
                         <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
@@ -361,7 +386,7 @@ export default async function BookingsPage({
               })}
               {!rows.length ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
                     Every booking is linked or marked as not in Get Run Vibes.
                   </td>
                 </tr>
@@ -371,6 +396,11 @@ export default async function BookingsPage({
           </div>
         </div>
       ) : view === "kanban" ? (
+        <div className="space-y-3">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+            <DatasetHeaderCheckbox ids={rows.map((row) => row.id)} />
+            Select all visible cards
+          </label>
         <div className="grid gap-4 overflow-x-auto lg:grid-cols-4">
           {visibleStages.map((stage) => (
             <section key={stage.key} className="min-w-64 rounded-xl bg-slate-200/70 p-3">
@@ -382,11 +412,15 @@ export default async function BookingsPage({
                 {rows
                   .filter((row) => row.stage_key === stage.key)
                   .map((booking) => (
-                    <Link
+                    <div
                       key={booking.id}
-                      href={`/bookings/${booking.id}`}
-                      className="flex items-start gap-2.5 rounded-lg bg-white p-4 shadow-sm hover:ring-2 hover:ring-cyan-500"
+                      className="flex items-start gap-2 rounded-lg bg-white p-3 shadow-sm hover:ring-2 hover:ring-cyan-500"
                     >
+                      <DatasetCheckbox id={booking.id} />
+                      <Link
+                        href={`/bookings/${booking.id}`}
+                        className="flex min-w-0 flex-1 items-start gap-2.5"
+                      >
                       <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
                       <span>
                         <p className="font-semibold text-slate-950">{booking.event_name}</p>
@@ -397,11 +431,13 @@ export default async function BookingsPage({
                           </p>
                         ) : null}
                       </span>
-                    </Link>
+                      </Link>
+                    </div>
                   ))}
               </div>
             </section>
           ))}
+        </div>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -409,6 +445,9 @@ export default async function BookingsPage({
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                <th className="w-10 px-4 py-3">
+                  <DatasetHeaderCheckbox ids={rows.map((row) => row.id)} />
+                </th>
                 <th className="px-4 py-3">
                   {column("Event", "event", [
                     {
@@ -465,6 +504,9 @@ export default async function BookingsPage({
               {rows.map((booking) => (
                 <tr key={booking.id} className={listRowClassName()}>
                   <td className="px-4 py-3">
+                    <DatasetCheckbox id={booking.id} />
+                  </td>
+                  <td className="px-4 py-3">
                     <ListRowLink className="font-semibold text-cyan-700" href={`/bookings/${booking.id}`}>
                       <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
                       <span>
@@ -501,7 +543,7 @@ export default async function BookingsPage({
               ))}
               {!rows.length ? (
                 <tr>
-                    <td colSpan={showFinancials ? 7 : 4} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={showFinancials ? 8 : 5} className="px-4 py-12 text-center text-slate-500">
                     No bookings match this view and its filters.
                   </td>
                 </tr>
@@ -511,6 +553,8 @@ export default async function BookingsPage({
           </div>
         </div>
       )}
+      </div>
+      </DatasetBulkRoot>
     </div>
   );
 }

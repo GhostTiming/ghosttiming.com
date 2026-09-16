@@ -1,11 +1,14 @@
 {
   "name": "ghosttiming-site",
   "private": true,
-  "workspaces": ["web"],
+  "workspaces": ["web", "crm"],
   "scripts": {
     "build": "npm run build -w chip-streamer-web",
+    "build:crm": "npm run build -w ghosttiming-crm",
     "dev": "npm run dev -w chip-streamer-web",
+    "dev:crm": "npm run dev -w ghosttiming-crm",
     "lint": "npm run lint -w chip-streamer-web",
+    "lint:crm": "npm run lint -w ghosttiming-crm",
     "start": "npm run start -w chip-streamer-web"
   }
 }

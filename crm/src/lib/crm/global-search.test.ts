@@ -4,6 +4,7 @@ import {
   groupedSearchResults,
   joinSearchSecondary,
   parseSearchQuery,
+  partitionSearchGroups,
   searchAccessFromContext,
   searchHitHref,
   searchLikeNeedle,
@@ -60,6 +61,39 @@ describe("global search helpers", () => {
     expect(joinSearchSecondary([" Daytona ", null, "Confirmed", ""])).toBe(
       "Daytona · Confirmed",
     );
+  });
+
+  it("nests organizations, contacts, and events under More", () => {
+    const results = emptySearchResults();
+    results.bookings = [
+      { id: "b1", href: "/bookings/b1", label: "Firecracker 5K", secondary: null },
+    ];
+    results.contacts = [
+      { id: "c1", href: "/contacts/c1", label: "Michele", secondary: null },
+    ];
+    results.organizations = [
+      { id: "o1", href: "/organizations/o1", label: "Acme", secondary: null },
+    ];
+    results.events = [
+      { id: "e1", href: "/events/e1", label: "Fall Classic", secondary: null },
+    ];
+    results.prospects = [
+      { id: "p1", href: "/prospecting/p1", label: "Lead", secondary: null },
+    ];
+    const allAccess = searchAccessFromContext({
+      canAccessOperations: true,
+      canAccessProspecting: true,
+      canAccessTasks: true,
+    });
+    const { primary, more } = partitionSearchGroups(
+      groupedSearchResults(results, allAccess),
+    );
+    expect(primary.map((group) => group.key)).toEqual(["bookings", "prospects"]);
+    expect(more.map((group) => group.key)).toEqual([
+      "contacts",
+      "organizations",
+      "events",
+    ]);
   });
 
   it("does not include financial fields in snippets", () => {

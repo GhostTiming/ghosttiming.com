@@ -327,7 +327,8 @@ export default async function ProspectDetailPage({
             Match Get Run Vibes listing
           </h2>
           <p className="mt-1 mb-3 text-sm text-slate-600">
-            Link this race so event details, distances, and tags can fill in from Get Run Vibes.
+            Search by name, location, or year, then match so event details,
+            distances, and tags fill in from Get Run Vibes.
           </p>
           <CatalogMatchControls
             prospectId={prospect.id}

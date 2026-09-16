@@ -9,7 +9,27 @@ import {
   loadPendingCalendarPayloads,
 } from "@/lib/crm/google-queries";
 
+function rethrowNextControlFlow(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof error.digest === "string" &&
+    (error.digest.startsWith("NEXT_REDIRECT") ||
+      error.digest.startsWith("NEXT_NOT_FOUND"))
+  ) {
+    throw error;
+  }
+}
+
+function jsonError(error: unknown, fallback: string, status = 500) {
+  rethrowNextControlFlow(error);
+  const message = error instanceof Error ? error.message : fallback;
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function GET(request: Request) {
+  try {
   const access = await getAccessContext();
   const user = access.user;
   const url = new URL(request.url);
@@ -44,9 +64,13 @@ export async function GET(request: Request) {
   if (!payload) return NextResponse.json({ error: "Booking not found." }, { status: 404 });
   const link = await loadCalendarLink(bookingId);
   return NextResponse.json({ ...payload, link });
+  } catch (error) {
+    return jsonError(error, "Calendar lookup failed.");
+  }
 }
 
 export async function PUT(request: Request) {
+  try {
   const body = z
     .object({
       bookingId: z.string().uuid(),
@@ -133,4 +157,7 @@ export async function PUT(request: Request) {
   revalidatePath(`/bookings/${body.bookingId}`);
   revalidatePath("/bookings");
   return NextResponse.json({ ok: true });
+  } catch (error) {
+    return jsonError(error, "Calendar update failed.");
+  }
 }

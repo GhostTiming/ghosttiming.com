@@ -1,11 +1,20 @@
 import { ArrowLeft, ArrowRight, CalendarDays } from "lucide-react";
 import Link from "next/link";
+import { bulkUpdateEventsAction } from "@/app/bulk-actions";
+import {
+  DatasetBulkBar,
+  DatasetBulkRoot,
+  DatasetCheckbox,
+  DatasetHeaderCheckbox,
+} from "@/components/dataset-bulk";
 import { EventLogo } from "@/components/event-logo";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
 import { TableColumnHeader } from "@/components/table-column-header";
+import { getPool } from "@/db";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { requireOperationsAccess } from "@/lib/auth/server";
+import { eventBulkFields } from "@/lib/crm/bulk-fields";
 import { listEvents } from "@/lib/crm/event-queries";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
@@ -71,6 +80,17 @@ export default async function EventsPage({
     direction: current.direction === "desc" ? "desc" : "asc",
     clientOrganizationIds: bookingOrgScopeParam(access),
   });
+  const owners = await getPool().query<{ id: string; name: string }>(
+    `
+      SELECT id::text, name
+      FROM crm.organizations
+      WHERE is_active
+        AND archived_at IS NULL
+        AND ($1::uuid[] IS NULL OR id = ANY($1::uuid[]))
+      ORDER BY name
+    `,
+    [bookingOrgScopeParam(access)],
+  );
   const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
   const column = (
     label: string,
@@ -135,11 +155,21 @@ export default async function EventsPage({
       </nav>
       ) : null}
 
+      <DatasetBulkRoot>
+      <div className="space-y-3">
+      <DatasetBulkBar
+        noun="events"
+        fields={eventBulkFields(owners.rows)}
+        updateAction={bulkUpdateEventsAction}
+      />
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600">
             <tr>
+              <th className="w-10 px-4 py-3">
+                <DatasetHeaderCheckbox ids={result.rows.map((event) => event.id)} />
+              </th>
               <th className="px-4 py-3">
                 {column("Event", "name", [
                   {
@@ -208,6 +238,9 @@ export default async function EventsPage({
             {result.rows.map((event) => (
               <tr key={event.id} className={listRowClassName()}>
                 <td className="px-4 py-3">
+                  <DatasetCheckbox id={event.id} />
+                </td>
+                <td className="px-4 py-3">
                   <ListRowLink href={`/events/${event.id}`} className="font-semibold hover:text-cyan-700">
                     <EventLogo url={event.logo_url} name={event.name} size="list" />
                     {event.name}
@@ -254,6 +287,8 @@ export default async function EventsPage({
           </div>
         </div>
       </section>
+      </div>
+      </DatasetBulkRoot>
     </div>
   );
 }

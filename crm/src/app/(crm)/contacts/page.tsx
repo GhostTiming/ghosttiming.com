@@ -1,9 +1,17 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { bulkUpdateContactsAction } from "@/app/bulk-actions";
+import {
+  DatasetBulkBar,
+  DatasetBulkRoot,
+  DatasetCheckbox,
+  DatasetHeaderCheckbox,
+} from "@/components/dataset-bulk";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
 import { TableColumnHeader } from "@/components/table-column-header";
 import { requireContactsAccess } from "@/lib/auth/server";
+import { contactBulkFields } from "@/lib/crm/bulk-fields";
 import {
   listCrewContacts,
   listDirectClientContacts,
@@ -15,6 +23,7 @@ import {
   formatContactEventNames,
   parseContactListStatus,
   parseContactListView,
+  contactBulkPersonId,
   type ContactListView,
 } from "@/lib/crm/contacts";
 import { buildSearchHref, firstParam } from "@/lib/crm/search-params";
@@ -169,7 +178,8 @@ export default async function ContactsPage({
     { key: "prospects", label: "Prospects", show: access.canAccessProspecting },
   ];
   const showEvents = view === "event_clients" || view === "crew";
-  const columnCount = view === "prospects" ? 4 : showEvents ? 5 : 4;
+  const columnCount = (view === "prospects" ? 4 : showEvents ? 5 : 4) +
+    (access.canAccessOperations ? 1 : 0);
   const rowCount =
     view === "direct_clients"
       ? directClientContacts?.rows.length ?? 0
@@ -178,6 +188,15 @@ export default async function ContactsPage({
         : view === "crew"
           ? crewContacts?.rows.length ?? 0
           : prospectContacts?.rows.length ?? 0;
+  const selectableIds = (
+    directClientContacts?.rows ??
+    eventClientContacts?.rows ??
+    crewContacts?.rows ??
+    prospectContacts?.rows ??
+    []
+  )
+    .map((row) => contactBulkPersonId(row.id))
+    .filter((id): id is string => Boolean(id));
 
   return (
     <div className="space-y-6">
@@ -213,6 +232,15 @@ export default async function ContactsPage({
           ))}
       </nav>
 
+      <DatasetBulkRoot>
+      <div className="space-y-3">
+      {access.canAccessOperations ? (
+        <DatasetBulkBar
+          noun="contacts"
+          fields={contactBulkFields}
+          updateAction={bulkUpdateContactsAction}
+        />
+      ) : null}
       <nav className="flex flex-wrap gap-2" aria-label="Contact status">
         <Link
           href={buildSearchHref("/contacts", current, {
@@ -248,6 +276,11 @@ export default async function ContactsPage({
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                {access.canAccessOperations ? (
+                <th className="w-10 px-4 py-3">
+                  <DatasetHeaderCheckbox ids={selectableIds} />
+                </th>
+                ) : null}
                 <th className="px-4 py-3">
                   {column("Name", "name", [
                     {
@@ -318,6 +351,11 @@ export default async function ContactsPage({
             <tbody className="divide-y divide-slate-100">
               {directClientContacts?.rows.map((contact) => (
                 <tr key={contact.id} className={listRowClassName()}>
+                  {access.canAccessOperations ? (
+                  <td className="px-4 py-3">
+                    <DatasetCheckbox id={contact.id} />
+                  </td>
+                  ) : null}
                   <PersonCells
                     href={`/contacts/${contact.id}`}
                     name={contact.display_name}
@@ -329,6 +367,11 @@ export default async function ContactsPage({
               ))}
               {eventClientContacts?.rows.map((contact) => (
                 <tr key={contact.id} className={listRowClassName()}>
+                  {access.canAccessOperations ? (
+                  <td className="px-4 py-3">
+                    <DatasetCheckbox id={contact.id} />
+                  </td>
+                  ) : null}
                   <PersonCells
                     href={`/contacts/${contact.id}`}
                     name={contact.display_name}
@@ -341,6 +384,11 @@ export default async function ContactsPage({
               ))}
               {crewContacts?.rows.map((contact) => (
                 <tr key={contact.id} className={listRowClassName()}>
+                  {access.canAccessOperations ? (
+                  <td className="px-4 py-3">
+                    <DatasetCheckbox id={contact.id} />
+                  </td>
+                  ) : null}
                   <PersonCells
                     href={`/contacts/${contact.id}`}
                     name={contact.display_name}
@@ -351,11 +399,18 @@ export default async function ContactsPage({
                   />
                 </tr>
               ))}
-              {prospectContacts?.rows.map((contact) => (
+              {prospectContacts?.rows.map((contact) => {
+                const personId = contactBulkPersonId(contact.id);
+                return (
                 <tr
                   key={contact.id}
                   className={contact.href ? listRowClassName() : undefined}
                 >
+                  {access.canAccessOperations ? (
+                  <td className="px-4 py-3">
+                    {personId ? <DatasetCheckbox id={personId} /> : null}
+                  </td>
+                  ) : null}
                   <td className="px-4 py-3">
                     {contact.href ? (
                       <ListRowLink
@@ -374,7 +429,8 @@ export default async function ContactsPage({
                   <td className="px-4 py-3">{contact.phone ?? "—"}</td>
                   <td className="px-4 py-3">{contact.race_name ?? "—"}</td>
                 </tr>
-              ))}
+                );
+              })}
               {!rowCount ? (
                 <tr>
                   <td
@@ -389,6 +445,8 @@ export default async function ContactsPage({
           </table>
         </div>
       </section>
+      </div>
+      </DatasetBulkRoot>
     </div>
   );
 }

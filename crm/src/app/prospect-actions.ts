@@ -14,7 +14,9 @@ import {
   linkEventToCatalogListing,
   loadCatalogListingCandidates,
   resolveCatalogListingQuery,
+  unlinkEventFromCatalogListing,
 } from "@/lib/crm/catalog-link";
+import { catalogListingSearchQuery } from "@/lib/crm/catalog-search";
 import { changeProspectStage, findOrCreateStandingEvent } from "@/lib/crm/mutations";
 import { cancelOpenProspectTasks, PAST_EVENT_STAGE_KEY } from "@/lib/crm/past-events";
 import { refreshCatalogLinkedViews } from "@/lib/crm/revalidate";
@@ -587,6 +589,61 @@ export async function restoreProspectCatalogMatchAction(formData: FormData) {
   }
   refreshProspect(prospectId);
   redirect(`/prospecting/${prospectId}`);
+}
+
+export async function unlinkProspectCatalogListingAction(formData: FormData) {
+  const user = await requireProspectingUser();
+  const prospectId = uuid.parse(formData.get("prospectId"));
+  const client = await getPool().connect();
+  let eventId: string | undefined;
+  let listingQuery = "";
+  try {
+    await client.query("BEGIN");
+    const prospect = await client.query<{
+      event_id: string;
+      event_name: string;
+      city: string | null;
+      state: string | null;
+    }>(
+      `SELECT event.id::text AS event_id,
+              event.name AS event_name,
+              COALESCE(occurrence.city_override, listing.city) AS city,
+              COALESCE(occurrence.state_override, listing.state) AS state
+       FROM crm.prospects prospect
+       JOIN crm.events event ON event.id = prospect.event_id
+       LEFT JOIN crm.event_occurrences occurrence
+         ON occurrence.id = prospect.occurrence_id
+       LEFT JOIN catalog.race_listings listing
+         ON listing.id = COALESCE(event.catalog_race_listing_id, prospect.race_listing_id)
+       WHERE prospect.id = $1::uuid`,
+      [prospectId],
+    );
+    if (!prospect.rows[0]) throw new Error("Prospect not found.");
+    eventId = prospect.rows[0].event_id;
+    listingQuery = catalogListingSearchQuery({
+      name: prospect.rows[0].event_name,
+      city: prospect.rows[0].city,
+      state: prospect.rows[0].state,
+    });
+    await unlinkEventFromCatalogListing(client, eventId);
+    await appendAuditActivity(
+      client,
+      { prospectId },
+      user,
+      "Uncoupled Get Run Vibes listing",
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  refreshProspect(prospectId, eventId);
+  const listingQ = listingQuery
+    ? `?listingQ=${encodeURIComponent(listingQuery)}`
+    : "";
+  redirect(`/prospecting/${prospectId}${listingQ}`);
 }
 
 export async function updateProspectGlanceAction(formData: FormData) {

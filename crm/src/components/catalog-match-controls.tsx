@@ -17,6 +17,7 @@ import type {
 } from "@/lib/crm/catalog-link";
 import {
   catalogSearchLikeNeedles,
+  listingEventYear,
   listingMatchesSearch,
 } from "@/lib/crm/catalog-search";
 
@@ -24,9 +25,13 @@ function listingPlace(listing: {
   city: string | null;
   state: string | null;
   zipcode?: string | null;
+  next_start_at?: string | Date | null;
+  edition_year?: number | null;
 }) {
   const cityState = [listing.city, listing.state].filter(Boolean).join(", ");
-  return [cityState, listing.zipcode].filter(Boolean).join(" ") || "Location unknown";
+  const place = [cityState, listing.zipcode].filter(Boolean).join(" ") || "Location unknown";
+  const year = listingEventYear(listing.next_start_at, listing.edition_year);
+  return year ? `${place} · ${year}` : place;
 }
 
 function asSuggestion(
@@ -107,6 +112,15 @@ export function CatalogMatchControls({
     if (!query.trim()) return suggestions;
     return pooled
       .filter((listing) => listingMatchesSearch(listing, query))
+      .sort((left, right) => {
+        const yearLeft = Number(
+          listingEventYear(left.next_start_at, left.edition_year) ?? 0,
+        );
+        const yearRight = Number(
+          listingEventYear(right.next_start_at, right.edition_year) ?? 0,
+        );
+        return yearRight - yearLeft;
+      })
       .slice(0, 50);
   }, [query, remote, searchResults, suggestions]);
 
@@ -140,7 +154,7 @@ export function CatalogMatchControls({
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name or location…"
+          placeholder="Search by name, location, or year…"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
       </label>

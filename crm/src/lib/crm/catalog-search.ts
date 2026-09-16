@@ -24,12 +24,30 @@ export function catalogListingSearchQuery(event: {
     .join(" ");
 }
 
+export function listingEventYear(
+  nextStartAt: string | Date | null | undefined,
+  editionYear?: number | string | null,
+): string | null {
+  if (!nextStartAt) {
+    if (editionYear == null || editionYear === "") return null;
+    const year = String(editionYear);
+    return /^\d{4}$/.test(year) ? year : null;
+  }
+  if (nextStartAt instanceof Date && !Number.isNaN(nextStartAt.valueOf())) {
+    return String(nextStartAt.getUTCFullYear());
+  }
+  const match = String(nextStartAt).trim().match(/^(\d{4})/);
+  return match?.[1] ?? listingEventYear(null, editionYear);
+}
+
 export function listingSearchText(listing: {
   name: string;
   street?: string | null;
   city?: string | null;
   state?: string | null;
   zipcode?: string | null;
+  next_start_at?: string | Date | null;
+  edition_year?: number | string | null;
 }) {
   return [
     listing.name,
@@ -37,6 +55,7 @@ export function listingSearchText(listing: {
     listing.city,
     listing.state,
     listing.zipcode,
+    listingEventYear(listing.next_start_at, listing.edition_year),
   ]
     .filter((part): part is string => Boolean(part?.trim()))
     .join(" ")
@@ -53,7 +72,11 @@ export function listingMatchesSearch(
   return tokens.every((token) => haystack.includes(token));
 }
 
-export const catalogListingSearchHaystackSql = `lower(concat_ws(' ', name, street, city, state, zipcode))`;
+export const catalogListingSearchHaystackSql = `lower(concat_ws(' ', name, street, city, state, zipcode, to_char(next_start_at, 'YYYY'), (
+  SELECT MAX(edition_year)::text
+  FROM catalog.race_editions
+  WHERE race_listing_id = catalog.race_listings.id
+)))`;
 
 export function catalogListingSearchWhereSql(
   tokenCount: number,

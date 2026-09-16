@@ -14,6 +14,7 @@ import {
   effectiveProspectStageNameSql,
   filePastProspects,
 } from "./past-events";
+import { preferredCatalogEditionSql } from "./race-operations";
 import { geocodeUsZip, normalizeZip } from "./geo";
 
 const closedProspectStageSql = closedProspectStageKeys
@@ -677,15 +678,7 @@ export async function getProspectDetail(prospectId: string) {
           ON offering.race_listing_id = rl.id
          AND offering.race_edition_id = COALESCE(
            p.race_edition_id,
-           (
-             SELECT re.id
-             FROM catalog.race_editions re
-             WHERE re.race_listing_id = rl.id
-             ORDER BY abs(extract(epoch from (
-               re.starts_at - COALESCE(occurrence.race_date, rl.next_start_at, now())
-             )))
-             LIMIT 1
-           )
+           ${preferredCatalogEditionSql("rl.id")}
          )
         WHERE p.id = $1::uuid
           AND COALESCE(offering.is_merch_only, false) = false
@@ -773,19 +766,11 @@ export async function getCatalogOverview(
         WHERE offering.race_listing_id = $1
           AND COALESCE(offering.is_merch_only, false) = false
           AND COALESCE(offering.is_volunteer, false) = false
-          AND offering.race_edition_id = (
-            SELECT re.id
-            FROM catalog.race_editions re
-            WHERE re.race_listing_id = $1
-            ORDER BY abs(extract(epoch from (
-              re.starts_at - COALESCE($2::timestamptz, now())
-            )))
-            LIMIT 1
-          )
+          AND offering.race_edition_id = ${preferredCatalogEditionSql("$1")}
         ORDER BY offering.starts_at NULLS LAST, offering.name
         LIMIT 20
       `,
-      [listingId, raceDate ?? null],
+      [listingId],
     ),
   ]);
 

@@ -60,6 +60,12 @@ describe("bulk update validation", () => {
       validateBulkUpdate("bookings", { field: "stage", value: "confirmed" }),
     ).toEqual({ success: true });
     expect(
+      validateBulkUpdate("bookings", {
+        field: "timer_location",
+        value: "remote",
+      }),
+    ).toEqual({ success: true });
+    expect(
       validateBulkUpdate("contacts", { field: "status", value: "inactive" }),
     ).toEqual({ success: true });
     expect(

@@ -1,6 +1,12 @@
 import { ArrowLeft, ArrowRight, Plus } from "lucide-react";
 import Link from "next/link";
 import { startProspectAction } from "@/app/actions";
+import {
+  DatasetBulkRoot,
+  DatasetCheckbox,
+  DatasetHeaderCheckbox,
+} from "@/components/dataset-bulk";
+import { ProspectBulkBar } from "@/components/prospect-bulk-bar";
 import { EventLogo } from "@/components/event-logo";
 import { ListRowActions, ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
@@ -8,6 +14,7 @@ import { ContactExtractionButton } from "@/components/prospecting/contact-extrac
 import { ProspectListStageBubbles } from "@/components/prospecting/list-stage-bubbles";
 import { ProspectingLocationFilter } from "@/components/prospecting-location-filter";
 import { TableColumnHeader } from "@/components/table-column-header";
+import { getPool } from "@/db";
 import { requireProspectingUser } from "@/lib/auth/server";
 import { formatNextStep } from "@/lib/crm/domain";
 import { reconcileProspectingWithPool, listProspects } from "@/lib/crm/queries";
@@ -96,6 +103,9 @@ export default async function ProspectingPage({
     sort: current.sort,
     direction: current.direction === "desc" ? "desc" : "asc",
   });
+  const users = await getPool().query<{ id: string; name: string }>(
+    `SELECT id::text, name FROM crm.users WHERE is_active ORDER BY name`,
+  );
   const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
   const viewOptions = [
     { key: "active", label: "Active" },
@@ -171,11 +181,21 @@ export default async function ProspectingPage({
         <ProspectingLocationFilter params={current} />
       </nav>
 
+      <DatasetBulkRoot>
+      <div className="space-y-3">
+      <ProspectBulkBar users={users.rows} />
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                <th className="w-10 px-4 py-3">
+                  <DatasetHeaderCheckbox
+                    ids={result.rows
+                      .map((row) => row.prospect_id)
+                      .filter((id): id is string => Boolean(id))}
+                  />
+                </th>
                 <th className="px-4 py-3">
                   {column("Race", "race", [
                     {
@@ -243,6 +263,11 @@ export default async function ProspectingPage({
                   key={row.prospect_id ?? row.race_listing_id}
                   className={href ? listRowClassName() : "hover:bg-slate-50"}
                 >
+                  <td className="px-4 py-3">
+                    {row.prospect_id ? (
+                      <DatasetCheckbox id={row.prospect_id} />
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3">
                     {href ? (
                       <ListRowLink
@@ -368,6 +393,8 @@ export default async function ProspectingPage({
           </div>
         </div>
       </section>
+      </div>
+      </DatasetBulkRoot>
     </div>
   );
 }

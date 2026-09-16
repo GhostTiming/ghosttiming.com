@@ -6,6 +6,7 @@ import {
   excludeVirtualCatalogOfferings,
   isVirtualCatalogOffering,
   parseCatalogClock,
+  preferredCatalogEditionId,
 } from "./race-operations";
 
 describe("race duration defaults", () => {
@@ -148,5 +149,35 @@ describe("virtual catalog offerings", () => {
         },
       ]),
     ).toBeNull();
+  });
+});
+
+describe("preferred catalog edition", () => {
+  it("picks the live Get Run Vibes edition instead of a past year", () => {
+    expect(
+      preferredCatalogEditionId(
+        [
+          {
+            id: "2023",
+            is_future: false,
+            starts_at: "2023-10-21 07:00:00",
+            edition_year: 2023,
+          },
+          {
+            id: "2025",
+            is_future: false,
+            starts_at: "2025-11-02 06:00:00",
+            edition_year: 2025,
+          },
+          {
+            id: "2026",
+            is_future: true,
+            starts_at: "2026-11-15 12:00:00",
+            edition_year: 2026,
+          },
+        ],
+        "2026-11-15 11:45:00+00",
+      ),
+    ).toBe("2026");
   });
 });

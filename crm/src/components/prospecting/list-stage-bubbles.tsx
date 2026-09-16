@@ -4,7 +4,14 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { updateProspectStageAction } from "@/app/prospect-actions";
 import { ClosedLostPrompt } from "@/components/prospecting/closed-lost-prompt";
-import { prospectListOutcomeStages } from "@/lib/crm/domain";
+import { OutcomeReasonPrompt } from "@/components/prospecting/outcome-reason-prompt";
+import {
+  disqualifiedReasonLabels,
+  disqualifiedReasons,
+  prospectListOutcomeStages,
+  unqualifiedReasonLabels,
+  unqualifiedReasons,
+} from "@/lib/crm/domain";
 
 function bubbleClass(active: boolean) {
   return `rounded-full px-2 py-0.5 text-[11px] font-semibold leading-tight ring-1 ${
@@ -48,6 +55,9 @@ export function ProspectListStageBubbles({
   currentStageKey: string;
 }) {
   const [lostOpen, setLostOpen] = useState(false);
+  const [outcomeOpen, setOutcomeOpen] = useState<"unqualified" | "disqualified" | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const alreadyLost = currentStageKey === "closed_lost";
 
@@ -82,6 +92,21 @@ export function ProspectListStageBubbles({
             >
               {stage.label}
             </button>
+          ) : stage.key === "unqualified" || stage.key === "disqualified" ? (
+            <button
+              key={stage.key}
+              type="button"
+              disabled={currentStageKey === stage.key}
+              title={
+                currentStageKey === stage.key
+                  ? `Already ${stage.label.toLowerCase()}`
+                  : stage.label
+              }
+              className={bubbleClass(currentStageKey === stage.key)}
+              onClick={() => setOutcomeOpen(stage.key)}
+            >
+              {stage.label}
+            </button>
           ) : (
             <StageBubble
               key={stage.key}
@@ -101,6 +126,31 @@ export function ProspectListStageBubbles({
         <ClosedLostPrompt
           prospectId={prospectId}
           onCancel={() => setLostOpen(false)}
+        />
+      ) : null}
+      {outcomeOpen && currentStageKey !== outcomeOpen ? (
+        <OutcomeReasonPrompt
+          prospectId={prospectId}
+          stageKey={outcomeOpen}
+          title={outcomeOpen === "unqualified" ? "Mark unqualified" : "Disqualify"}
+          description={
+            outcomeOpen === "unqualified"
+              ? "Choose why this race is unqualified."
+              : "Choose why this race is disqualified."
+          }
+          reasons={
+            outcomeOpen === "unqualified"
+              ? unqualifiedReasons.map((key) => ({
+                  key,
+                  label: unqualifiedReasonLabels[key],
+                }))
+              : disqualifiedReasons.map((key) => ({
+                  key,
+                  label: disqualifiedReasonLabels[key],
+                }))
+          }
+          submitLabel={outcomeOpen === "unqualified" ? "Unqualify" : "Disqualify"}
+          onCancel={() => setOutcomeOpen(null)}
         />
       ) : null}
     </>

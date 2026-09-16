@@ -13,7 +13,12 @@ import {
 import { searchCrmAction } from "@/app/search-actions";
 import {
   flattenSearchHits,
+  partitionSearchGroups,
+  SEARCH_GROUPS,
+  SEARCH_MORE_GROUP_KEYS,
   SEARCH_QUERY_MIN_LENGTH,
+  type SearchHit,
+  type SearchGroupKey,
   type SearchGroupList,
 } from "@/lib/crm/global-search";
 
@@ -29,12 +34,43 @@ export function GlobalSearch() {
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<SearchGroupList>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [moreKey, setMoreKey] = useState<SearchGroupKey>("contacts");
   const trimmed = query.trim();
   const tooShort = trimmed.length > 0 && trimmed.length < SEARCH_QUERY_MIN_LENGTH;
-  const hits = useMemo(
-    () => flattenSearchHits(tooShort || !trimmed ? [] : groups),
+  const { primary } = useMemo(
+    () => partitionSearchGroups(tooShort || !trimmed ? [] : groups),
     [groups, tooShort, trimmed],
   );
+  const more = useMemo(() => {
+    if (tooShort || !trimmed) return [];
+    const byKey = new Map(groups.map((group) => [group.key, group]));
+    const options = SEARCH_MORE_GROUP_KEYS.map((key) => {
+      const existing = byKey.get(key);
+      if (existing) return existing;
+      const meta = SEARCH_GROUPS.find((group) => group.key === key);
+      return {
+        key,
+        label: meta?.label ?? "Contacts",
+        hits: [] as SearchHit[],
+      };
+    });
+    return options;
+  }, [groups, tooShort, trimmed]);
+  const visibleMore = more.find((group) => group.key === moreKey) ?? more[0] ?? null;
+  const visibleGroups = useMemo(
+    () => (visibleMore ? [...primary, visibleMore] : primary),
+    [primary, visibleMore],
+  );
+  const hits = useMemo(
+    () => flattenSearchHits(visibleGroups),
+    [visibleGroups],
+  );
+
+  useEffect(() => {
+    if (!more.some((group) => group.key === moreKey) && more[0]) {
+      setMoreKey(more[0].key);
+    }
+  }, [more, moreKey]);
 
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
@@ -119,7 +155,7 @@ export function GlobalSearch() {
   const showPanel = open && trimmed.length > 0;
 
   return (
-    <div ref={rootRef} className="relative min-w-0 flex-1">
+    <div ref={rootRef} className="relative min-w-[18rem] flex-1 basis-72">
       <label htmlFor={inputId} className="sr-only">
         Search CRM
       </label>
@@ -160,7 +196,7 @@ export function GlobalSearch() {
         <div
           id={listId}
           role="listbox"
-          className="absolute z-50 mt-2 max-h-[min(28rem,70vh)] w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 text-slate-950 shadow-xl"
+          className="absolute right-0 z-50 mt-2 max-h-[min(28rem,70vh)] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 text-slate-950 shadow-xl"
         >
           {tooShort ? (
             <p className="px-3 py-2 text-sm text-slate-500">
@@ -173,40 +209,102 @@ export function GlobalSearch() {
               No matching CRM records.
             </p>
           ) : (
-            groups.map((group) => (
-              <section key={group.key} className="px-1 py-1">
-                <h2 className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  {group.label}
-                </h2>
-                {group.hits.map((hit) => {
-                  const flatIndex = hits.findIndex(
-                    (item) => item.href === hit.href && item.id === hit.id,
-                  );
-                  const active = flatIndex === activeIndex;
-                  return (
-                    <button
-                      key={`${group.key}-${hit.id}`}
-                      id={`${listId}-${hit.id}`}
-                      type="button"
-                      role="option"
-                      aria-selected={active}
-                      onMouseEnter={() => setActiveIndex(Math.max(0, flatIndex))}
-                      onClick={() => goTo(hit.href)}
-                      className={`flex w-full flex-col items-start rounded-lg px-3 py-2 text-left ${
-                        active ? "bg-cyan-50" : "hover:bg-slate-50"
-                      }`}
+            <>
+              {primary.map((group) => (
+                <section key={group.key} className="px-1 py-1">
+                  <h2 className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    {group.label}
+                  </h2>
+                  {group.hits.map((hit) => {
+                    const flatIndex = hits.findIndex(
+                      (item) => item.href === hit.href && item.id === hit.id,
+                    );
+                    const active = flatIndex === activeIndex;
+                    return (
+                      <button
+                        key={`${group.key}-${hit.id}`}
+                        id={`${listId}-${hit.id}`}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onMouseEnter={() => setActiveIndex(Math.max(0, flatIndex))}
+                        onClick={() => goTo(hit.href)}
+                        className={`flex w-full flex-col items-start rounded-lg px-3 py-2 text-left ${
+                          active ? "bg-cyan-50" : "hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className="text-sm font-medium">{hit.label}</span>
+                        {hit.secondary ? (
+                          <span className="text-xs text-slate-500">
+                            {hit.secondary}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </section>
+              ))}
+              {more.length ? (
+                <section className="px-1 py-1">
+                  <div className="flex items-center justify-between gap-2 px-3 py-1">
+                    <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      More
+                    </h2>
+                    <label className="sr-only" htmlFor={`${listId}-more`}>
+                      More datasets
+                    </label>
+                    <select
+                      id={`${listId}-more`}
+                      value={visibleMore?.key ?? moreKey}
+                      onChange={(event) => {
+                        setMoreKey(event.target.value as SearchGroupKey);
+                        setActiveIndex(0);
+                      }}
+                      className="max-w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
                     >
-                      <span className="text-sm font-medium">{hit.label}</span>
-                      {hit.secondary ? (
-                        <span className="text-xs text-slate-500">
-                          {hit.secondary}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </section>
-            ))
+                      {more.map((group) => (
+                        <option key={group.key} value={group.key}>
+                          {group.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {visibleMore?.hits.length ? (
+                    visibleMore.hits.map((hit) => {
+                    const flatIndex = hits.findIndex(
+                      (item) => item.href === hit.href && item.id === hit.id,
+                    );
+                    const active = flatIndex === activeIndex;
+                    return (
+                      <button
+                        key={`${visibleMore.key}-${hit.id}`}
+                        id={`${listId}-${hit.id}`}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onMouseEnter={() => setActiveIndex(Math.max(0, flatIndex))}
+                        onClick={() => goTo(hit.href)}
+                        className={`flex w-full flex-col items-start rounded-lg px-3 py-2 text-left ${
+                          active ? "bg-cyan-50" : "hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className="text-sm font-medium">{hit.label}</span>
+                        {hit.secondary ? (
+                          <span className="text-xs text-slate-500">
+                            {hit.secondary}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                    })
+                  ) : (
+                    <p className="px-3 py-2 text-sm text-slate-500">
+                      No matching {visibleMore?.label.toLowerCase() ?? "records"}.
+                    </p>
+                  )}
+                </section>
+              ) : null}
+            </>
           )}
           {loading && groups.length ? (
             <p className="px-3 py-1 text-xs text-slate-400">Updating…</p>

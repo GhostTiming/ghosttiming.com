@@ -626,6 +626,7 @@ export default async function BookingDetailPage({
                   bookingId: booking.id,
                   occurrenceId: booking.occurrence_id,
                 }}
+                uncouple={{ bookingId: booking.id }}
               />
             ) : booking.catalog_match_dismissed_at ? (
               <div
@@ -656,8 +657,8 @@ export default async function BookingDetailPage({
                   Match Get Run Vibes listing
                 </h3>
                 <p className="mt-1 mb-3 text-sm text-slate-600">
-                  Search by name or location, then match so event details and
-                  the logo fill in from Get Run Vibes.
+                  Search by name, location, or year, then match so event details
+                  and the logo fill in from Get Run Vibes.
                 </p>
                 <CatalogMatchControls
                   bookingId={booking.id}

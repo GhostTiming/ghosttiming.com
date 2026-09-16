@@ -5,6 +5,7 @@ import {
   catalogListingSearchWhereSql,
   catalogSearchLikeNeedles,
   catalogSearchTokens,
+  listingEventYear,
   listingMatchesSearch,
 } from "./catalog-search";
 
@@ -55,7 +56,36 @@ describe("catalog listing search", () => {
     expect(catalogListingSearchHaystackSql).toContain("city");
     expect(catalogListingSearchHaystackSql).toContain("state");
     expect(catalogListingSearchHaystackSql).toContain("zipcode");
+    expect(catalogListingSearchHaystackSql).toContain("next_start_at");
+    expect(catalogListingSearchHaystackSql).toContain("edition_year");
     expect(catalogListingSearchWhereSql(2)).toContain("$1");
     expect(catalogListingSearchWhereSql(2)).toContain("$2");
+  });
+
+  it("includes the listing year in search text and labels", () => {
+    expect(
+      listingEventYear("2025-09-20 08:00:00-04"),
+    ).toBe("2025");
+    expect(listingEventYear(new Date("2026-03-01T12:00:00.000Z"))).toBe("2026");
+    expect(listingEventYear(null)).toBeNull();
+    expect(listingEventYear(null, 2024)).toBe("2024");
+    expect(
+      listingMatchesSearch(
+        { ...firecracker, next_start_at: "2025-07-04T12:00:00.000Z" },
+        "2025",
+      ),
+    ).toBe(true);
+    expect(
+      listingMatchesSearch(
+        { ...firecracker, next_start_at: "2026-07-04T12:00:00.000Z" },
+        "2025",
+      ),
+    ).toBe(false);
+    expect(
+      listingMatchesSearch(
+        { ...firecracker, edition_year: 2024 },
+        "2024",
+      ),
+    ).toBe(true);
   });
 });

@@ -1,4 +1,3 @@
-import { attachDatabasePool } from "@vercel/functions";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";
@@ -6,6 +5,17 @@ import * as schema from "./schema";
 const globalForDb = globalThis as unknown as {
   crmPool?: Pool;
 };
+
+function attachPoolForVercel(pool: Pool) {
+  if (process.env.VERCEL !== "1") return;
+  void import("@vercel/functions")
+    .then(({ attachDatabasePool }) => {
+      attachDatabasePool(pool);
+    })
+    .catch(() => {
+      // Fluid Compute registration is optional if the helper is unavailable.
+    });
+}
 
 function createPool() {
   const connectionString = process.env.DATABASE_URL;
@@ -19,7 +29,7 @@ function createPool() {
     idleTimeoutMillis: 20_000,
     connectionTimeoutMillis: 10_000,
   });
-  attachDatabasePool(pool);
+  attachPoolForVercel(pool);
   return pool;
 }
 

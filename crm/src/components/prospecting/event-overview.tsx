@@ -2,6 +2,7 @@ import { RefreshCw } from "lucide-react";
 import { resyncBookingCatalogRacesAction } from "@/app/operations-actions";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { ExpandableDescription } from "@/components/prospecting/expandable-description";
+import { UncoupleCatalogButton } from "@/components/uncouple-catalog-button";
 import {
   formatOfferingClock,
   getRunVibesEventUrl,
@@ -69,11 +70,13 @@ function TagPills({ label, tags }: { label: string; tags: string[] }) {
 function ListingActions({
   runVibesUrl,
   resync,
+  uncouple,
 }: {
   runVibesUrl: string | null;
   resync?: { bookingId: string; occurrenceId: string };
+  uncouple?: { bookingId?: string; prospectId?: string };
 }) {
-  if (!runVibesUrl && !resync) return null;
+  if (!runVibesUrl && !resync && !uncouple) return null;
   return (
     <div className="flex flex-wrap items-center gap-3">
       {runVibesUrl ? (
@@ -95,9 +98,15 @@ function ListingActions({
             className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-700 hover:text-cyan-900 disabled:opacity-60"
           >
             <RefreshCw className="size-3.5" aria-hidden="true" />
-            Re-sync
+            Refresh from Get Run Vibes
           </PendingSubmitButton>
         </form>
+      ) : null}
+      {uncouple ? (
+        <UncoupleCatalogButton
+          bookingId={uncouple.bookingId}
+          prospectId={uncouple.prospectId}
+        />
       ) : null}
     </div>
   );
@@ -109,12 +118,14 @@ export function CatalogEventOverview({
   offerings,
   variant = "standalone",
   resync,
+  uncouple,
 }: {
   listing: CatalogOverviewFields;
   tags: CatalogTagRow[];
   offerings: CatalogOfferingRow[];
   variant?: "standalone" | "embedded";
   resync?: { bookingId: string; occurrenceId: string };
+  uncouple?: { bookingId?: string; prospectId?: string };
 }) {
   const timezone = listing.timezone;
   const dateLabel = formatPart(listing.event_date, timezone, {
@@ -162,14 +173,14 @@ export function CatalogEventOverview({
               Review the Get Run Vibes listing before you reach out.
             </p>
           </div>
-          <ListingActions runVibesUrl={runVibesUrl} resync={resync} />
+          <ListingActions runVibesUrl={runVibesUrl} resync={resync} uncouple={uncouple} />
         </div>
       ) : (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Get Run Vibes
           </h3>
-          <ListingActions runVibesUrl={runVibesUrl} resync={resync} />
+          <ListingActions runVibesUrl={runVibesUrl} resync={resync} uncouple={uncouple} />
         </div>
       )}
 
@@ -286,6 +297,11 @@ export function ProspectEventOverview({
       }}
       tags={tags}
       offerings={offerings}
+      uncouple={
+        prospect.catalog_race_listing_id
+          ? { prospectId: prospect.id }
+          : undefined
+      }
     />
   );
 }
