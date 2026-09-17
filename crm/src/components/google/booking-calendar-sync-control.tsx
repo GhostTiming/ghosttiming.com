@@ -2,7 +2,7 @@
 
 import { Calendar, Check, Loader2, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ListRowActions } from "@/components/list-row";
 import { useOptionalGoogleSession } from "@/components/google/google-session-provider";
 
@@ -20,7 +20,6 @@ export function BookingCalendarSyncControl({
   const google = useOptionalGoogleSession();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [queued, setQueued] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [optimisticSynced, setOptimisticSynced] = useState(false);
   const syncStarted = useRef(false);
@@ -54,14 +53,8 @@ export function BookingCalendarSyncControl({
     } finally {
       syncStarted.current = false;
       setBusy(false);
-      setQueued(false);
     }
   }
-
-  useEffect(() => {
-    if (!queued || !google?.accessToken) return;
-    void runSync();
-  }, [queued, google?.accessToken]);
 
   const icons = (
     <span className="inline-flex items-center gap-0.5">
@@ -99,11 +92,7 @@ export function BookingCalendarSyncControl({
             return;
           }
           if (!google.accessToken) {
-            setQueued(true);
-            setBusy(true);
             void google.connect().catch((caught) => {
-              setQueued(false);
-              setBusy(false);
               setError(caught instanceof Error ? caught.message : "Google authorization failed.");
             });
             return;

@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Menu,
   Search,
+  Settings,
   Shield,
   X,
 } from "lucide-react";
@@ -93,6 +94,7 @@ export function MobileShell({
     ...(canAccessAdminConsole
       ? [{ href: "/admin", label: "Admin", icon: Shield }]
       : []),
+    { href: "/settings", label: "Settings", icon: Settings },
   ];
 
   useEffect(() => {
@@ -152,10 +154,10 @@ export function MobileShell({
             className="absolute inset-y-0 right-0 flex w-[min(20rem,88vw)] flex-col bg-slate-950 text-white shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-              <div>
+              <Link href="/settings" className="min-w-0">
                 <p className="font-medium">{userName}</p>
                 <p className="text-xs capitalize text-slate-400">{displayRole}</p>
-              </div>
+              </Link>
               <button
                 type="button"
                 onClick={() => setOpen(false)}

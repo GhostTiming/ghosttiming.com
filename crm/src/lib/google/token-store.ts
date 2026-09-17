@@ -77,8 +77,17 @@ export function isRestorableGoogleConnection(connection: GoogleConnectionHint) {
   );
 }
 
-export function restorableGoogleConnections(connections: GoogleConnectionHint[]) {
-  return connections.filter(isRestorableGoogleConnection);
+export function restorableGoogleConnections<T extends GoogleConnectionHint>(connections: T[]): T[] {
+  return connections.filter((row) => isRestorableGoogleConnection(row));
+}
+
+export function pickPreferredGoogleConnection<T extends GoogleConnectionHint>(
+  connections: T[],
+  preferredSub?: string | null,
+): T | null {
+  const restorable = restorableGoogleConnections(connections);
+  if (!restorable.length) return null;
+  return restorable.find((row) => row.google_sub === preferredSub) ?? restorable[0];
 }
 
 export function googleLoginHint(

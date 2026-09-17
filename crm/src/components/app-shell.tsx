@@ -51,6 +51,8 @@ export function AppShell({
       clientId={googleClientId}
       userId={user.id}
       initialConnections={googleConnections}
+      initialSendGoogleSub={user.defaultSendGoogleSub}
+      initialCalendarGoogleSub={user.defaultCalendarGoogleSub}
     >
     <div className="min-h-screen bg-slate-100">
       <NavigationProgress />
@@ -126,10 +128,14 @@ export function AppShell({
             ) : null}
           </nav>
           <GlobalSearch />
-          <div className="ml-auto hidden text-right text-sm lg:block">
+          <Link
+            href="/settings"
+            suppressHydrationWarning
+            className="ml-auto hidden text-right text-sm hover:text-white lg:block"
+          >
             <p className="font-medium">{user.name}</p>
             <p className="text-xs capitalize text-slate-400">{displayRole}</p>
-          </div>
+          </Link>
           {canAccessGoogle ? <GoogleConnectionControl /> : null}
           <SignOutForm />
         </div>

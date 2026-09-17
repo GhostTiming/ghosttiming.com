@@ -265,6 +265,7 @@ export async function completeGoogleOAuthLogin(input: {
     calendarSummary: selected?.summary ?? existing?.calendar_summary ?? null,
     existingRefreshCiphertext: existing?.google_refresh_token_ciphertext,
   });
+  await ensureUserGoogleDefaults(input.userId, userInfo.sub);
   return {
     googleSub: userInfo.sub,
     googleEmail: userInfo.email,
@@ -304,5 +305,52 @@ export async function disconnectGoogleOfflineGrant(userId: string, googleSub?: s
         AND ($2::text IS NULL OR google_sub = $2)
     `,
     [userId, googleSub ?? null],
+  );
+  await ensureUserGoogleDefaults(userId);
+}
+
+export async function ensureUserGoogleDefaults(userId: string, preferredSub?: string | null) {
+  const connections = await getPool().query<{ google_sub: string }>(
+    `
+      SELECT google_sub
+      FROM crm.google_connections
+      WHERE user_id = $1::uuid
+        AND google_refresh_token_ciphertext IS NOT NULL
+      ORDER BY connected_at ASC
+    `,
+    [userId],
+  );
+  const restorable = connections.rows.map((row) => row.google_sub);
+  const fallback = (preferredSub && restorable.includes(preferredSub)
+    ? preferredSub
+    : restorable[0]) ?? null;
+  if (!fallback) {
+    await getPool().query(
+      `
+        UPDATE crm.users
+        SET default_send_google_sub = NULL,
+            default_calendar_google_sub = NULL,
+            updated_at = now()
+        WHERE id = $1::uuid
+      `,
+      [userId],
+    );
+    return;
+  }
+  await getPool().query(
+    `
+      UPDATE crm.users
+      SET default_send_google_sub = CASE
+            WHEN default_send_google_sub = ANY($2::text[]) THEN default_send_google_sub
+            ELSE $3
+          END,
+          default_calendar_google_sub = CASE
+            WHEN default_calendar_google_sub = ANY($2::text[]) THEN default_calendar_google_sub
+            ELSE $3
+          END,
+          updated_at = now()
+      WHERE id = $1::uuid
+    `,
+    [userId, restorable, fallback],
   );
 }

@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const returnTo = safeOAuthReturnTo(url.searchParams.get("returnTo"));
   try {
-    const user = await requireCrmUser();
+    await requireCrmUser();
     assertGoogleOAuthServerConfig();
     const addAccount = url.searchParams.get("addAccount") === "1";
     const started = buildGoogleAuthorizeRedirect({
@@ -35,7 +35,6 @@ export async function GET(request: Request) {
     });
     const response = NextResponse.redirect(started.authorizeUrl);
     response.cookies.set(GOOGLE_OAUTH_STATE_COOKIE, started.cookieValue, cookieOptions());
-    void user;
     return response;
   } catch (error) {
     if (

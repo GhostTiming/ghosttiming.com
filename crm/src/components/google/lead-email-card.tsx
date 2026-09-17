@@ -61,6 +61,11 @@ export function LeadEmailCard({
   const google = useGoogleSession();
   const router = useRouter();
   const [openDrafts, setOpenDrafts] = useState(drafts);
+  const [draftsSnapshot, setDraftsSnapshot] = useState(drafts);
+  if (drafts !== draftsSnapshot) {
+    setDraftsSnapshot(drafts);
+    setOpenDrafts(drafts);
+  }
   const [composing, setComposing] = useState(false);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [to, setTo] = useState("");
@@ -159,15 +164,13 @@ export function LeadEmailCard({
   }
 
   useEffect(() => {
-    setOpenDrafts(drafts);
-  }, [drafts]);
-
-  useEffect(() => {
     if (openedInitial.current) return;
     openedInitial.current = true;
     if (initialDraftId) {
       const draft = drafts.find((item) => item.id === initialDraftId);
       if (draft) {
+        // Mount-only: open the draft named in the query string.
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot composer hydrate from the URL
         openDraft(draft);
         return;
       }

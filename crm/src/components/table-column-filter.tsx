@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useSyncExternalStore } from "react";
+import { useId, useRef } from "react";
 import { buildSearchHref } from "@/lib/crm/search-params";
 
 export type TableFilterField =
@@ -39,12 +39,6 @@ export type TableFilterField =
     };
 
 export type TableQueryParams = Record<string, string | undefined>;
-
-const emptySubscribe = () => () => {};
-
-function useIsClient() {
-  return useSyncExternalStore(emptySubscribe, () => true, () => false);
-}
 
 function FunnelIcon() {
   return (
@@ -98,7 +92,6 @@ export function TableColumnFilter({
   align = "left",
 }: TableColumnFilterProps) {
   const router = useRouter();
-  const mounted = useIsClient();
   const reactId = useId().replace(/:/g, "");
   const popoverId = `column-filter-${reactId}`;
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -170,7 +163,6 @@ export function TableColumnFilter({
       >
         <FunnelIcon />
       </button>
-      {mounted ? (
       <div
         ref={popoverRef}
         id={popoverId}
@@ -215,7 +207,6 @@ export function TableColumnFilter({
           </div>
         </div>
       </div>
-      ) : null}
     </>
   );
 }

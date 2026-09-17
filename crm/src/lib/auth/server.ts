@@ -6,6 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb, getPool } from "@/db";
 import { users, type CrmUser } from "@/db/schema";
+import { displayUserName, splitFullName } from "@/lib/crm/user-profile";
 import {
   buildAccessContext,
   canImpersonateUser,
@@ -56,35 +57,52 @@ export async function requireCrmUser(): Promise<CrmUser> {
 
   const configuredRole = initialRoleForEmail(email);
   const role = resolvePersistedRole(existing?.role as CrmRole | undefined, configuredRole);
+  const googleName = splitFullName(name);
+  const firstName = existing?.firstName?.trim() || googleName.firstName;
+  const lastName = existing?.lastName?.trim() || googleName.lastName;
+  const displayName = displayUserName({
+    firstName,
+    lastName,
+    fallback: existing?.name || name,
+  });
+
+  const profile = {
+    authProviderId,
+    email,
+    name: displayName,
+    firstName,
+    lastName,
+    role,
+    updatedAt: new Date(),
+  };
+
+  if (
+    existing &&
+    existing.authProviderId === authProviderId &&
+    existing.email === email &&
+    existing.name === displayName &&
+    (existing.firstName ?? null) === (firstName ?? null) &&
+    (existing.lastName ?? null) === (lastName ?? null) &&
+    existing.role === role
+  ) {
+    if (!existing.isActive) {
+      throw new Error("This CRM account is inactive.");
+    }
+    return existing;
+  }
 
   const [crmUser] = existing
     ? await db
         .update(users)
-        .set({
-          authProviderId,
-          email,
-          name,
-          role,
-          updatedAt: new Date(),
-        })
+        .set(profile)
         .where(eq(users.id, existing.id))
         .returning()
     : await db
         .insert(users)
-        .values({
-          authProviderId,
-          email,
-          name,
-          role,
-        })
+        .values(profile)
         .onConflictDoUpdate({
           target: users.authProviderId,
-          set: {
-            email,
-            name,
-            role,
-            updatedAt: new Date(),
-          },
+          set: profile,
         })
         .returning();
 

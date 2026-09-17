@@ -4,6 +4,7 @@ import {
   clearStoredGoogleToken,
   googleLoginHint,
   googleTokenIsFresh,
+  pickPreferredGoogleConnection,
   readStoredGoogleToken,
   shouldClearStoredGoogleTokenOnRestore,
   storedTokenFromResponse,
@@ -116,6 +117,25 @@ describe("Google token store", () => {
         },
       ]),
     ).toBe("second@ghosttiming.com");
+  });
+
+  it("prefers the saved Google account when that lasting link still exists", () => {
+    const second = {
+      google_sub: "google-sub-2",
+      google_email: "second@ghosttiming.com",
+      gmail_status: "connected",
+      calendar_status: "connected",
+      has_offline_grant: true,
+    };
+    expect(pickPreferredGoogleConnection([micheConnection, second], "google-sub-2")?.google_email).toBe(
+      "second@ghosttiming.com",
+    );
+    expect(
+      pickPreferredGoogleConnection(
+        [micheConnection, { ...second, has_offline_grant: false }],
+        "google-sub-2",
+      )?.google_email,
+    ).toBe("michele@ghosttiming.com");
   });
 
   it("can still explicitly clear a token for Disconnect Google", () => {

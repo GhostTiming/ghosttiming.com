@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useGoogleSession } from "./google-session-provider";
@@ -70,29 +71,40 @@ export function GoogleConnectionControl({
             <div className="mt-3 space-y-3 text-sm">
               {google.connections.length ? (
                 <ul className="space-y-1 text-xs">
-                  {google.connections.map((item) => (
-                    <li key={item.google_sub}>
-                      <span className="font-medium">{item.google_email}</span>
-                      {" · "}
-                      {statusLabel(
-                        item.gmail_status,
-                        google.expired && item.google_sub === google.connection?.google_sub,
-                      )}
-                    </li>
-                  ))}
+                  {google.connections.map((item) => {
+                    const badges = [
+                      item.google_sub === google.sendConnection?.google_sub ? "default send" : null,
+                      item.google_sub === google.calendarConnection?.google_sub ? "default calendar" : null,
+                    ].filter(Boolean);
+                    return (
+                      <li key={item.google_sub}>
+                        <span className="font-medium">{item.google_email}</span>
+                        {" · "}
+                        {statusLabel(
+                          item.gmail_status,
+                          google.expired && item.google_sub === google.connection?.google_sub,
+                        )}
+                        {badges.length ? (
+                          <span className="block text-[11px] text-cyan-800">{badges.join(" · ")}</span>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p>No Gmail accounts connected yet.</p>
               )}
               <p>
-                Active Gmail: {statusLabel(google.connection?.gmail_status, google.expired)}
-                {google.connection?.gmail_backfill_completed_at ? " · history loaded" : ""}
+                Active Gmail: {statusLabel(google.sendConnection?.gmail_status ?? google.connection?.gmail_status, google.expired)}
+                {google.sendConnection?.gmail_backfill_completed_at || google.connection?.gmail_backfill_completed_at ? " · history loaded" : ""}
               </p>
               <p>
-                Calendar: {statusLabel(google.connection?.calendar_status, google.expired)}
-                {google.connection?.calendar_summary
-                  ? ` · ${google.connection.calendar_summary}`
-                  : ""}
+                Calendar: {statusLabel(google.calendarConnection?.calendar_status ?? google.connection?.calendar_status, google.expired)}
+                {google.calendarConnection?.calendar_summary
+                  ? ` · ${google.calendarConnection.calendar_summary}`
+                  : google.connection?.calendar_summary
+                    ? ` · ${google.connection.calendar_summary}`
+                    : ""}
               </p>
               {google.pendingCalendarCount ? (
                 <p className="text-amber-800">
@@ -109,9 +121,14 @@ export function GoogleConnectionControl({
               {google.calendars.length ? (
                 <label className="grid gap-1 text-xs font-medium">
                   Target calendar
+                  {google.calendarConnection?.google_email ? (
+                    <span className="font-normal text-slate-500">
+                      From {google.calendarConnection.google_email}
+                    </span>
+                  ) : null}
                   <select
                     className="rounded-lg border border-slate-300 px-2 py-1 text-sm"
-                    value={google.connection?.calendar_id ?? ""}
+                    value={google.calendarConnection?.calendar_id ?? google.connection?.calendar_id ?? ""}
                     onChange={(event) => {
                       const selected = google.calendars.find((item) => item.id === event.target.value);
                       if (selected) void google.selectCalendar(selected.id, selected.summary ?? selected.id);
@@ -180,8 +197,12 @@ export function GoogleConnectionControl({
               </div>
               <p className="text-[11px] leading-snug text-slate-500">
                 Connect Google once. The CRM stores an encrypted lasting key in Neon and
-                refreshes access in the background, so you should not have to sign in every hour.
-                Google will ask you to accept Gmail and Calendar permissions on that first connect.
+                refreshes access in the background. Choose default send and calendar
+                accounts in{" "}
+                <Link href="/settings#google" className="font-semibold text-cyan-800">
+                  Settings
+                </Link>
+                .
               </p>
             </div>
           )}

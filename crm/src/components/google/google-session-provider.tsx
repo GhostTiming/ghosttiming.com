@@ -40,12 +40,10 @@ import {
   getGoogleUserInfo,
   setGoogleQuotaWaitHandler,
 } from "@/lib/google/google-fetch";
-import { clearStoredGoogleToken, restorableGoogleConnections, storedTokenFromResponse, writeStoredGoogleToken } from "@/lib/google/token-store";
+import { clearStoredGoogleToken, pickPreferredGoogleConnection, restorableGoogleConnections, storedTokenFromResponse, writeStoredGoogleToken } from "@/lib/google/token-store";
 import { hasGmailSendScope } from "@/lib/google/gmail-scopes";
 import {
-  CALENDAR_EVENTS_SCOPE,
   GMAIL_INGEST_BATCH_SIZE,
-  GMAIL_SCOPE,
   GMAIL_SEARCH_BATCH_SIZE,
 } from "@/lib/google/scopes";
 
@@ -65,6 +63,8 @@ export type GmailSyncAttach = {
 type GoogleSessionValue = {
   clientId: string;
   connection: GoogleConnectionRow | null;
+  sendConnection: GoogleConnectionRow | null;
+  calendarConnection: GoogleConnectionRow | null;
   connections: GoogleConnectionRow[];
   accessToken: string | null;
   expired: boolean;
@@ -133,6 +133,9 @@ function startGoogleOAuth(options?: { addAccount?: boolean; loginHint?: string |
   });
   if (options?.addAccount) params.set("addAccount", "1");
   else if (options?.loginHint) params.set("loginHint", options.loginHint);
+  // Full navigation is required so the OAuth start route can set the state cookie
+  // and 302 to Google. App Router client routing would not complete that handshake.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- OAuth start must be a full document navigation.
   window.location.assign(`/api/google/oauth/start?${params}`);
 }
 
@@ -171,19 +174,26 @@ export function GoogleSessionProvider({
   clientId,
   userId,
   initialConnections,
+  initialSendGoogleSub = null,
+  initialCalendarGoogleSub = null,
   children,
 }: {
   clientId: string;
   userId: string;
   initialConnections: GoogleConnectionRow[];
+  initialSendGoogleSub?: string | null;
+  initialCalendarGoogleSub?: string | null;
   children: ReactNode;
 }) {
   const [connections, setConnections] = useState<GoogleConnectionRow[]>(initialConnections);
-  const [activeGoogleSub, setActiveGoogleSub] = useState<string | null>(
-    initialConnections[0]?.google_sub ?? null,
-  );
-  const connection =
-    connections.find((item) => item.google_sub === activeGoogleSub) ?? connections[0] ?? null;
+  const sendGoogleSub = initialSendGoogleSub;
+  const calendarGoogleSub = initialCalendarGoogleSub;
+  const sendConnection =
+    pickPreferredGoogleConnection(connections, sendGoogleSub) ??
+    pickPreferredGoogleConnection(connections, calendarGoogleSub);
+  const calendarConnection =
+    pickPreferredGoogleConnection(connections, calendarGoogleSub) ?? sendConnection;
+  const connection = sendConnection ?? calendarConnection;
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   const [restoring, setRestoring] = useState(
@@ -196,6 +206,9 @@ export function GoogleSessionProvider({
   const [tokenScope, setTokenScope] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
   const tokenScopeRef = useRef<string | null>(null);
+  const sendGoogleSubRef = useRef(sendGoogleSub);
+  const calendarGoogleSubRef = useRef(calendarGoogleSub);
+  const hydratedCalendarSub = useRef<string | null>(null);
   const restoreAttempted = useRef(false);
 
   const rememberToken = useCallback(
@@ -214,17 +227,18 @@ export function GoogleSessionProvider({
   );
 
   const hydrateToken = useCallback(
-    async (token: string, googleSub: string) => {
+    async (token: string, googleSub: string, options?: { hydrateCalendars?: boolean }) => {
       await getGoogleUserInfo(token);
       tokenRef.current = token;
       setAccessToken(token);
       setExpired(false);
-      setActiveGoogleSub(googleSub);
-      try {
-        const calendarList = await listGoogleCalendars(token);
-        setCalendars(calendarList);
-      } catch {
-        setCalendars([]);
+      if (options?.hydrateCalendars !== false) {
+        try {
+          const calendarList = await listGoogleCalendars(token);
+          setCalendars(calendarList);
+        } catch {
+          setCalendars([]);
+        }
       }
       try {
         const pending = await readJson<{ items: unknown[] }>(
@@ -239,7 +253,7 @@ export function GoogleSessionProvider({
   );
 
   const applyServerSession = useCallback(
-    async (session: GoogleOAuthSessionPayload) => {
+    async (session: GoogleOAuthSessionPayload, options?: { hydrateCalendars?: boolean }) => {
       const expiresIn = Math.max(60, Math.floor((session.expiresAt - Date.now()) / 1000));
       rememberToken(session.googleSub, {
         access_token: session.accessToken,
@@ -249,20 +263,24 @@ export function GoogleSessionProvider({
       tokenRef.current = session.accessToken;
       setAccessToken(session.accessToken);
       setExpired(false);
-      setActiveGoogleSub(session.googleSub);
-      await hydrateToken(session.accessToken, session.googleSub);
+      const hydrateCalendars =
+        options?.hydrateCalendars ?? session.googleSub === calendarGoogleSubRef.current;
+      if (hydrateCalendars) hydratedCalendarSub.current = session.googleSub;
+      await hydrateToken(session.accessToken, session.googleSub, { hydrateCalendars });
       return session;
     },
     [hydrateToken, rememberToken],
   );
 
-  const requestSilentToken = useCallback(async () => {
+  const requestSilentToken = useCallback(async (googleSub?: string | null) => {
     try {
-      return await applyServerSession(await fetchGoogleOAuthSession(connection?.google_sub));
+      return await applyServerSession(
+        await fetchGoogleOAuthSession(googleSub ?? calendarGoogleSubRef.current ?? sendGoogleSubRef.current),
+      );
     } catch {
       return null;
     }
-  }, [applyServerSession, connection?.google_sub]);
+  }, [applyServerSession]);
 
   const persistConnection = useCallback(async (patch: Record<string, unknown>) => {
     await readJson(await fetch("/api/google/connection", {
@@ -276,22 +294,21 @@ export function GoogleSessionProvider({
     }>(await fetch("/api/google/connection"));
     const rows = latest.connections ?? (latest.connection ? [latest.connection] : []);
     setConnections(rows);
-    const nextSub =
-      typeof patch.googleSub === "string"
-        ? patch.googleSub
-        : activeGoogleSub;
-    const selected =
-      rows.find((item) => item.google_sub === nextSub) ?? rows[0] ?? null;
-    setActiveGoogleSub(selected?.google_sub ?? null);
-    return selected;
-  }, [activeGoogleSub]);
+    return (
+      rows.find((item) => item.google_sub === patch.googleSub) ??
+      pickPreferredGoogleConnection(rows, calendarGoogleSubRef.current) ??
+      rows[0] ??
+      null
+    );
+  }, []);
 
-  const requireToken = useCallback(async () => {
-    if (tokenRef.current) return tokenRef.current;
-    const session = await fetchGoogleOAuthSession(connection?.google_sub);
+  const requireToken = useCallback(async (googleSub?: string | null) => {
+    const session = await fetchGoogleOAuthSession(
+      googleSub ?? calendarGoogleSubRef.current ?? sendGoogleSubRef.current,
+    );
     await applyServerSession(session);
     return session.accessToken;
-  }, [applyServerSession, connection?.google_sub]);
+  }, [applyServerSession]);
 
   const markExpired = useCallback(async (message: string) => {
     tokenRef.current = null;
@@ -313,7 +330,7 @@ export function GoogleSessionProvider({
   }, [connection, persistConnection, userId]);
 
   const withGoogle = useCallback(
-    async <T,>(work: (token: string) => Promise<T>) => {
+    async <T,>(work: (token: string) => Promise<T>, googleSub?: string | null) => {
       setGoogleQuotaWaitHandler(({ delayMs, attempt }) => {
         setProgress({
           label: `Gmail paused for quota (retry ${attempt} in ${Math.ceil(delayMs / 1000)}s)`,
@@ -323,14 +340,15 @@ export function GoogleSessionProvider({
         status === 403
           ? "Google permissions are missing or were revoked."
           : "Google authorization expired. Reconnect to continue.";
+      const targetSub = googleSub ?? calendarGoogleSubRef.current ?? sendGoogleSubRef.current;
       try {
-        return await work(await requireToken());
+        return await work(await requireToken(targetSub));
       } catch (caught) {
         if (caught instanceof GoogleQuotaError) {
           throw caught;
         }
         if (caught instanceof GoogleAuthError && caught.status === 401) {
-          const refreshed = await requestSilentToken();
+          const refreshed = await requestSilentToken(targetSub);
           if (refreshed?.accessToken) {
             try {
               return await work(refreshed.accessToken);
@@ -355,7 +373,7 @@ export function GoogleSessionProvider({
         setGoogleQuotaWaitHandler(null);
       }
     },
-    [connection, markExpired, requestSilentToken, requireToken],
+    [markExpired, requestSilentToken, requireToken],
   );
 
   const ingestMessages = useCallback(
@@ -431,7 +449,12 @@ export function GoogleSessionProvider({
     async (
       token: string,
       extraQuery = "",
-      options?: { emails?: string[]; attach?: GmailSyncAttach },
+      options?: {
+        emails?: string[];
+        attach?: GmailSyncAttach;
+        googleSub?: string;
+        googleEmail?: string;
+      },
     ) => {
       setProgress({ label: "Searching Gmail..." });
       const index = await loadMatchIndex();
@@ -477,11 +500,11 @@ export function GoogleSessionProvider({
         ids.push(...found);
       }
       const profile = await getGmailProfile(token);
-      const googleSub = connection?.google_sub ?? (await getGoogleUserInfo(token)).sub;
+      const googleSub = options?.googleSub ?? (await getGoogleUserInfo(token)).sub;
       await ingestMessages(token, googleSub, profile.emailAddress, ids, index);
       return profile;
     },
-    [connection, ingestMessages, loadMatchIndex],
+    [ingestMessages, loadMatchIndex],
   );
 
   const connect = useCallback((options?: { addAccount?: boolean }) => {
@@ -513,15 +536,23 @@ export function GoogleSessionProvider({
     if (!clientId) {
       throw new Error("NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.");
     }
-    if (hasGmailSendScope(tokenScopeRef.current) && tokenRef.current && connection) {
+    const account = sendConnection ?? connection;
+    if (!account) {
+      startGoogleOAuth();
+      throw new Error("Connect Google before sending email.");
+    }
+    if (hasGmailSendScope(tokenScopeRef.current) && tokenRef.current && account.google_sub === sendGoogleSubRef.current) {
       return {
         token: tokenRef.current,
-        email: connection.google_email,
-        googleSub: connection.google_sub,
+        email: account.google_email,
+        googleSub: account.google_sub,
       };
     }
     try {
-      const session = await applyServerSession(await fetchGoogleOAuthSession(connection?.google_sub));
+      const session = await applyServerSession(
+        await fetchGoogleOAuthSession(account.google_sub),
+        { hydrateCalendars: false },
+      );
       if (!hasGmailSendScope(session.scope)) {
         startGoogleOAuth({ loginHint: session.googleEmail });
         throw new Error("Redirecting to Google to grant Gmail send.");
@@ -533,11 +564,16 @@ export function GoogleSessionProvider({
       };
     } catch (error) {
       if (error instanceof GoogleReauthNeededError) {
-        startGoogleOAuth({ loginHint: connection?.google_email });
+        startGoogleOAuth({ loginHint: account.google_email });
       }
       throw error;
     }
-  }, [applyServerSession, clientId, connection]);
+  }, [applyServerSession, clientId, connection, sendConnection]);
+
+  useEffect(() => {
+    sendGoogleSubRef.current = sendGoogleSub;
+    calendarGoogleSubRef.current = calendarGoogleSub;
+  }, [calendarGoogleSub, sendGoogleSub]);
 
   useEffect(() => {
     if (restoreAttempted.current) return;
@@ -557,7 +593,10 @@ export function GoogleSessionProvider({
       }
       const restorable = restorableGoogleConnections(initialConnections);
       const preferred =
-        restorable.find((row) => row.has_offline_grant) ?? restorable[0];
+        pickPreferredGoogleConnection(restorable, initialCalendarGoogleSub) ??
+        pickPreferredGoogleConnection(restorable, initialSendGoogleSub) ??
+        restorable.find((row) => row.has_offline_grant) ??
+        restorable[0];
       if (!preferred) {
         if (
           !oauthError &&
@@ -572,7 +611,15 @@ export function GoogleSessionProvider({
         return;
       }
       try {
-        await applyServerSession(await fetchGoogleOAuthSession(preferred.google_sub));
+        await applyServerSession(await fetchGoogleOAuthSession(preferred.google_sub), {
+          hydrateCalendars: true,
+        });
+        const sendPreferred = pickPreferredGoogleConnection(restorable, initialSendGoogleSub);
+        if (sendPreferred && sendPreferred.google_sub !== preferred.google_sub) {
+          await applyServerSession(await fetchGoogleOAuthSession(sendPreferred.google_sub), {
+            hydrateCalendars: false,
+          });
+        }
       } catch (error) {
         if (error instanceof GoogleReauthNeededError) {
           setExpired(true);
@@ -582,29 +629,52 @@ export function GoogleSessionProvider({
         setRestoring(false);
       }
     })();
-  }, [applyServerSession, initialConnections]);
+  }, [applyServerSession, initialCalendarGoogleSub, initialConnections, initialSendGoogleSub]);
+
+  useEffect(() => {
+    if (restoring || !calendarGoogleSub) return;
+    if (hydratedCalendarSub.current === calendarGoogleSub) return;
+    void (async () => {
+      try {
+        await applyServerSession(await fetchGoogleOAuthSession(calendarGoogleSub), {
+          hydrateCalendars: true,
+        });
+      } catch {
+        // Settings/reconnect copy already explains a missing Google grant.
+      }
+    })();
+  }, [applyServerSession, calendarGoogleSub, restoring]);
 
   const backfillGmail = useCallback(async () => {
     setError(null);
-    const current = connection;
-    if (!current) throw new Error("Connect Google before backfilling Gmail.");
-    await persistConnection({
-      googleSub: current.google_sub,
-      googleEmail: current.google_email,
-      gmailStatus: "syncing",
-      gmailLastError: null,
-    });
+    const accounts = restorableGoogleConnections(connections);
+    if (!accounts.length) throw new Error("Connect Google before backfilling Gmail.");
     try {
-      const profile = await withGoogle((token) => runTargetedGmailSearch(token));
-      await persistConnection({
-        googleSub: current.google_sub,
-        googleEmail: current.google_email,
-        gmailStatus: "synced",
-        gmailHistoryId: profile.historyId,
-        gmailBackfillCompleted: true,
-        markGmailSynced: true,
-        gmailLastError: null,
-      });
+      for (const current of accounts) {
+        await persistConnection({
+          googleSub: current.google_sub,
+          googleEmail: current.google_email,
+          gmailStatus: "syncing",
+          gmailLastError: null,
+        });
+        const profile = await withGoogle(
+          (token) =>
+            runTargetedGmailSearch(token, "", {
+              googleSub: current.google_sub,
+              googleEmail: current.google_email,
+            }),
+          current.google_sub,
+        );
+        await persistConnection({
+          googleSub: current.google_sub,
+          googleEmail: current.google_email,
+          gmailStatus: "synced",
+          gmailHistoryId: profile.historyId,
+          gmailBackfillCompleted: true,
+          markGmailSynced: true,
+          gmailLastError: null,
+        });
+      }
     } catch (caught) {
       const message =
         caught instanceof GoogleQuotaError
@@ -612,59 +682,63 @@ export function GoogleSessionProvider({
           : caught instanceof Error
             ? caught.message
             : "Gmail backfill failed.";
-      await persistConnection({
-        googleSub: current.google_sub,
-        googleEmail: current.google_email,
-        gmailStatus: "error",
-        gmailLastError: message,
-      });
       setError(message);
       throw caught;
     } finally {
       setProgress(null);
     }
-  }, [connection, persistConnection, runTargetedGmailSearch, withGoogle]);
+  }, [connections, persistConnection, runTargetedGmailSearch, withGoogle]);
 
   const syncGmail = useCallback(async () => {
     setError(null);
-    const current = connection;
-    if (!current) throw new Error("Connect Google before syncing Gmail.");
-    await persistConnection({
-      googleSub: current.google_sub,
-      googleEmail: current.google_email,
-      gmailStatus: "syncing",
-      gmailLastError: null,
-    });
+    const accounts = restorableGoogleConnections(connections);
+    if (!accounts.length) throw new Error("Connect Google before syncing Gmail.");
     try {
-      const profile = await withGoogle(async (token) => {
-        if (current.gmail_history_id) {
-          try {
-            setProgress({ label: "Checking Gmail changes..." });
-            const history = await listGmailHistoryMessageIds(token, current.gmail_history_id!);
-            const index = await loadMatchIndex();
-            await ingestMessages(
-              token,
-              current.google_sub,
-              current.google_email,
-              history.ids,
-              index,
-            );
-            return { historyId: history.historyId };
-          } catch (caught) {
-            if (!(caught instanceof GoogleAuthError) || caught.status !== 404) throw caught;
-            return runTargetedGmailSearch(token, catchupAfterQuery(current.gmail_last_synced_at));
+      for (const current of accounts) {
+        await persistConnection({
+          googleSub: current.google_sub,
+          googleEmail: current.google_email,
+          gmailStatus: "syncing",
+          gmailLastError: null,
+        });
+        const profile = await withGoogle(async (token) => {
+          if (current.gmail_history_id) {
+            try {
+              setProgress({ label: `Checking Gmail changes for ${current.google_email}...` });
+              const history = await listGmailHistoryMessageIds(token, current.gmail_history_id!);
+              const index = await loadMatchIndex();
+              await ingestMessages(
+                token,
+                current.google_sub,
+                current.google_email,
+                history.ids,
+                index,
+              );
+              return { historyId: history.historyId };
+            } catch (caught) {
+              if (!(caught instanceof GoogleAuthError) || caught.status !== 404) throw caught;
+              return runTargetedGmailSearch(
+                token,
+                catchupAfterQuery(current.gmail_last_synced_at),
+                { googleSub: current.google_sub, googleEmail: current.google_email },
+              );
+            }
           }
-        }
-        return runTargetedGmailSearch(token, catchupAfterQuery(current.gmail_last_synced_at));
-      });
-      await persistConnection({
-        googleSub: current.google_sub,
-        googleEmail: current.google_email,
-        gmailStatus: "synced",
-        gmailHistoryId: profile.historyId,
-        markGmailSynced: true,
-        gmailLastError: null,
-      });
+          return runTargetedGmailSearch(
+            token,
+            catchupAfterQuery(current.gmail_last_synced_at),
+            { googleSub: current.google_sub, googleEmail: current.google_email },
+          );
+        }, current.google_sub);
+        await persistConnection({
+          googleSub: current.google_sub,
+          googleEmail: current.google_email,
+          gmailStatus: "synced",
+          gmailHistoryId: profile.historyId,
+          markGmailSynced: true,
+          gmailLastError: null,
+        });
+      }
     } catch (caught) {
       const message =
         caught instanceof GoogleQuotaError
@@ -672,30 +746,33 @@ export function GoogleSessionProvider({
           : caught instanceof Error
             ? caught.message
             : "Gmail sync failed.";
-      await persistConnection({
-        googleSub: current.google_sub,
-        googleEmail: current.google_email,
-        gmailStatus: "error",
-        gmailLastError: message,
-      });
       setError(message);
       throw caught;
     } finally {
       setProgress(null);
     }
-  }, [connection, ingestMessages, loadMatchIndex, persistConnection, runTargetedGmailSearch, withGoogle]);
+  }, [connections, ingestMessages, loadMatchIndex, persistConnection, runTargetedGmailSearch, withGoogle]);
 
   const syncGmailForEmails = useCallback(
     async (emails: string[], attach?: GmailSyncAttach) => {
       setError(null);
-      const current = connection;
-      if (!current) throw new Error("Connect Google before syncing Gmail.");
+      const accounts = restorableGoogleConnections(connections);
+      if (!accounts.length) throw new Error("Connect Google before syncing Gmail.");
       const targets = uniqueNormalizedEmails(emails);
       if (!targets.length) throw new Error("No email address to sync.");
       try {
-        await withGoogle((token) =>
-          runTargetedGmailSearch(token, "", { emails: targets, attach }),
-        );
+        for (const current of accounts) {
+          await withGoogle(
+            (token) =>
+              runTargetedGmailSearch(token, "", {
+                emails: targets,
+                attach,
+                googleSub: current.google_sub,
+                googleEmail: current.google_email,
+              }),
+            current.google_sub,
+          );
+        }
       } catch (caught) {
         const message =
           caught instanceof GoogleQuotaError
@@ -709,7 +786,7 @@ export function GoogleSessionProvider({
         setProgress(null);
       }
     },
-    [connection, runTargetedGmailSearch, withGoogle],
+    [connections, runTargetedGmailSearch, withGoogle],
   );
 
   const persistCalendarResult = useCallback(
@@ -722,20 +799,20 @@ export function GoogleSessionProvider({
       lastError?: string | null;
       unlink?: boolean;
     }) => {
-      if (!connection) throw new Error("Connect Google first.");
+      if (!calendarConnection) throw new Error("Connect Google first.");
       await readJson(
         await fetch("/api/google/calendar", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...input,
-            googleSub: connection.google_sub,
-            googleEmail: connection.google_email,
+            googleSub: calendarConnection.google_sub,
+            googleEmail: calendarConnection.google_email,
           }),
         }),
       );
     },
-    [connection],
+    [calendarConnection],
   );
 
   const refreshPendingCalendarCount = useCallback(async () => {
@@ -746,7 +823,7 @@ export function GoogleSessionProvider({
   }, []);
 
   const syncCalendar = useCallback(async () => {
-    if (!connection) throw new Error("Connect Google before syncing Calendar.");
+    if (!calendarConnection) throw new Error("Connect Google before syncing Calendar.");
     setError(null);
     setProgress({ label: "Syncing Google Calendar..." });
     try {
@@ -772,7 +849,7 @@ export function GoogleSessionProvider({
           if (!item.event || !item.calendarId || !item.eventId) {
             await persistCalendarResult({
               bookingId: item.bookingId,
-              googleCalendarId: item.calendarId ?? connection.calendar_id ?? "primary",
+              googleCalendarId: item.calendarId ?? calendarConnection.calendar_id ?? "primary",
               googleEventId: item.eventId ?? "missing",
               syncStatus: "error",
               lastError: "This booking is missing times needed for Google Calendar.",
@@ -809,19 +886,19 @@ export function GoogleSessionProvider({
           }
         }
         await persistConnection({
-          googleSub: connection.google_sub,
-          googleEmail: connection.google_email,
+          googleSub: calendarConnection.google_sub,
+          googleEmail: calendarConnection.google_email,
           calendarStatus: "synced",
           markCalendarSynced: true,
           calendarLastError: null,
         });
-      });
+      }, calendarConnection.google_sub);
       await refreshPendingCalendarCount();
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Calendar sync failed.";
       await persistConnection({
-        googleSub: connection.google_sub,
-        googleEmail: connection.google_email,
+        googleSub: calendarConnection.google_sub,
+        googleEmail: calendarConnection.google_email,
         calendarStatus: "error",
         calendarLastError: message,
       });
@@ -830,25 +907,25 @@ export function GoogleSessionProvider({
     } finally {
       setProgress(null);
     }
-  }, [connection, persistCalendarResult, persistConnection, refreshPendingCalendarCount, withGoogle]);
+  }, [calendarConnection, persistCalendarResult, persistConnection, refreshPendingCalendarCount, withGoogle]);
 
   const selectCalendar = useCallback(
     async (calendarId: string, summary: string) => {
-      if (!connection) return;
+      if (!calendarConnection) return;
       await persistConnection({
-        googleSub: connection.google_sub,
-        googleEmail: connection.google_email,
+        googleSub: calendarConnection.google_sub,
+        googleEmail: calendarConnection.google_email,
         calendarId,
         calendarSummary: summary,
         calendarStatus: "connected",
       });
     },
-    [connection, persistConnection],
+    [calendarConnection, persistConnection],
   );
 
   const createBookingEvent = useCallback(
     async (bookingId: string) => {
-      if (!connection) throw new Error("Connect Google first.");
+      if (!calendarConnection) throw new Error("Connect Google first.");
       await withGoogle(async (token) => {
         const payload = await readJson<{
           calendarId: string | null;
@@ -859,7 +936,7 @@ export function GoogleSessionProvider({
         if (!payload.event) {
           throw new Error("Add arrival and departure times before creating a Calendar event.");
         }
-        const calendarId = payload.calendarId || connection.calendar_id || "primary";
+        const calendarId = payload.calendarId || calendarConnection.calendar_id || "primary";
         const created = await createGoogleCalendarEvent(token, calendarId, payload.event);
         if (!created.id) throw new Error("Google Calendar did not return an event ID.");
         await persistCalendarResult({
@@ -870,14 +947,14 @@ export function GoogleSessionProvider({
           syncStatus: "synced",
           lastError: null,
         });
-      });
+      }, calendarConnection.google_sub);
     },
-    [connection, persistCalendarResult, withGoogle],
+    [calendarConnection, persistCalendarResult, withGoogle],
   );
 
   const updateBookingEvent = useCallback(
     async (bookingId: string) => {
-      if (!connection) throw new Error("Connect Google first.");
+      if (!calendarConnection) throw new Error("Connect Google first.");
       await withGoogle(async (token) => {
         const payload = await readJson<{
           calendarId: string | null;
@@ -926,34 +1003,34 @@ export function GoogleSessionProvider({
           });
           throw caught;
         }
-      });
+      }, calendarConnection.google_sub);
     },
-    [connection, persistCalendarResult, withGoogle],
+    [calendarConnection, persistCalendarResult, withGoogle],
   );
 
   const unlinkBookingEvent = useCallback(
     async (bookingId: string) => {
-      if (!connection) return;
+      if (!calendarConnection) return;
       const payload = await readJson<{
         eventId: string | null;
         calendarId: string | null;
       }>(await fetch(`/api/google/calendar?bookingId=${bookingId}`));
       await persistCalendarResult({
         bookingId,
-        googleCalendarId: payload.calendarId ?? connection.calendar_id ?? "primary",
+        googleCalendarId: payload.calendarId ?? calendarConnection.calendar_id ?? "primary",
         googleEventId: payload.eventId ?? "unlinked",
         syncStatus: "synced",
         unlink: true,
       });
     },
-    [connection, persistCalendarResult],
+    [calendarConnection, persistCalendarResult],
   );
 
   const createOutreachCalendarEvent = useCallback(
     async (event: GoogleCalendarEventWrite) => {
-      if (!connection) throw new Error("Connect Google first.");
+      if (!calendarConnection) throw new Error("Connect Google first.");
       return withGoogle(async (token) => {
-        const calendarId = connection.calendar_id || "primary";
+        const calendarId = calendarConnection.calendar_id || "primary";
         const created = await createGoogleCalendarEvent(token, calendarId, event);
         if (!created.id) throw new Error("Google Calendar did not return an event ID.");
         return {
@@ -962,15 +1039,17 @@ export function GoogleSessionProvider({
           htmlLink: created.htmlLink,
           hangoutLink: googleMeetHangoutLink(created),
         };
-      });
+      }, calendarConnection.google_sub);
     },
-    [connection, withGoogle],
+    [calendarConnection, withGoogle],
   );
 
   const value = useMemo<GoogleSessionValue>(
     () => ({
       clientId,
       connection,
+      sendConnection,
+      calendarConnection,
       connections,
       accessToken,
       expired: !accessToken && (expired || connection?.gmail_status === "expired"),
@@ -997,6 +1076,7 @@ export function GoogleSessionProvider({
     [
       accessToken,
       backfillGmail,
+      calendarConnection,
       calendars,
       clientId,
       connect,
@@ -1013,6 +1093,7 @@ export function GoogleSessionProvider({
       progress,
       refreshPendingCalendarCount,
       selectCalendar,
+      sendConnection,
       syncCalendar,
       syncGmail,
       syncGmailForEmails,
@@ -1037,12 +1118,4 @@ export function useGoogleSession() {
 
 export function useOptionalGoogleSession() {
   return useContext(GoogleSessionContext);
-}
-
-export function hasGmailScope(tokenScope: string | undefined) {
-  return !tokenScope || tokenScope.includes(GMAIL_SCOPE) || tokenScope.includes("gmail");
-}
-
-export function hasCalendarScope(tokenScope: string | undefined) {
-  return !tokenScope || tokenScope.includes(CALENDAR_EVENTS_SCOPE) || tokenScope.includes("calendar");
 }

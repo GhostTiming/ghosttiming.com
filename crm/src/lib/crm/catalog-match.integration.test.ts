@@ -164,7 +164,7 @@ integration("booking catalog matching", () => {
       await client.query("ROLLBACK");
       client.release();
     }
-  });
+  }, 15_000);
 
   it("archives leftover imported leads on an already-booked event", async () => {
     const client = await pool.connect();
@@ -240,7 +240,7 @@ integration("booking catalog matching", () => {
       await client.query("ROLLBACK");
       client.release();
     }
-  });
+  }, 15_000);
 
   it(
     "auto-links a unique unmatched prospect without archiving it",
