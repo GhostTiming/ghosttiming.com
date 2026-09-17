@@ -231,8 +231,22 @@ export function preferredCatalogEditionId<
     starts_at?: string | Date | null;
     edition_year?: number | null;
   },
->(editions: T[], nextStartAt?: string | Date | null) {
+>(
+  editions: T[],
+  nextStartAt?: string | Date | null,
+  options: { editionYear?: number | null } = {},
+) {
   if (!editions.length) return null;
+  const targetYear = options.editionYear;
+  if (targetYear != null && Number.isFinite(targetYear)) {
+    const yearMatches = editions.filter(
+      (edition) => edition.edition_year === targetYear,
+    );
+    if (yearMatches.length === 1) return yearMatches[0]?.id ?? null;
+    if (yearMatches.length > 1) {
+      return preferredCatalogEditionId(yearMatches, nextStartAt);
+    }
+  }
   const nextMs = nextStartAt ? new Date(nextStartAt).valueOf() : Number.NaN;
   const distance = (startsAt: string | Date | null | undefined) => {
     if (!startsAt || Number.isNaN(nextMs)) return Number.POSITIVE_INFINITY;
@@ -267,6 +281,20 @@ export function preferredCatalogEditionSql(listingIdExpr: string) {
         )
       ))) NULLS LAST,
       re.edition_year DESC NULLS LAST
+    LIMIT 1
+  )`;
+}
+
+export function catalogEditionForYearSql(
+  listingIdExpr: string,
+  yearExpr: string,
+) {
+  return `(
+    SELECT re.id
+    FROM catalog.race_editions re
+    WHERE re.race_listing_id = ${listingIdExpr}
+      AND re.edition_year = ${yearExpr}
+    ORDER BY re.starts_at DESC NULLS LAST, re.id
     LIMIT 1
   )`;
 }
@@ -331,10 +359,12 @@ export async function syncOccurrenceRacesFromCatalog(
   const occurrence = await client.query<{
     listing_id: string | null;
     race_date: string | null;
+    occurrence_year: number | null;
   }>(
     `
       SELECT event.catalog_race_listing_id AS listing_id,
-             occurrence.race_date::text
+             occurrence.race_date::text,
+             occurrence.occurrence_year
       FROM crm.event_occurrences occurrence
       JOIN crm.events event ON event.id = occurrence.event_id
       WHERE occurrence.id = $1::uuid
@@ -348,11 +378,22 @@ export async function syncOccurrenceRacesFromCatalog(
     return { inserted: 0 };
   }
 
-  const preferredEdition = await client.query<{ id: string | null }>(
-    `SELECT ${preferredCatalogEditionSql("$1")} AS id`,
-    [listingId],
-  );
-  const editionId = preferredEdition.rows[0]?.id ?? null;
+  const occurrenceYear = occurrence.rows[0]?.occurrence_year ?? null;
+  let editionId: string | null = null;
+  if (occurrenceYear != null) {
+    const byYear = await client.query<{ id: string | null }>(
+      `SELECT ${catalogEditionForYearSql("$1", "$2")} AS id`,
+      [listingId, occurrenceYear],
+    );
+    editionId = byYear.rows[0]?.id ?? null;
+  }
+  if (!editionId) {
+    const preferredEdition = await client.query<{ id: string | null }>(
+      `SELECT ${preferredCatalogEditionSql("$1")} AS id`,
+      [listingId],
+    );
+    editionId = preferredEdition.rows[0]?.id ?? null;
+  }
   if (editionId) {
     await client.query(
       `

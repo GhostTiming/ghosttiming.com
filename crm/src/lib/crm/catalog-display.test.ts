@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  catalogListingExternalUrl,
+  catalogListingOpenLabel,
+  catalogProviderLabel,
   formatOfferingClock,
   getRunVibesEventUrl,
   htmlToPlainText,
@@ -37,6 +40,25 @@ describe("catalog display helpers", () => {
       "https://getrunvibes.com/events/pandorasboxofrox-1000676",
     );
     expect(getRunVibesEventUrl("")).toBeNull();
+  });
+
+  it("labels providers and picks the right external listing URL", () => {
+    expect(catalogProviderLabel("race_roster")).toBe("Race Roster");
+    expect(catalogProviderLabel("runsignup")).toBe("Get Run Vibes");
+    expect(catalogListingOpenLabel("race_roster")).toBe("Open on Race Roster");
+    expect(
+      catalogListingExternalUrl({
+        sourceProvider: "race_roster",
+        registrationUrl: "https://raceroster.com/events/2026/112451/black-bear",
+        catalogSlug: "black-bear-rr-112451",
+      }),
+    ).toBe("https://raceroster.com/events/2026/112451/black-bear");
+    expect(
+      catalogListingExternalUrl({
+        sourceProvider: "runsignup",
+        catalogSlug: "pandorasboxofrox-1000676",
+      }),
+    ).toBe("https://getrunvibes.com/events/pandorasboxofrox-1000676");
   });
 
   it("turns offering start times into a clock label and ignores midnight placeholders", () => {

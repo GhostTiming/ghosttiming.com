@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, CalendarDays } from "lucide-react";
 import Link from "next/link";
 import { bulkUpdateEventsAction } from "@/app/bulk-actions";
+import { DatasetFilterNav } from "@/components/dataset-filter-nav";
 import {
   DatasetBulkBar,
   DatasetBulkRoot,
@@ -16,7 +17,7 @@ import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { eventBulkFields } from "@/lib/crm/bulk-fields";
 import { listEvents } from "@/lib/crm/event-queries";
-import { CHIP_ROW } from "@/lib/crm/layout";
+import { TABLE_SCROLL } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Events" };
@@ -118,7 +119,7 @@ export default async function EventsPage({
           <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
             Race history
           </p>
-          <h1 className="flex items-center gap-2 text-3xl font-bold text-slate-950">
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950 md:text-3xl">
             <CalendarDays aria-hidden className="size-8" />
             Events
           </h1>
@@ -132,28 +133,28 @@ export default async function EventsPage({
       </header>
 
       {access.isSuperAdmin ? (
-      <nav className={CHIP_ROW} aria-label="Event list scope">
-        <Link
-          href={buildSearchHref("/events", current, { scope: "client", page: null })}
-          className={`rounded-full px-3 py-1.5 text-sm ring-1 ${
-            current.scope === "client"
-              ? "bg-slate-900 text-white ring-slate-900"
-              : "bg-white ring-slate-200"
-          }`}
-        >
-          Client events
-        </Link>
-        <Link
-          href={buildSearchHref("/events", current, { scope: "prospect", page: null })}
-          className={`rounded-full px-3 py-1.5 text-sm ring-1 ${
-            current.scope === "prospect"
-              ? "bg-slate-900 text-white ring-slate-900"
-              : "bg-white ring-slate-200"
-          }`}
-        >
-          Prospect events
-        </Link>
-      </nav>
+      <DatasetFilterNav
+        ariaLabel="Event list scope"
+        value={current.scope === "prospect" ? "prospect" : "client"}
+        options={[
+          {
+            value: "client",
+            label: "Client events",
+            href: buildSearchHref("/events", current, {
+              scope: "client",
+              page: null,
+            }),
+          },
+          {
+            value: "prospect",
+            label: "Prospect events",
+            href: buildSearchHref("/events", current, {
+              scope: "prospect",
+              page: null,
+            }),
+          },
+        ]}
+      />
       ) : null}
 
       <DatasetBulkRoot>
@@ -164,7 +165,7 @@ export default async function EventsPage({
         updateAction={bulkUpdateEventsAction}
       />
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        <div className={TABLE_SCROLL}>
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600">
             <tr>

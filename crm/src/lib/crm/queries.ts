@@ -430,6 +430,9 @@ export type ProspectDetail = {
   catalog_slug: string | null;
   description_html: string | null;
   quick_take: string | null;
+  source_provider: string | null;
+  catalog_registration_url: string | null;
+  external_race_url: string | null;
 };
 
 export type CatalogTagRow = {
@@ -556,6 +559,9 @@ export async function getProspectDetail(prospectId: string) {
           event.catalog_race_listing_id,
           event.catalog_match_dismissed_at::text,
           rl.slug AS catalog_slug,
+          rl.source_provider,
+          rl.registration_url AS catalog_registration_url,
+          rl.external_race_url,
           rl.description_html,
           enrich.quick_take
         FROM crm.prospects p
@@ -717,6 +723,9 @@ export type CatalogOverviewListing = {
   city: string | null;
   state: string | null;
   timezone: string | null;
+  source_provider: string | null;
+  registration_url: string | null;
+  external_race_url: string | null;
 };
 
 export async function getCatalogOverview(
@@ -736,7 +745,10 @@ export async function getCatalogOverview(
           enrich.quick_take,
           rl.city,
           rl.state,
-          rl.timezone
+          rl.timezone,
+          rl.source_provider,
+          rl.registration_url,
+          rl.external_race_url
         FROM catalog.race_listings rl
         LEFT JOIN catalog.race_listing_ai_enrichment enrich
           ON enrich.race_listing_id = rl.id AND enrich.is_current = true

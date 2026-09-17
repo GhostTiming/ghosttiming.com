@@ -23,6 +23,12 @@ The migration in `drizzle/` creates only the new `crm` schema and references the
 existing `catalog` schema. Apply and test migrations on a Neon child branch
 before promoting them to `main`.
 
+## Race Roster sync
+
+To pull timer-accessible Race Roster events into the shared catalog, see
+[`docs/race-roster-sync.md`](./docs/race-roster-sync.md). You need the OAuth
+client id/secret plus the timer account username/password (or a refresh token).
+
 ## Vercel deployment
 
 Create a separate Vercel project from this repository with `crm` as its Root

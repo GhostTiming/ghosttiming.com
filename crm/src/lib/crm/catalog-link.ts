@@ -1,7 +1,9 @@
 import type { PoolClient } from "pg";
 import { appendAuditActivity } from "./audit";
 import {
+  catalogListingSearchIdWhereSql,
   catalogListingSearchWhereSql,
+  catalogSearchIdNeedle,
   catalogSearchLikeNeedles,
   listingMatchesSearch,
 } from "./catalog-search";
@@ -38,11 +40,19 @@ const NAME_STOP_WORDS = new Set([
 export type CatalogListingCandidate = {
   id: string;
   name: string;
+  slug?: string | null;
+  source_race_id?: string | number | null;
+  source_event_ids?: string[] | null;
   city: string | null;
   state: string | null;
   zipcode?: string | null;
   next_start_at?: string | Date | null;
   edition_year?: number | null;
+  /** True when a live booking already owns this listing (prospect links do not count). */
+  taken?: boolean;
+  source_provider?: string | null;
+  registration_url?: string | null;
+  external_race_url?: string | null;
 };
 
 export type CatalogListingSuggestion = CatalogListingCandidate & {
@@ -77,6 +87,19 @@ export function liveBookingOwnsListingSql(listingIdExpr: string) {
       AND booked.archived_at IS NULL
       AND booked_stage.key <> 'closed_lost'
   )`;
+}
+
+/** Listings already claimed by a live booking (not prospect-only links). */
+export function liveBookedCatalogListingIdsSql() {
+  return `SELECT DISTINCT event.catalog_race_listing_id AS id
+     FROM crm.events event
+     JOIN crm.event_occurrences occurrence ON occurrence.event_id = event.id
+     JOIN crm.bookings booking ON booking.occurrence_id = occurrence.id
+     JOIN crm.pipeline_stages stage ON stage.id = booking.stage_id
+     WHERE event.catalog_race_listing_id IS NOT NULL
+       AND event.archived_at IS NULL
+       AND booking.archived_at IS NULL
+       AND stage.key <> 'closed_lost'`;
 }
 
 export function liveBookingOwnsEventSql(eventIdExpr: string) {
@@ -325,6 +348,21 @@ function listingYearSubselectSql(listingIdExpr = "catalog.race_listings.id") {
   )`;
 }
 
+const listingCandidateSelectSql = `SELECT id, name, slug, source_race_id::text,
+          (
+            SELECT coalesce(
+              array_agg(DISTINCT source_event_id::text)
+                FILTER (WHERE source_event_id IS NOT NULL),
+              '{}'::text[]
+            )
+            FROM catalog.legacy_event_identity_map
+            WHERE race_listing_id = catalog.race_listings.id
+          ) AS source_event_ids,
+          city, state, zipcode, next_start_at::text,
+          source_provider, registration_url, external_race_url,
+          ${listingYearSubselectSql()} AS edition_year
+     FROM catalog.race_listings`;
+
 export async function loadCatalogListingCandidates(
   query: QueryFn,
   options: { names?: string[]; search?: string } = {},
@@ -333,35 +371,37 @@ export async function loadCatalogListingCandidates(
   const keys = [
     ...new Set((options.names ?? []).map((name) => eventMatchKey(name)).filter(Boolean)),
   ];
-  const listingSql = `SELECT id, name, city, state, zipcode, next_start_at::text,
-          ${listingYearSubselectSql()} AS edition_year
-     FROM catalog.race_listings`;
-  const searchNeedles = catalogSearchLikeNeedles(search);
+  const idNeedle = catalogSearchIdNeedle(search);
+  const searchNeedles = idNeedle ? [idNeedle] : catalogSearchLikeNeedles(search);
   const [listings, taken] = await Promise.all([
     searchNeedles.length
       ? query<CatalogListingCandidate>(
-          `${listingSql}
-           WHERE ${catalogListingSearchWhereSql(searchNeedles.length)}
+          `${listingCandidateSelectSql}
+           WHERE ${
+             idNeedle
+               ? catalogListingSearchIdWhereSql()
+               : catalogListingSearchWhereSql(searchNeedles.length)
+           }
            ORDER BY next_start_at DESC NULLS LAST
            LIMIT 50`,
           searchNeedles,
         )
       : keys.length
         ? query<CatalogListingCandidate>(
-            `${listingSql}
+            `${listingCandidateSelectSql}
              WHERE ${catalogNameMatchKeySql} = ANY($1::text[])`,
             [keys],
           )
         : Promise.resolve({ rows: [] as CatalogListingCandidate[] }),
-    query<{ id: string }>(
-      `SELECT catalog_race_listing_id AS id
-       FROM crm.events
-       WHERE catalog_race_listing_id IS NOT NULL`,
-    ),
+    query<{ id: string }>(liveBookedCatalogListingIdsSql()),
   ]);
+  const takenIds = new Set(taken.rows.map((row) => row.id));
   return {
-    listings: listings.rows,
-    takenIds: new Set(taken.rows.map((row) => row.id)),
+    listings: listings.rows.map((listing) => ({
+      ...listing,
+      taken: takenIds.has(listing.id),
+    })),
+    takenIds,
   };
 }
 
@@ -386,9 +426,7 @@ async function loadCatalogListingsForNames(
   ];
   if (!keys.length) return [] as CatalogListingCandidate[];
   const result = await client.query<CatalogListingCandidate>(
-    `SELECT id, name, city, state, zipcode, next_start_at::text,
-            ${listingYearSubselectSql()} AS edition_year
-     FROM catalog.race_listings
+    `${listingCandidateSelectSql}
      WHERE ${catalogNameMatchKeySql} = ANY($1::text[])`,
     [keys],
   );
@@ -483,7 +521,7 @@ export async function archiveUnmatchedProspectsForLiveBookedListings(
   actor: { id: string; name: string },
 ) {
   const booked = await client.query<CatalogListingCandidate>(
-    `SELECT rl.id, rl.name, rl.city, rl.state, rl.next_start_at::text,
+    `SELECT rl.id, rl.name, rl.slug, rl.city, rl.state, rl.next_start_at::text,
             ${listingYearSubselectSql("rl.id")} AS edition_year
      FROM catalog.race_listings rl
      WHERE ${liveBookingOwnsListingSql("rl.id")}`,
@@ -561,18 +599,42 @@ export async function linkEventToCatalogListing(
     archiveProspects?: boolean;
   },
 ) {
-  const taken = await client.query<{ id: string }>(
+  const ownedByOtherBooking = await client.query<{ owned: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM crm.events booked_event
+       JOIN crm.event_occurrences booked_occurrence
+         ON booked_occurrence.event_id = booked_event.id
+       JOIN crm.bookings booked ON booked.occurrence_id = booked_occurrence.id
+       JOIN crm.pipeline_stages booked_stage ON booked_stage.id = booked.stage_id
+       WHERE booked_event.catalog_race_listing_id = $1
+         AND booked_event.id <> $2::uuid
+         AND booked_event.archived_at IS NULL
+         AND booked.archived_at IS NULL
+         AND booked_stage.key <> 'closed_lost'
+     ) AS owned`,
+    [input.listingId, input.eventId],
+  );
+  if (ownedByOtherBooking.rows[0]?.owned) {
+    throw new Error(
+      "That catalog listing is already linked to another booking.",
+    );
+  }
+
+  // Prospect (or other non-booking) events may already hold this listing.
+  // Release them so the booking can claim it; prospects are archived below.
+  const holders = await client.query<{ id: string }>(
     `SELECT id::text
      FROM crm.events
      WHERE catalog_race_listing_id = $1
-       AND id <> $2::uuid`,
+       AND id <> $2::uuid
+       AND archived_at IS NULL`,
     [input.listingId, input.eventId],
   );
-  if (taken.rows[0]) {
-    throw new Error(
-      "That Get Run Vibes listing is already linked to another event.",
-    );
+  for (const holder of holders.rows) {
+    await unlinkEventFromCatalogListing(client, holder.id);
   }
+
   const updated = await client.query(
     `UPDATE crm.events
      SET catalog_race_listing_id = $2,
@@ -617,7 +679,7 @@ export async function unlinkEventFromCatalogListing(
     [eventId],
   );
   if (!updated.rowCount) {
-    throw new Error("This event is not linked to Get Run Vibes.");
+    throw new Error("This event is not linked to a catalog listing.");
   }
   await client.query(
     `UPDATE crm.event_occurrences
@@ -675,11 +737,7 @@ async function autoLinkEvents(
   const listingsByKey = listingsByMatchKey(listings);
   const taken = new Set(
     (
-      await client.query<{ id: string }>(
-        `SELECT catalog_race_listing_id AS id
-         FROM crm.events
-         WHERE catalog_race_listing_id IS NOT NULL`,
-      )
+      await client.query<{ id: string }>(liveBookedCatalogListingIdsSql())
     ).rows.map((row) => row.id),
   );
   let linked = 0;

@@ -7,15 +7,21 @@ import {
   asCatalogQuery,
   loadCatalogListingCandidates,
 } from "@/lib/crm/catalog-link";
-import { catalogSearchLikeNeedles } from "@/lib/crm/catalog-search";
+import {
+  catalogSearchIdNeedle,
+  catalogSearchLikeNeedles,
+} from "@/lib/crm/catalog-search";
 
 export async function searchCatalogListingsAction(query: string) {
   await requireCrmUser();
   const search = z.string().trim().max(200).parse(query);
-  if (!catalogSearchLikeNeedles(search).length) return [];
+  if (!catalogSearchIdNeedle(search) && !catalogSearchLikeNeedles(search).length) {
+    return [];
+  }
   const context = await loadCatalogListingCandidates(
     asCatalogQuery((sql, params) => getPool().query(sql, params)),
     { search },
   );
-  return context.listings.filter((listing) => !context.takenIds.has(listing.id));
+  // Keep already-linked listings visible so id/slug searches still surface them.
+  return context.listings;
 }

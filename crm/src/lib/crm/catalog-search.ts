@@ -13,6 +13,13 @@ export function catalogSearchLikeNeedles(query: string) {
     .filter((token) => token.length >= 2);
 }
 
+/** Pure numeric queries are treated as GRV/RunSignup ids (listing id, race id, or event id). */
+export function catalogSearchIdNeedle(query: string) {
+  const trimmed = query.trim();
+  if (!/^\d{4,}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
 export function catalogListingSearchQuery(event: {
   name?: string | null;
   city?: string | null;
@@ -40,8 +47,21 @@ export function listingEventYear(
   return match?.[1] ?? listingEventYear(null, editionYear);
 }
 
+/** Extra searchable text derived from a GRV slug (spaced tokens + trailing event id). */
+export function slugSearchExtras(slug?: string | null) {
+  if (!slug?.trim()) return [] as string[];
+  const value = slug.trim();
+  const spaced = value.replace(/-/g, " ");
+  const trailingId = value.match(/-(\d{4,})$/)?.[1];
+  return trailingId && trailingId !== spaced ? [spaced, trailingId] : [spaced];
+}
+
 export function listingSearchText(listing: {
+  id?: string | number | null;
   name: string;
+  slug?: string | null;
+  source_race_id?: string | number | null;
+  source_event_ids?: Array<string | number> | null;
   street?: string | null;
   city?: string | null;
   state?: string | null;
@@ -51,6 +71,11 @@ export function listingSearchText(listing: {
 }) {
   return [
     listing.name,
+    listing.slug,
+    ...slugSearchExtras(listing.slug),
+    listing.id == null ? null : String(listing.id),
+    listing.source_race_id == null ? null : String(listing.source_race_id),
+    ...(listing.source_event_ids ?? []).map((id) => String(id)),
     listing.street,
     listing.city,
     listing.state,
@@ -66,17 +91,42 @@ export function listingMatchesSearch(
   listing: Parameters<typeof listingSearchText>[0],
   query: string,
 ) {
+  const idNeedle = catalogSearchIdNeedle(query);
+  const haystack = listingSearchText(listing);
+  if (idNeedle) return haystack.includes(idNeedle.toLowerCase());
+
   const tokens = catalogSearchTokens(query, 1);
   if (!tokens.length) return true;
-  const haystack = listingSearchText(listing);
   return tokens.every((token) => haystack.includes(token));
 }
 
-export const catalogListingSearchHaystackSql = `lower(concat_ws(' ', name, street, city, state, zipcode, to_char(next_start_at, 'YYYY'), (
-  SELECT MAX(edition_year)::text
-  FROM catalog.race_editions
-  WHERE race_listing_id = catalog.race_listings.id
-)))`;
+/**
+ * Search across display fields plus GRV identifiers:
+ * listing UUID, slug (raw + hyphen-spaced), source_race_id, and legacy source_event_ids.
+ */
+export const catalogListingSearchHaystackSql = `lower(concat_ws(' ',
+  name,
+  slug,
+  replace(slug, '-', ' '),
+  id::text,
+  source_race_id::text,
+  street,
+  city,
+  state,
+  zipcode,
+  to_char(next_start_at, 'YYYY'),
+  (
+    SELECT MAX(edition_year)::text
+    FROM catalog.race_editions
+    WHERE race_listing_id = catalog.race_listings.id
+  ),
+  (
+    SELECT string_agg(DISTINCT source_event_id::text, ' ')
+    FROM catalog.legacy_event_identity_map
+    WHERE race_listing_id = catalog.race_listings.id
+      AND source_event_id IS NOT NULL
+  )
+))`;
 
 export function catalogListingSearchWhereSql(
   tokenCount: number,
@@ -87,4 +137,9 @@ export function catalogListingSearchWhereSql(
     (_, index) =>
       `${catalogListingSearchHaystackSql} LIKE '%' || $${startParam + index} || '%'`,
   ).join(" AND ");
+}
+
+/** Single numeric id queries match any id-bearing field without AND-ing name tokens. */
+export function catalogListingSearchIdWhereSql(startParam = 1) {
+  return `${catalogListingSearchHaystackSql} LIKE '%' || $${startParam} || '%'`;
 }

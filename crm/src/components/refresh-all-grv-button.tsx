@@ -11,7 +11,7 @@ export function RefreshAllGrvButton() {
   async function run() {
     if (
       !window.confirm(
-        "Refresh every booking linked to Get Run Vibes? This can take a while.",
+        "Refresh upcoming catalog-linked bookings? Past and paid bookings are left alone. This can take a while.",
       )
     ) {
       return;
@@ -37,7 +37,7 @@ export function RefreshAllGrvButton() {
         onClick={() => void run()}
         className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
       >
-        {pending ? "Refreshing…" : "Refresh all from Get Run Vibes"}
+        {pending ? "Refreshing…" : "Refresh all from catalog"}
       </button>
       {message ? <p className="max-w-xs text-right text-xs text-slate-600">{message}</p> : null}
     </div>

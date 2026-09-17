@@ -6,6 +6,7 @@ import {
   uniqueCatalogMatchForEvent,
   candidateHasUsableContactSql,
   listingHasGrvContactFlagSql,
+  liveBookedCatalogListingIdsSql,
   liveBookingOwnsEventSql,
 } from "./catalog-link";
 import { eventMatchKey } from "./event-matching";
@@ -169,6 +170,30 @@ describe("catalog listing matching", () => {
       resolveCatalogListingQuery("Daytona", [firecracker, hannah]).match?.id,
     ).toBe("listing-firecracker");
   });
+
+  it("resolves a search by slug brand tokens or listing id", () => {
+    const church = {
+      id: "99772553-cef7-4f03-80e2-014ef4ca8c6f",
+      name: "SVDP Church of Our Saviour FOP 5K Run/Walk",
+      slug: "svdpchurchofoursaviourfoprunwalk-1081007",
+      source_race_id: "159997",
+      source_event_ids: ["1081007"],
+      city: "Cocoa Beach",
+      state: "FL",
+    };
+    expect(
+      resolveCatalogListingQuery("SVDP Church of Our Saviour", [
+        church,
+        hannah,
+      ]).match?.id,
+    ).toBe(church.id);
+    expect(
+      resolveCatalogListingQuery("1081007", [church, hannah]).match?.id,
+    ).toBe(church.id);
+    expect(
+      resolveCatalogListingQuery("159997", [church, hannah]).match?.id,
+    ).toBe(church.id);
+  });
 });
 
 describe("Get Run Vibes lead-contact flags", () => {
@@ -198,5 +223,13 @@ describe("live booking ownership", () => {
     expect(sql).toContain("booked_occurrence.event_id = event.id");
     expect(sql).toContain("booked.archived_at IS NULL");
     expect(sql).toContain("closed_lost");
+  });
+
+  it("only treats live bookings as taken catalog listings, not prospect links", () => {
+    const sql = liveBookedCatalogListingIdsSql();
+    expect(sql).toContain("crm.bookings");
+    expect(sql).toContain("closed_lost");
+    expect(sql).toContain("catalog_race_listing_id");
+    expect(sql).not.toContain("crm.prospects");
   });
 });

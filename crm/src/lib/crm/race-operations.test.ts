@@ -180,4 +180,33 @@ describe("preferred catalog edition", () => {
       ),
     ).toBe("2026");
   });
+
+  it("prefers the occurrence year when refreshing a past booking", () => {
+    expect(
+      preferredCatalogEditionId(
+        [
+          {
+            id: "2025",
+            is_future: false,
+            starts_at: "2025-04-11 07:00:00",
+            edition_year: 2025,
+          },
+          {
+            id: "2026",
+            is_future: false,
+            starts_at: "2026-04-11 07:00:00",
+            edition_year: 2026,
+          },
+          {
+            id: "2027",
+            is_future: true,
+            starts_at: "2027-04-10 07:00:00",
+            edition_year: 2027,
+          },
+        ],
+        "2027-04-10 11:00:00+00",
+        { editionYear: 2026 },
+      ),
+    ).toBe("2026");
+  });
 });

@@ -51,7 +51,7 @@ export function AppShell({
       userId={user.id}
       initialConnections={googleConnections}
     >
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen min-w-0 overflow-x-clip bg-slate-100">
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950 text-white">
         <div className="mx-auto hidden max-w-screen-2xl items-center gap-x-3 px-6 py-3 md:flex">
           <Link href="/dashboard" className="flex shrink-0 items-center gap-2">
@@ -151,7 +151,7 @@ export function AppShell({
           </div>
         </div>
       ) : null}
-      <main className="mx-auto max-w-screen-2xl px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-6">
+      <main className="mx-auto min-w-0 max-w-screen-2xl overflow-x-clip px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-6">
         {children}
       </main>
     </div>

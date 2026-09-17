@@ -17,6 +17,35 @@ export type CatalogRefreshSummary = {
   rows: CatalogRefreshRow[];
 };
 
+/** Stages that should not be rewritten from catalog. */
+export const catalogRefreshTerminalStages = ["paid", "closed_lost"] as const;
+
+export function shouldSkipCatalogRefresh(input: {
+  stageKey?: string | null;
+  raceDate?: string | Date | null;
+  now?: Date;
+}) {
+  const stage = input.stageKey?.trim().toLowerCase() ?? "";
+  if (
+    (catalogRefreshTerminalStages as readonly string[]).includes(stage)
+  ) {
+    return stage === "paid"
+      ? "Already paid — left unchanged."
+      : "Closed lost — left unchanged.";
+  }
+  if (!input.raceDate) return null;
+  const raceMs =
+    input.raceDate instanceof Date
+      ? input.raceDate.valueOf()
+      : new Date(input.raceDate).valueOf();
+  if (Number.isNaN(raceMs)) return null;
+  const now = input.now ?? new Date();
+  if (raceMs < now.valueOf()) {
+    return "Past race date — left unchanged.";
+  }
+  return null;
+}
+
 export function summarizeCatalogRefresh(rows: CatalogRefreshRow[]): CatalogRefreshSummary {
   return {
     updated: rows.filter((row) => row.status === "updated").length,
@@ -46,13 +75,18 @@ export async function refreshBookingFromCatalog(
   const booking = await client.query<{
     occurrence_id: string;
     listing_id: string | null;
+    stage_key: string | null;
+    race_date: string | null;
   }>(
     `
       SELECT occurrence.id::text AS occurrence_id,
-             event.catalog_race_listing_id AS listing_id
+             event.catalog_race_listing_id AS listing_id,
+             stage.key AS stage_key,
+             occurrence.race_date::text
       FROM crm.bookings booking
       JOIN crm.event_occurrences occurrence ON occurrence.id = booking.occurrence_id
       JOIN crm.events event ON event.id = occurrence.event_id
+      JOIN crm.pipeline_stages stage ON stage.id = booking.stage_id
       WHERE booking.id = $1::uuid
     `,
     [input.bookingId],
@@ -65,7 +99,18 @@ export async function refreshBookingFromCatalog(
     return {
       bookingId: input.bookingId,
       status: "skipped",
-      error: "Not linked to Get Run Vibes.",
+      error: "Not linked to a catalog listing.",
+    };
+  }
+  const skipReason = shouldSkipCatalogRefresh({
+    stageKey: row.stage_key,
+    raceDate: row.race_date,
+  });
+  if (skipReason) {
+    return {
+      bookingId: input.bookingId,
+      status: "skipped",
+      error: skipReason,
     };
   }
   const result = await syncOccurrenceRacesFromCatalog(client, row.occurrence_id);
@@ -74,8 +119,8 @@ export async function refreshBookingFromCatalog(
     { bookingId: input.bookingId },
     input.actor,
     result.inserted
-      ? `Refreshed ${result.inserted} race${result.inserted === 1 ? "" : "s"} from Get Run Vibes`
-      : "Refreshed from Get Run Vibes",
+      ? `Refreshed ${result.inserted} race${result.inserted === 1 ? "" : "s"} from catalog`
+      : "Refreshed from catalog",
   );
   return { bookingId: input.bookingId, status: "updated" };
 }

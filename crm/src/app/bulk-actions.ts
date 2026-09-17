@@ -370,8 +370,11 @@ export async function refreshAllLinkedBookingsFromCatalogAction(): Promise<BulkA
         FROM crm.bookings booking
         JOIN crm.event_occurrences occurrence ON occurrence.id = booking.occurrence_id
         JOIN crm.events event ON event.id = occurrence.event_id
+        JOIN crm.pipeline_stages stage ON stage.id = booking.stage_id
         WHERE booking.archived_at IS NULL
           AND event.catalog_race_listing_id IS NOT NULL
+          AND stage.key NOT IN ('paid', 'closed_lost')
+          AND (occurrence.race_date IS NULL OR occurrence.race_date >= now())
           AND ($1::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($1::uuid[]))
       `,
       [orgScope],

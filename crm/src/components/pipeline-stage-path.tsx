@@ -11,6 +11,7 @@ import {
   prospectStageTone,
   type PipelineStageTone,
 } from "@/lib/crm/domain";
+import { rethrowIfNextControlFlow } from "@/lib/next-control-flow";
 
 export type PipelineStageOption = {
   key: string;
@@ -61,6 +62,7 @@ export function PipelineStagePath({
     try {
       await action(formData);
     } catch (cause) {
+      rethrowIfNextControlFlow(cause);
       setSaveFailed(true);
       setError(cause instanceof Error ? cause.message : "Could not save stage.");
     }
@@ -93,8 +95,25 @@ export function PipelineStagePath({
           {error}
         </p>
       ) : null}
+      <div className="mt-4 md:hidden">
+        <label className="block">
+          <span className="sr-only">{ariaLabel}</span>
+          <select
+            name="stageKey"
+            defaultValue={currentStageKey}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium"
+            aria-label={ariaLabel}
+          >
+            {stages.map((stage) => (
+              <option key={stage.key} value={stage.key}>
+                {stage.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div
-        className="mt-4 flex overflow-x-auto rounded-xl border border-slate-200"
+        className="mt-4 hidden max-w-full overflow-x-auto rounded-xl border border-slate-200 md:flex"
         role="radiogroup"
         aria-label={ariaLabel}
       >

@@ -21,7 +21,7 @@ export function UncoupleCatalogButton({
       onSubmit={(event) => {
         if (
           !window.confirm(
-            "Uncouple this from Get Run Vibes so you can match a different listing or year?",
+            "Uncouple this catalog listing so you can match a different one?",
           )
         ) {
           event.preventDefault();

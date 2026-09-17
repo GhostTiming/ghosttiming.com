@@ -2,6 +2,7 @@ import { CalendarDays, Columns3, List, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { BookingBulkBar } from "@/components/booking-bulk-bar";
 import { CatalogMatchControls } from "@/components/catalog-match-controls";
+import { DatasetFilterNav } from "@/components/dataset-filter-nav";
 import {
   DatasetBulkRoot,
   DatasetCheckbox,
@@ -22,7 +23,7 @@ import {
   loadCatalogListingCandidates,
   suggestCatalogMatches,
 } from "@/lib/crm/catalog-link";
-import { CHIP_ROW, DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS, TABLE_SCROLL } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam } from "@/lib/crm/search-params";
 
 export const maxDuration = 120;
@@ -220,12 +221,6 @@ export default async function BookingsPage({
       access.canViewFinancials(booking.direct_client_id),
     ),
   );
-  const filterClass = (active: boolean) =>
-    `rounded-full px-3 py-1.5 text-sm ring-1 ${
-      active
-        ? "bg-slate-900 text-white ring-slate-900"
-        : "bg-white ring-slate-200"
-    }`;
   const stageOptions = [
     { key: "active", label: "Active" },
     { key: "awaiting_decision", label: "1 Awaiting decision" },
@@ -294,17 +289,15 @@ export default async function BookingsPage({
         </div>
       </header>
 
-      <nav className={CHIP_ROW} aria-label="Booking stage filters">
-        {stageOptions.map(({ key, label }) => (
-          <Link
-            key={key}
-            href={buildSearchHref("/bookings", current, { stage: key })}
-            className={filterClass(stageFilter === key)}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
+      <DatasetFilterNav
+        ariaLabel="Booking stage"
+        value={stageFilter}
+        options={stageOptions.map(({ key, label }) => ({
+          value: key,
+          label,
+          href: buildSearchHref("/bookings", current, { stage: key }),
+        }))}
+      />
 
       <DatasetBulkRoot>
       <div className="space-y-3">
@@ -365,12 +358,12 @@ export default async function BookingsPage({
           })}
           {!rows.length ? (
             <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
-              Every booking is linked or marked as not in Get Run Vibes.
+              Every booking is linked or marked as not in the catalog.
             </p>
           ) : null}
         </div>
         <div className={DESKTOP_TABLE}>
-          <div className="overflow-x-auto">
+          <div className={TABLE_SCROLL}>
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -446,7 +439,7 @@ export default async function BookingsPage({
               {!rows.length ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
-                    Every booking is linked or marked as not in Get Run Vibes.
+                    Every booking is linked or marked as not in the catalog.
                   </td>
                 </tr>
               ) : null}
@@ -544,7 +537,7 @@ export default async function BookingsPage({
           ) : null}
         </div>
         <div className={DESKTOP_TABLE}>
-          <div className="overflow-x-auto">
+          <div className={TABLE_SCROLL}>
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>

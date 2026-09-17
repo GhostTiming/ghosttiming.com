@@ -8,10 +8,12 @@ import {
   upsertOrgMembershipAction,
 } from "@/app/admin-actions";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
+import { SyncRaceRosterPanel } from "@/components/sync-race-roster-panel";
 import { getPool } from "@/db";
 import { canImpersonateUser } from "@/lib/auth/access";
 import { requireAdminConsole } from "@/lib/auth/server";
 import type { CrmRole } from "@/lib/auth/roles";
+import { TABLE_SCROLL } from "@/lib/crm/layout";
 
 export const metadata = { title: "Admin" };
 
@@ -123,6 +125,8 @@ export default async function AdminPage() {
         ) : null}
       </header>
 
+      <SyncRaceRosterPanel />
+
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-slate-950">Grant access by email</h2>
         <p className="mt-1 text-sm text-slate-500">
@@ -160,7 +164,7 @@ export default async function AdminPage() {
       </section>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        <div className={TABLE_SCROLL}>
           <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>

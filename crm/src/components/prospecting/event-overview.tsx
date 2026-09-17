@@ -4,8 +4,10 @@ import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { ExpandableDescription } from "@/components/prospecting/expandable-description";
 import { UncoupleCatalogButton } from "@/components/uncouple-catalog-button";
 import {
+  catalogListingExternalUrl,
+  catalogListingOpenLabel,
+  catalogProviderLabel,
   formatOfferingClock,
-  getRunVibesEventUrl,
   htmlToPlainText,
   labelPerkTag,
   labelVibeTag,
@@ -24,6 +26,9 @@ export type CatalogOverviewFields = {
   timezone: string | null;
   event_date?: string | null;
   event_date_local?: string | null;
+  source_provider?: string | null;
+  registration_url?: string | null;
+  external_race_url?: string | null;
 };
 
 function formatPart(
@@ -68,25 +73,27 @@ function TagPills({ label, tags }: { label: string; tags: string[] }) {
 }
 
 function ListingActions({
-  runVibesUrl,
+  listingUrl,
+  openLabel,
   resync,
   uncouple,
 }: {
-  runVibesUrl: string | null;
+  listingUrl: string | null;
+  openLabel: string;
   resync?: { bookingId: string; occurrenceId: string };
   uncouple?: { bookingId?: string; prospectId?: string };
 }) {
-  if (!runVibesUrl && !resync && !uncouple) return null;
+  if (!listingUrl && !resync && !uncouple) return null;
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {runVibesUrl ? (
+      {listingUrl ? (
         <a
-          href={runVibesUrl}
+          href={listingUrl}
           target="_blank"
           rel="noreferrer"
           className="text-sm font-semibold text-cyan-700 hover:text-cyan-900"
         >
-          Open on Get Run Vibes
+          {openLabel}
         </a>
       ) : null}
       {resync ? (
@@ -98,7 +105,7 @@ function ListingActions({
             className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-700 hover:text-cyan-900 disabled:opacity-60"
           >
             <RefreshCw className="size-3.5" aria-hidden="true" />
-            Refresh from Get Run Vibes
+            Refresh from catalog
           </PendingSubmitButton>
         </form>
       ) : null}
@@ -159,7 +166,14 @@ export function CatalogEventOverview({
   const description = listing.description_html
     ? htmlToPlainText(listing.description_html)
     : "";
-  const runVibesUrl = getRunVibesEventUrl(listing.catalog_slug);
+  const listingUrl = catalogListingExternalUrl({
+    sourceProvider: listing.source_provider,
+    registrationUrl: listing.registration_url,
+    externalRaceUrl: listing.external_race_url,
+    catalogSlug: listing.catalog_slug,
+  });
+  const openLabel = catalogListingOpenLabel(listing.source_provider);
+  const providerLabel = catalogProviderLabel(listing.source_provider);
   const place = [listing.city, listing.state].filter(Boolean).join(", ");
   const body = (
     <>
@@ -170,17 +184,27 @@ export function CatalogEventOverview({
               Event overview
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Review the Get Run Vibes listing before you reach out.
+              Review the {providerLabel} listing before you reach out.
             </p>
           </div>
-          <ListingActions runVibesUrl={runVibesUrl} resync={resync} uncouple={uncouple} />
+          <ListingActions
+            listingUrl={listingUrl}
+            openLabel={openLabel}
+            resync={resync}
+            uncouple={uncouple}
+          />
         </div>
       ) : (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Get Run Vibes
+            {providerLabel} listing
           </h3>
-          <ListingActions runVibesUrl={runVibesUrl} resync={resync} uncouple={uncouple} />
+          <ListingActions
+            listingUrl={listingUrl}
+            openLabel={openLabel}
+            resync={resync}
+            uncouple={uncouple}
+          />
         </div>
       )}
 
@@ -246,7 +270,7 @@ export function CatalogEventOverview({
 
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Original RunSignup description
+            Original listing description
           </h3>
           <div className="mt-2">
             {description ? (
@@ -294,6 +318,9 @@ export function ProspectEventOverview({
         timezone: prospect.timezone,
         event_date: prospect.event_date,
         event_date_local: prospect.event_date_local,
+        source_provider: prospect.source_provider,
+        registration_url: prospect.catalog_registration_url,
+        external_race_url: prospect.external_race_url,
       }}
       tags={tags}
       offerings={offerings}
