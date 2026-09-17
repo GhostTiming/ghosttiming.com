@@ -1,3 +1,4 @@
+import { ExternalHref } from "@/components/crm-links";
 import { RefreshCw } from "lucide-react";
 import { resyncBookingCatalogRacesAction } from "@/app/operations-actions";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
@@ -80,14 +81,12 @@ function ListingActions({
   return (
     <div className="flex flex-wrap items-center gap-3">
       {runVibesUrl ? (
-        <a
+        <ExternalHref
           href={runVibesUrl}
-          target="_blank"
-          rel="noreferrer"
           className="text-sm font-semibold text-cyan-700 hover:text-cyan-900"
         >
           Open on Get Run Vibes
-        </a>
+        </ExternalHref>
       ) : null}
       {resync ? (
         <form action={resyncBookingCatalogRacesAction}>
@@ -98,7 +97,7 @@ function ListingActions({
             className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-700 hover:text-cyan-900 disabled:opacity-60"
           >
             <RefreshCw className="size-3.5" aria-hidden="true" />
-            Refresh from Get Run Vibes
+            Refresh from online listing
           </PendingSubmitButton>
         </form>
       ) : null}
@@ -119,6 +118,7 @@ export function CatalogEventOverview({
   variant = "standalone",
   resync,
   uncouple,
+  collapsible = false,
 }: {
   listing: CatalogOverviewFields;
   tags: CatalogTagRow[];
@@ -126,6 +126,7 @@ export function CatalogEventOverview({
   variant?: "standalone" | "embedded";
   resync?: { bookingId: string; occurrenceId: string };
   uncouple?: { bookingId?: string; prospectId?: string };
+  collapsible?: boolean;
 }) {
   const timezone = listing.timezone;
   const dateLabel = formatPart(listing.event_date, timezone, {
@@ -178,7 +179,7 @@ export function CatalogEventOverview({
       ) : (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Get Run Vibes
+            Online listing
           </h3>
           <ListingActions runVibesUrl={runVibesUrl} resync={resync} uncouple={uncouple} />
         </div>
@@ -224,22 +225,32 @@ export function CatalogEventOverview({
               Distances
             </h3>
             <ul className="mt-2 flex flex-wrap gap-2">
-              {offerings.map((offering) => {
-                const name = offering.name || offering.distance_label || "Distance";
-                const clock = formatOfferingClock(
-                  offering.start_time_raw,
-                  offering.starts_at,
-                  timezone,
-                );
-                return (
+              {offerings
+                .map((offering, index) => {
+                  const name =
+                    offering.distance_label || offering.name || "Distance";
+                  const clock = formatOfferingClock(
+                    offering.start_time_raw,
+                    offering.starts_at,
+                    timezone,
+                  );
+                  return {
+                    key: `${index}-${name}-${offering.starts_at ?? offering.start_time_raw ?? ""}`,
+                    label: clock ? `${name} · ${clock}` : name,
+                    dedupe: `${name}|${clock ?? ""}`,
+                  };
+                })
+                .filter((item, index, rows) =>
+                  rows.findIndex((row) => row.dedupe === item.dedupe) === index,
+                )
+                .map((item) => (
                   <li
-                    key={`${offering.name}-${offering.distance_label}-${offering.start_time_raw}`}
+                    key={item.key}
                     className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-800"
                   >
-                    {clock ? `${name} · ${clock}` : name}
+                    {item.label}
                   </li>
-                );
-              })}
+                ))}
             </ul>
           </div>
         ) : null}
@@ -266,6 +277,24 @@ export function CatalogEventOverview({
     return <div className="mt-5 border-t border-slate-200 pt-5">{body}</div>;
   }
 
+  if (collapsible) {
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <details>
+          <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+            Race details
+            {listing.quick_take ? (
+              <span className="mt-1 block font-normal text-slate-600">
+                {listing.quick_take}
+              </span>
+            ) : null}
+          </summary>
+          <div className="mt-4">{body}</div>
+        </details>
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       {body}
@@ -277,10 +306,12 @@ export function ProspectEventOverview({
   prospect,
   tags,
   offerings,
+  collapsible = false,
 }: {
   prospect: ProspectDetail;
   tags: CatalogTagRow[];
   offerings: CatalogOfferingRow[];
+  collapsible?: boolean;
 }) {
   return (
     <CatalogEventOverview
@@ -302,6 +333,7 @@ export function ProspectEventOverview({
           ? { prospectId: prospect.id }
           : undefined
       }
+      collapsible={collapsible}
     />
   );
 }

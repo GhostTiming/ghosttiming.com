@@ -9,6 +9,52 @@ export const perkTagLabels: Record<string, string> = {
   swag_generic: "Swag",
 };
 
+export const prospectPerkFilters = [
+  { key: "medal", label: "Medal" },
+  { key: "awards", label: "Awards" },
+  { key: "swag", label: "Swag" },
+  { key: "shirt", label: "Shirt" },
+  { key: "food_drink", label: "Food & drink" },
+  { key: "after_party", label: "After party" },
+  { key: "dog_friendly", label: "Dog friendly" },
+] as const;
+
+export type ProspectPerkFilterKey = (typeof prospectPerkFilters)[number]["key"];
+
+const prospectPerkFilterKeys = new Set(
+  prospectPerkFilters.map((filter) => filter.key),
+);
+
+function parsePerkFilterList(value: string | null | undefined) {
+  if (!value) return [] as ProspectPerkFilterKey[];
+  const keys: ProspectPerkFilterKey[] = [];
+  for (const part of value.split(",")) {
+    const key = part.trim();
+    if (!prospectPerkFilterKeys.has(key as ProspectPerkFilterKey)) continue;
+    if (!keys.includes(key as ProspectPerkFilterKey)) {
+      keys.push(key as ProspectPerkFilterKey);
+    }
+  }
+  return keys;
+}
+
+export function parsePerkFilterParams(options: {
+  hasPerk?: string | null;
+  missingPerk?: string | null;
+}) {
+  return {
+    hasPerk: parsePerkFilterList(options.hasPerk),
+    missingPerk: parsePerkFilterList(options.missingPerk),
+  };
+}
+
+export function perkFilterTagSql(wantedExpr: string) {
+  return `(
+    (${wantedExpr} = 'swag' AND tag.tag_key IN ('swag_included', 'swag_generic'))
+    OR tag.tag_key = ${wantedExpr}
+  )`;
+}
+
 export const vibeTagLabels: Record<string, string> = {
   fun: "Fun",
   scenic: "Scenic",

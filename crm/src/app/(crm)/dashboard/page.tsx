@@ -10,7 +10,7 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { getPool } from "@/db";
-import { bookingOrgScopeParam } from "@/lib/auth/access";
+import { bookingOrgScopeParam, financialOrgScopeParam } from "@/lib/auth/access";
 import { getAccessContext } from "@/lib/auth/server";
 import {
   resolveDashboardPeriod,
@@ -232,7 +232,9 @@ export default async function DashboardPage({
 
   if (access.canAccessOperations) {
     const orgScope = bookingOrgScopeParam(access);
+    const financialScope = financialOrgScopeParam(access);
     const operationsParams = [...periodParameters, orgScope];
+    const financialParams = [...periodParameters, orgScope, financialScope];
     const [operations, upcoming, monthly] = await Promise.all([
       getPool().query<{
         upcoming: number;
@@ -265,14 +267,17 @@ export default async function DashboardPage({
             )::integer AS completed_unpaid,
             COALESCE(SUM(booking.expected_revenue) FILTER (
               WHERE stage.key IN ('confirmed', 'pre_event_prep', 'ready')
+                AND ($4::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($4::uuid[]))
             ), 0)::text AS booked_revenue,
             COALESCE(SUM(booking.amount_paid) FILTER (
               WHERE booking.payment_at IS NOT NULL
+                AND ($4::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($4::uuid[]))
             ), 0)::text AS paid_total,
             COALESCE(SUM(COALESCE(
               booking.actual_revenue, booking.expected_revenue
             )) FILTER (
               WHERE stage.key IN ('completed', 'paid')
+                AND ($4::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($4::uuid[]))
             ), 0)::text AS completed_total,
             COUNT(*) FILTER (WHERE stage.key = 'closed_lost')::integer
               AS closed_lost
@@ -291,7 +296,7 @@ export default async function DashboardPage({
           )
           AND ($3::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($3::uuid[]))
         `,
-        operationsParams,
+        financialParams,
       ),
       getPool().query<{
         id: string;
@@ -357,10 +362,11 @@ export default async function DashboardPage({
               $2::date::timestamp AT TIME ZONE 'America/New_York'
           )
           AND ($3::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($3::uuid[]))
+          AND ($4::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($4::uuid[]))
           GROUP BY date_trunc('month', occurrence.race_date)
           ORDER BY date_trunc('month', occurrence.race_date)
         `,
-        operationsParams,
+        financialParams,
       ),
     ]);
     const ops = operations.rows[0];

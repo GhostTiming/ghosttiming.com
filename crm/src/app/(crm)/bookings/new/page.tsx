@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createManualBookingAction } from "@/app/booking-actions";
+import { CreateFromOnlineEvent } from "@/components/create-from-online-event";
 import { getPool } from "@/db";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { requireOperationsAccess } from "@/lib/auth/server";
@@ -36,8 +37,21 @@ export default async function NewBookingPage() {
           ← Back to bookings
         </Link>
         <h1 className="mt-2 text-3xl font-bold">Add booking</h1>
-        <p className="text-slate-600">Create private CRM event and booking records.</p>
+        {/* Online listing search sits above the manual form. */}
+        <p className="text-slate-600">
+          Pull a race from the online catalog or RunSignUp, or create private
+          CRM event and booking records by hand.
+        </p>
       </header>
+      <CreateFromOnlineEvent
+        organizations={organizations.rows}
+        people={people.rows}
+        users={users.rows}
+        stages={stages.rows}
+        canViewFinancials={access.canViewAnyFinancials}
+      />
+      <section className="space-y-3">
+        <h2 className="text-lg font-bold text-slate-950">Create manually</h2>
       <form action={createManualBookingAction}
         className="grid gap-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:grid-cols-2">
         <label className="text-sm">Event name
@@ -108,6 +122,7 @@ export default async function NewBookingPage() {
           </button>
         </div>
       </form>
+      </section>
     </div>
   );
 }

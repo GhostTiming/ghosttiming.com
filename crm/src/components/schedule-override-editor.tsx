@@ -1,7 +1,7 @@
 "use client";
 
 import { Pencil } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 export function ScheduleOverrideEditor({
   arrivalDisplay,
@@ -10,6 +10,7 @@ export function ScheduleOverrideEditor({
   departureOverridden,
   arrivalOverrideLocal,
   departureOverrideLocal,
+  extra,
 }: {
   arrivalDisplay: string;
   departureDisplay: string;
@@ -17,12 +18,13 @@ export function ScheduleOverrideEditor({
   departureOverridden: boolean;
   arrivalOverrideLocal: string | null;
   departureOverrideLocal: string | null;
+  extra?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
 
   return (
-    <div>
-      <div className="grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
+    <div className="space-y-4">
+      <div className={`grid gap-3 ${extra ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <div>
           <p className="text-xs uppercase text-slate-500">Arrival / login</p>
           <p className="font-semibold">{arrivalDisplay}</p>
@@ -37,7 +39,8 @@ export function ScheduleOverrideEditor({
             {departureOverridden ? "Overridden" : "Automatic · latest estimated finish"}
           </p>
         </div>
-        <div className="sm:col-span-2">
+        {extra}
+        <div className={extra ? "sm:col-span-3" : "sm:col-span-2"}>
           <button
             type="button"
             onClick={() => setEditing((open) => !open)}
@@ -49,7 +52,7 @@ export function ScheduleOverrideEditor({
         </div>
       </div>
       {editing ? (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm">
             Arrival override
             <input

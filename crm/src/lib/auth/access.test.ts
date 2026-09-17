@@ -5,6 +5,7 @@ import {
   canImpersonateUser,
   displayAccessRole,
   effectiveAccessUserId,
+  financialOrgScopeParam,
 } from "./access";
 import { redactBookingFinancials } from "./financials";
 
@@ -187,5 +188,19 @@ describe("CRM access context", () => {
     expect(access.canAccessGoogle).toBe(false);
     expect(access.canAccessAdminConsole).toBe(false);
     expect(access.canViewAnyFinancials).toBe(false);
+  });
+
+  it("limits financial dashboard scope to org-admin memberships", () => {
+    expect(financialOrgScopeParam(buildAccessContext(admin, []))).toBeNull();
+    expect(
+      financialOrgScopeParam(
+        buildAccessContext(orgAdmin, [{ organizationId: orgA, orgRole: "org_admin" }]),
+      ),
+    ).toEqual([orgA]);
+    expect(
+      financialOrgScopeParam(
+        buildAccessContext(orgUser, [{ organizationId: orgA, orgRole: "org_user" }]),
+      ),
+    ).toEqual([]);
   });
 });

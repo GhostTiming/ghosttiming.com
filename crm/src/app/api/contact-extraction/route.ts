@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getPool } from "@/db";
 import { requireProspectingUser } from "@/lib/auth/server";
+import { applyEmailBlacklist } from "@/lib/crm/email-blacklist";
 import {
   CONTACT_EXTRACTION_BATCH_SIZE,
   CONTACT_PARSER_VERSION,
@@ -42,7 +43,7 @@ function normalizeContact(type: "email" | "phone", value: string) {
 }
 
 export async function POST(request: Request) {
-  await requireProspectingUser();
+  const user = await requireProspectingUser();
   const payload = payloadSchema.parse(await request.json());
   const client = await getPool().connect();
   let savedContacts = 0;
@@ -204,6 +205,19 @@ export async function POST(request: Request) {
     throw error;
   } finally {
     client.release();
+  }
+
+  const listingIds = [...new Set(payload.records.map((record) => record.raceListingId))];
+  const applyClient = await getPool().connect();
+  try {
+    await applyClient.query("BEGIN");
+    await applyEmailBlacklist(applyClient, user, { listingIds });
+    await applyClient.query("COMMIT");
+  } catch (error) {
+    await applyClient.query("ROLLBACK");
+    console.error("Email blacklist apply after extraction failed", error);
+  } finally {
+    applyClient.release();
   }
 
   revalidatePath("/prospecting");

@@ -61,6 +61,23 @@ export function getGmailMessage(accessToken: string, id: string) {
   );
 }
 
+export function sendGmailMessage(
+  accessToken: string,
+  input: { raw: string; threadId?: string | null },
+) {
+  return googleFetch<{ id?: string; threadId?: string }>(
+    accessToken,
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        raw: input.raw,
+        ...(input.threadId ? { threadId: input.threadId } : {}),
+      }),
+    },
+  );
+}
+
 export async function listGmailHistoryMessageIds(
   accessToken: string,
   startHistoryId: string,

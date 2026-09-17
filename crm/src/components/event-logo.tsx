@@ -1,14 +1,23 @@
 "use client";
 
 import { Flag } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const sizeClass = {
   list: "size-8",
   header: "size-14",
 } as const;
 
-export function EventLogo({
+export function EventLogo(props: {
+  url?: string | null;
+  name: string;
+  size?: "list" | "header";
+  tone?: "light" | "dark";
+}) {
+  return <EventLogoInner key={props.url ?? ""} {...props} />;
+}
+
+function EventLogoInner({
   url,
   name,
   size = "list",
@@ -20,9 +29,6 @@ export function EventLogo({
   tone?: "light" | "dark";
 }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    setFailed(false);
-  }, [url]);
   const frame = `${sizeClass[size]} shrink-0 overflow-hidden rounded-lg`;
   const placeholderTone =
     tone === "dark"

@@ -4,12 +4,16 @@ import {
   type GoogleCalendarBooking,
   type GoogleCalendarEventResource,
 } from "@/lib/crm/google-calendar";
+import { parseRaceScoring } from "@/lib/crm/race-scoring";
 import type { EmailMatchTargets } from "@/lib/google/email-match";
 import { normalizeEmail } from "@/lib/contact-extraction/extract";
 
 export type EmailMatchIndexEntry = EmailMatchTargets & { email: string };
 
-export async function loadEmailMatchIndex(): Promise<EmailMatchIndexEntry[]> {
+export async function loadEmailMatchIndex(options?: {
+  organizationIds?: string[] | null;
+}): Promise<EmailMatchIndexEntry[]> {
+  const organizationIds = options?.organizationIds ?? null;
   const result = await getPool().query<{
     email: string;
     prospect_ids: string[] | null;
@@ -60,7 +64,7 @@ export async function loadEmailMatchIndex(): Promise<EmailMatchIndexEntry[]> {
         JOIN crm.bookings booking ON booking.primary_contact_person_id = sources.person_id
         WHERE sources.person_id IS NOT NULL
           AND booking.archived_at IS NULL
-          -- Client inboxes like info@run4acause.org must stay on the org, not every booking.
+          AND ($1::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($1::uuid[]))
           AND NOT EXISTS (
             SELECT 1
             FROM crm.organizations client_inbox
@@ -75,6 +79,7 @@ export async function loadEmailMatchIndex(): Promise<EmailMatchIndexEntry[]> {
         JOIN crm.bookings booking ON booking.id = prospect.converted_booking_id
         WHERE prospect.converted_booking_id IS NOT NULL
           AND booking.archived_at IS NULL
+          AND ($1::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($1::uuid[]))
         UNION
         SELECT sources.email, NULL, booking.id, NULL, NULL
         FROM sources
@@ -83,6 +88,7 @@ export async function loadEmailMatchIndex(): Promise<EmailMatchIndexEntry[]> {
         JOIN crm.bookings booking ON booking.id = prospect.converted_booking_id
         WHERE sources.person_id IS NOT NULL
           AND booking.archived_at IS NULL
+          AND ($1::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($1::uuid[]))
         UNION
         SELECT sources.email, NULL, booking.id, NULL, NULL
         FROM sources
@@ -91,14 +97,21 @@ export async function loadEmailMatchIndex(): Promise<EmailMatchIndexEntry[]> {
         JOIN crm.bookings booking ON booking.id = prospect.converted_booking_id
         WHERE sources.race_listing_id IS NOT NULL
           AND booking.archived_at IS NULL
+          AND ($1::uuid[] IS NULL OR booking.direct_client_organization_id = ANY($1::uuid[]))
         UNION
         SELECT sources.email, NULL, NULL, sources.organization_id, NULL
         FROM sources
         WHERE sources.organization_id IS NOT NULL
+          AND ($1::uuid[] IS NULL OR sources.organization_id = ANY($1::uuid[]))
         UNION
         SELECT sources.email, NULL, NULL, NULL, sources.person_id
         FROM sources
         WHERE sources.person_id IS NOT NULL
+          AND (
+            $1::uuid[] IS NULL
+            OR sources.organization_id IS NULL
+            OR sources.organization_id = ANY($1::uuid[])
+          )
       )
       SELECT
         email,
@@ -109,6 +122,7 @@ export async function loadEmailMatchIndex(): Promise<EmailMatchIndexEntry[]> {
       FROM expanded
       GROUP BY email
     `,
+    [organizationIds],
   );
   return result.rows.map((row) => ({
     email: normalizeEmail(row.email),
@@ -203,9 +217,11 @@ async function attachCalendarDetails(row: CalendarBookingRow): Promise<{
       start_time: string | null;
       age_groups: string | null;
       awards: string | null;
+      scoring: unknown;
     }>(
       `
-        SELECT race.name, race.distance_label, race.start_time::text, race.age_groups, race.awards
+        SELECT race.name, race.distance_label, race.start_time::text,
+               race.age_groups, race.awards, race.scoring
         FROM crm.occurrence_races race
         JOIN crm.bookings booking ON booking.occurrence_id = race.occurrence_id
         WHERE booking.id = $1::uuid
@@ -235,6 +251,7 @@ async function attachCalendarDetails(row: CalendarBookingRow): Promise<{
       startTime: race.start_time,
       ageGroups: race.age_groups,
       awards: race.awards,
+      notes: parseRaceScoring(race.scoring).notes,
     })),
   };
   return {

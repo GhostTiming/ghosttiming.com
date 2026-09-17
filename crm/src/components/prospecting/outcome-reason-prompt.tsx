@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { closeCandidateListingAction } from "@/app/candidate-actions";
 import { updateProspectStageAction } from "@/app/prospect-actions";
 import {
   FormSaveFailedContext,
@@ -10,19 +11,23 @@ import {
 
 export function OutcomeReasonPrompt({
   prospectId,
+  raceListingId,
   stageKey,
   title,
   description,
   reasons,
   submitLabel,
+  action,
   onCancel,
 }: {
-  prospectId: string;
+  prospectId?: string;
+  raceListingId?: string;
   stageKey: "unqualified" | "disqualified";
   title: string;
   description: string;
   reasons: ReadonlyArray<{ key: string; label: string }>;
   submitLabel: string;
+  action?: (formData: FormData) => Promise<void>;
   onCancel: () => void;
 }) {
   const router = useRouter();
@@ -37,10 +42,22 @@ export function OutcomeReasonPrompt({
     setError(null);
     setSaveFailed(false);
     try {
-      await updateProspectStageAction(formData);
+      if (raceListingId) {
+        await closeCandidateListingAction(formData);
+        return;
+      }
+      await (action ?? updateProspectStageAction)(formData);
       onCancel();
       router.refresh();
     } catch (cause) {
+      if (
+        typeof cause === "object" &&
+        cause !== null &&
+        "digest" in cause &&
+        String(cause.digest).startsWith("NEXT_REDIRECT")
+      ) {
+        throw cause;
+      }
       setSaveFailed(true);
       setError(cause instanceof Error ? cause.message : "Could not save.");
     }
@@ -65,7 +82,10 @@ export function OutcomeReasonPrompt({
         <p className="mt-1 text-sm text-slate-600">{description}</p>
         <FormSaveFailedContext.Provider value={saveFailed}>
           <form action={submit} className="mt-4 space-y-3">
-            <input type="hidden" name="prospectId" value={prospectId} />
+            {prospectId ? <input type="hidden" name="prospectId" value={prospectId} /> : null}
+            {raceListingId ? (
+              <input type="hidden" name="raceListingId" value={raceListingId} />
+            ) : null}
             <input type="hidden" name="stageKey" value={stageKey} />
             <label className="block text-sm">
               Reason

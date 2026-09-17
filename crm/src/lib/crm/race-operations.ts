@@ -39,6 +39,28 @@ export function estimateRaceDurationMinutes(
   return Math.ceil((miles * 18 + 45) / 15) * 15;
 }
 
+export async function shiftOccurrenceRaceTimes(
+  client: PoolClient,
+  occurrenceId: string,
+  previousRaceDate: string | null,
+  nextRaceDate: string | null,
+  timezone: string,
+) {
+  if (!previousRaceDate || !nextRaceDate) return;
+  await client.query(
+    `
+      UPDATE crm.occurrence_races
+      SET start_time = start_time + (
+            ($2::timestamp AT TIME ZONE $4) - $3::timestamptz
+          ),
+          updated_at = now()
+      WHERE occurrence_id = $1::uuid
+        AND start_time IS NOT NULL
+    `,
+    [occurrenceId, nextRaceDate, previousRaceDate, timezone],
+  );
+}
+
 export async function recalculateOccurrenceTimes(
   client: PoolClient,
   occurrenceId: string,
@@ -249,19 +271,27 @@ export function preferredCatalogEditionId<
   return ranked[0]?.id ?? null;
 }
 
-export function preferredCatalogEditionSql(listingIdExpr: string) {
+export function preferredCatalogEditionSql(
+  listingIdExpr: string,
+  yearExpr: string | null = null,
+) {
+  const yearRank = yearExpr
+    ? `CASE WHEN re.edition_year = ${yearExpr} THEN 0 ELSE 1 END,`
+    : "";
   return `(
     SELECT re.id
     FROM catalog.race_editions re
     WHERE re.race_listing_id = ${listingIdExpr}
     ORDER BY
+      ${yearRank}
       CASE WHEN re.is_future THEN 0 ELSE 1 END,
       abs(extract(epoch from (
         re.starts_at - COALESCE(
           (
-            SELECT listing.next_start_at
-            FROM catalog.race_listings listing
-            WHERE listing.id = ${listingIdExpr}
+            SELECT next_start_at
+            FROM catalog.race_listings
+            WHERE id = ${listingIdExpr}
+            LIMIT 1
           ),
           now()
         )
@@ -269,6 +299,29 @@ export function preferredCatalogEditionSql(listingIdExpr: string) {
       re.edition_year DESC NULLS LAST
     LIMIT 1
   )`;
+}
+
+export function offeringsMatchingOccurrenceDate<T extends CatalogOfferingStartLike>(
+  offerings: readonly T[],
+  raceDate?: string | Date | null,
+) {
+  const visible = excludeVirtualCatalogOfferings(offerings);
+  const day = catalogDatePart(raceDate);
+  if (!day) return visible;
+  const exact = visible.filter((offering) => {
+    const offeringDay =
+      catalogDatePart(offering.starts_at ?? offering.startsAt) ??
+      catalogDatePart(offering.start_time_raw ?? offering.startTimeRaw);
+    return offeringDay === day;
+  });
+  if (exact.length) return exact;
+  const dated = visible.filter((offering) =>
+    Boolean(
+      catalogDatePart(offering.starts_at ?? offering.startsAt) ??
+        catalogDatePart(offering.start_time_raw ?? offering.startTimeRaw),
+    ),
+  );
+  return dated.length ? [] : visible;
 }
 
 export async function loadCatalogOfferingsForListing(
@@ -323,18 +376,17 @@ export async function syncOccurrenceRacesFromCatalog(
   client: PoolClient,
   occurrenceId: string,
 ) {
-  await client.query(
-    `DELETE FROM crm.occurrence_races WHERE occurrence_id = $1::uuid`,
-    [occurrenceId],
-  );
-
   const occurrence = await client.query<{
     listing_id: string | null;
     race_date: string | null;
+    occurrence_year: number | null;
+    catalog_race_edition_id: string | null;
   }>(
     `
       SELECT event.catalog_race_listing_id AS listing_id,
-             occurrence.race_date::text
+             occurrence.race_date::text,
+             occurrence.occurrence_year,
+             occurrence.catalog_race_edition_id
       FROM crm.event_occurrences occurrence
       JOIN crm.events event ON event.id = occurrence.event_id
       WHERE occurrence.id = $1::uuid
@@ -343,106 +395,162 @@ export async function syncOccurrenceRacesFromCatalog(
   );
   const listingId = occurrence.rows[0]?.listing_id;
   if (!listingId) {
-    await clearOccurrenceScheduleOverrides(client, occurrenceId);
     await recalculateOccurrenceTimes(client, occurrenceId);
-    return { inserted: 0 };
+    return { inserted: 0, updated: 0, removed: 0 };
   }
 
-  const preferredEdition = await client.query<{ id: string | null }>(
-    `SELECT ${preferredCatalogEditionSql("$1")} AS id`,
-    [listingId],
-  );
-  const editionId = preferredEdition.rows[0]?.id ?? null;
-  if (editionId) {
-    await client.query(
-      `
-        UPDATE crm.event_occurrences
-        SET catalog_race_edition_id = $2, updated_at = now()
-        WHERE id = $1::uuid
-      `,
-      [occurrenceId, editionId],
+  const occurrenceYear = occurrence.rows[0]?.occurrence_year ?? null;
+  const existingEdition = occurrence.rows[0]?.catalog_race_edition_id ?? null;
+  let editionId = existingEdition;
+  if (!editionId) {
+    const preferredEdition = await client.query<{ id: string | null }>(
+      `SELECT ${preferredCatalogEditionSql("$1", occurrenceYear ? "$2" : null)} AS id`,
+      occurrenceYear ? [listingId, occurrenceYear] : [listingId],
     );
+    editionId = preferredEdition.rows[0]?.id ?? null;
+    if (editionId) {
+      await client.query(
+        `
+          UPDATE crm.event_occurrences
+          SET catalog_race_edition_id = $2, updated_at = now()
+          WHERE id = $1::uuid AND catalog_race_edition_id IS NULL
+        `,
+        [occurrenceId, editionId],
+      );
+    }
   }
 
   const offerings = await loadCatalogOfferingsForListing(client, listingId, {
     editionId,
     raceDate: occurrence.rows[0]?.race_date ?? null,
   });
-  const earliestStart = earliestNonVirtualCatalogStart(offerings);
-  if (earliestStart) {
-    await client.query(
-      `
-        UPDATE crm.event_occurrences
-        SET race_date = $2::timestamp AT TIME ZONE COALESCE(timezone, 'America/New_York'),
-            occurrence_year = EXTRACT(YEAR FROM $2::timestamp)::integer,
-            updated_at = now()
-        WHERE id = $1::uuid
-      `,
-      [occurrenceId, earliestStart],
-    );
-  }
-  const raceDateForStarts = earliestStart ?? occurrence.rows[0]?.race_date;
+  const matching = offeringsMatchingOccurrenceDate(
+    offerings,
+    occurrence.rows[0]?.race_date,
+  );
 
+  const existing = await client.query<{
+    id: string;
+    catalog_race_offering_id: string | null;
+  }>(
+    `
+      SELECT id::text, catalog_race_offering_id
+      FROM crm.occurrence_races
+      WHERE occurrence_id = $1::uuid
+    `,
+    [occurrenceId],
+  );
+  const byOffering = new Map<string, string[]>();
+  for (const row of existing.rows) {
+    if (!row.catalog_race_offering_id) continue;
+    const current = byOffering.get(row.catalog_race_offering_id) ?? [];
+    current.push(row.id);
+    byOffering.set(row.catalog_race_offering_id, current);
+  }
+
+  const keepIds = new Set<string>();
   let inserted = 0;
-  for (const offering of excludeVirtualCatalogOfferings(offerings)) {
+  let updated = 0;
+  let sortOrder = 0;
+  for (const offering of matching) {
     const meters =
       offering.distance_meters && offering.distance_meters > 0
         ? Math.round(offering.distance_meters)
         : null;
     const miles = meters ? Number((meters / 1609.344).toFixed(3)) : null;
-    const startTime = catalogOfferingStartTimestamp({
-      raceDate: raceDateForStarts,
-      startTimeRaw: offering.start_time_raw,
-      startsAt: offering.starts_at,
-    });
+    const startTime =
+      catalogOfferingOwnStartTimestamp(offering) ??
+      catalogOfferingStartTimestamp({
+        raceDate: occurrence.rows[0]?.race_date,
+        startTimeRaw: offering.start_time_raw,
+        startsAt: offering.starts_at,
+      });
     const estimatedDuration = estimateRaceDurationMinutes(
       offering.distance_label,
       miles,
       meters,
     );
-    await client.query(
-      `
-        INSERT INTO crm.occurrence_races
-          (occurrence_id, catalog_race_offering_id, name, distance_label,
-           distance_miles, distance_meters, start_time,
-           estimated_duration_minutes, sort_order)
-        VALUES (
-          $1::uuid, $2, $3, $4, $5, $6, $7::timestamp, $8, $9
-        )
-      `,
-      [
-        occurrenceId,
-        offering.id,
-        offering.name,
-        offering.distance_label,
-        miles,
-        meters,
-        startTime,
-        estimatedDuration,
-        inserted,
-      ],
-    );
-    inserted += 1;
+    const matches = byOffering.get(offering.id) ?? [];
+    const primaryId = matches[0];
+    if (primaryId) {
+      await client.query(
+        `
+          UPDATE crm.occurrence_races
+          SET name = $2,
+              distance_label = $3,
+              distance_miles = $4,
+              distance_meters = $5,
+              start_time = $6::timestamp,
+              estimated_duration_minutes = $7,
+              sort_order = $8,
+              updated_at = now()
+          WHERE id = $1::uuid
+        `,
+        [
+          primaryId,
+          offering.name,
+          offering.distance_label,
+          miles,
+          meters,
+          startTime,
+          estimatedDuration,
+          sortOrder,
+        ],
+      );
+      keepIds.add(primaryId);
+      updated += 1;
+    } else {
+      const created = await client.query<{ id: string }>(
+        `
+          INSERT INTO crm.occurrence_races
+            (occurrence_id, catalog_race_offering_id, name, distance_label,
+             distance_miles, distance_meters, start_time,
+             estimated_duration_minutes, sort_order)
+          VALUES (
+            $1::uuid, $2, $3, $4, $5, $6, $7::timestamp, $8, $9
+          )
+          RETURNING id::text
+        `,
+        [
+          occurrenceId,
+          offering.id,
+          offering.name,
+          offering.distance_label,
+          miles,
+          meters,
+          startTime,
+          estimatedDuration,
+          sortOrder,
+        ],
+      );
+      if (created.rows[0]?.id) keepIds.add(created.rows[0].id);
+      inserted += 1;
+    }
+    sortOrder += 1;
   }
 
-  await clearOccurrenceScheduleOverrides(client, occurrenceId);
+  const staleIds = existing.rows
+    .filter(
+      (row) =>
+        row.catalog_race_offering_id &&
+        !keepIds.has(row.id),
+    )
+    .map((row) => row.id);
+  if (staleIds.length) {
+    await client.query(
+      `DELETE FROM crm.occurrence_races
+       WHERE occurrence_id = $1::uuid
+         AND catalog_race_offering_id IS NOT NULL
+         AND id = ANY($2::uuid[])`,
+      [occurrenceId, staleIds],
+    );
+  }
+
   await recalculateOccurrenceTimes(client, occurrenceId);
-  return { inserted };
+  return { inserted, updated, removed: staleIds.length };
 }
 
 export async function resetOperationsAndSyncCatalogRaces(client: PoolClient) {
-  await client.query(
-    `
-      UPDATE crm.event_occurrences
-      SET notes = NULL,
-          arrival_override_at = NULL,
-          departure_override_at = NULL,
-          updated_at = now()
-      WHERE notes IS NOT NULL
-         OR arrival_override_at IS NOT NULL
-         OR departure_override_at IS NOT NULL
-    `,
-  );
   const occurrences = await client.query<{ id: string }>(
     `
       SELECT occurrence.id::text

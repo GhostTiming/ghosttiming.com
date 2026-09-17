@@ -80,10 +80,15 @@ export const unqualifiedReasonLabels: Record<UnqualifiedReason, string> = {
   other: "Other",
 };
 
-export const disqualifiedReasons = ["is_a_timing_company", "other"] as const;
+export const disqualifiedReasons = [
+  "is_a_timing_company",
+  "blacklisted_email",
+  "other",
+] as const;
 export type DisqualifiedReason = (typeof disqualifiedReasons)[number];
 export const disqualifiedReasonLabels: Record<DisqualifiedReason, string> = {
   is_a_timing_company: "Is a timing company",
+  blacklisted_email: "Blacklisted email",
   other: "Other",
 };
 

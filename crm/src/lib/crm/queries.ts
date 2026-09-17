@@ -3,18 +3,26 @@ import "server-only";
 import { getPool } from "@/db";
 import { closedProspectStageKeys } from "./domain";
 import {
+  parsePerkFilterParams,
+  perkFilterTagSql,
+} from "./catalog-display";
+import {
   candidateHasUsableContactSql,
   listingHasGrvContactFlagSql,
   liveBookingOwnsEventSql,
   liveBookingOwnsListingSql,
   reconcileProspectCatalogMatches,
 } from "./catalog-link";
+import { applyEmailBlacklist } from "./email-blacklist";
 import {
   effectiveProspectStageKeySql,
   effectiveProspectStageNameSql,
   filePastProspects,
 } from "./past-events";
-import { preferredCatalogEditionSql } from "./race-operations";
+import {
+  offeringsMatchingOccurrenceDate,
+  preferredCatalogEditionSql,
+} from "./race-operations";
 import { geocodeUsZip, normalizeZip } from "./geo";
 
 const closedProspectStageSql = closedProspectStageKeys
@@ -62,6 +70,8 @@ export type ProspectListOptions = {
   city?: string | null;
   zip?: string | null;
   miles?: number | null;
+  hasPerk?: string | null;
+  missingPerk?: string | null;
   sort?: string;
   direction?: "asc" | "desc";
 };
@@ -135,6 +145,10 @@ export async function listProspects(
       : null;
   const origin =
     zip && miles ? await geocodeUsZip(zip) : null;
+  const perks = parsePerkFilterParams({
+    hasPerk: options.hasPerk,
+    missingPerk: options.missingPerk,
+  });
   const result = await getPool().query<ProspectListRow & { total_count: number }>(
     `
       WITH visible_listings AS (
@@ -351,6 +365,35 @@ export async function listProspects(
             )) <= $15::double precision
           )
         )
+        AND (
+          $16::text[] IS NULL
+          OR (
+            combined.race_listing_id IS NOT NULL
+            AND (
+              SELECT COUNT(*) FROM unnest($16::text[]) AS wanted(key)
+              WHERE EXISTS (
+                SELECT 1
+                FROM catalog.race_listing_regex_tags tag
+                WHERE tag.race_listing_id = combined.race_listing_id
+                  AND tag.tag_namespace = 'perk'
+                  AND tag.tag_value = 'true'
+                  AND ${perkFilterTagSql("wanted.key")}
+              )
+            ) = cardinality($16::text[])
+          )
+        )
+        AND (
+          $17::text[] IS NULL
+          OR NOT EXISTS (
+            SELECT 1
+            FROM unnest($17::text[]) AS wanted(key)
+            JOIN catalog.race_listing_regex_tags tag
+              ON tag.race_listing_id = combined.race_listing_id
+             AND tag.tag_namespace = 'perk'
+             AND tag.tag_value = 'true'
+             AND ${perkFilterTagSql("wanted.key")}
+          )
+        )
       )
       SELECT
         filtered.*,
@@ -376,13 +419,19 @@ export async function listProspects(
       origin?.lat ?? null,
       origin?.lng ?? null,
       origin ? miles : null,
+      perks.hasPerk.length ? perks.hasPerk : null,
+      perks.missingPerk.length ? perks.missingPerk : null,
     ],
   );
+
+  if (!result.rows.length && safePage > 1) {
+    return listProspects({ ...options, page: 1 });
+  }
 
   return {
     rows: result.rows,
     total: result.rows[0]?.total_count ?? 0,
-    page: safePage,
+    page: result.rows.length ? safePage : 1,
     pageSize: safePageSize,
   };
 }
@@ -405,6 +454,12 @@ export type ProspectDetail = {
   zipcode: string | null;
   location: string;
   registration_url: string | null;
+  registration_url_override: string | null;
+  street_override: string | null;
+  street2_override: string | null;
+  city_override: string | null;
+  state_override: string | null;
+  zipcode_override: string | null;
   legacy_note: string | null;
   legacy_status: string | null;
   stage_key: string;
@@ -520,6 +575,11 @@ export async function getProspectDetail(prospectId: string) {
           COALESCE(NULLIF(occurrence.city_override, ''), rl.city) AS city,
           COALESCE(NULLIF(occurrence.state_override, ''), rl.state) AS state,
           COALESCE(NULLIF(occurrence.zipcode_override, ''), rl.zipcode) AS zipcode,
+          occurrence.street_override,
+          occurrence.street2_override,
+          occurrence.city_override,
+          occurrence.state_override,
+          occurrence.zipcode_override,
           concat_ws(', ',
             NULLIF(COALESCE(NULLIF(occurrence.street_override, ''), rl.street), ''),
             NULLIF(COALESCE(NULLIF(occurrence.street2_override, ''), rl.street2), ''),
@@ -528,11 +588,12 @@ export async function getProspectDetail(prospectId: string) {
             NULLIF(COALESCE(NULLIF(occurrence.zipcode_override, ''), rl.zipcode), '')
           ) AS location,
           COALESCE(
-            occurrence.registration_url_override,
+            NULLIF(occurrence.registration_url_override, ''),
             event.website,
             rl.registration_url,
             rl.external_race_url
           ) AS registration_url,
+          occurrence.registration_url_override,
           notes.body AS legacy_note,
           notes.qualification_status AS legacy_status,
           queue.stage_key,
@@ -717,13 +778,82 @@ export type CatalogOverviewListing = {
   city: string | null;
   state: string | null;
   timezone: string | null;
+  next_start_at?: string | null;
+  location?: string | null;
 };
+
+export type CandidateListingDetail = {
+  listing: CatalogOverviewListing;
+  tags: CatalogTagRow[];
+  offerings: CatalogOfferingRow[];
+  contacts: Array<{ type: "email" | "phone"; raw_value: string }>;
+  existingProspectId: string | null;
+};
+
+export async function getCandidateListing(listingId: string): Promise<CandidateListingDetail | null> {
+  const overview = await getCatalogOverview(listingId);
+  if (!overview.listing) return null;
+  const pool = getPool();
+  const [listing, contacts, existing] = await Promise.all([
+    pool.query<CatalogOverviewListing>(
+      `
+        SELECT
+          rl.id,
+          rl.name,
+          rl.slug AS catalog_slug,
+          rl.logo_url,
+          rl.description_html,
+          enrich.quick_take,
+          rl.city,
+          rl.state,
+          rl.timezone,
+          rl.next_start_at::text,
+          concat_ws(', ', NULLIF(rl.city, ''), NULLIF(rl.state, '')) AS location
+        FROM catalog.race_listings rl
+        LEFT JOIN catalog.race_listing_ai_enrichment enrich
+          ON enrich.race_listing_id = rl.id AND enrich.is_current = true
+        WHERE rl.id = $1
+      `,
+      [listingId],
+    ),
+    pool.query<{ type: "email" | "phone"; raw_value: string }>(
+      `
+        SELECT type::text, raw_value
+        FROM crm.contact_methods
+        WHERE race_listing_id = $1 AND prospect_id IS NULL AND status <> 'invalid'
+        ORDER BY is_primary DESC, created_at ASC
+      `,
+      [listingId],
+    ),
+    pool.query<{ id: string }>(
+      `
+        SELECT id::text
+        FROM crm.prospects
+        WHERE race_listing_id = $1 AND archived_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [listingId],
+    ),
+  ]);
+  const row = listing.rows[0];
+  if (!row) return null;
+  return {
+    listing: row,
+    tags: overview.tags,
+    offerings: overview.offerings,
+    contacts: contacts.rows,
+    existingProspectId: existing.rows[0]?.id ?? null,
+  };
+}
 
 export async function getCatalogOverview(
   listingId: string,
   raceDate?: string | null,
 ) {
   const pool = getPool();
+  const year = raceDate?.match(/^\d{4}/) ? Number(raceDate.slice(0, 4)) : null;
+  const offeringParams = year == null ? [listingId] : [listingId, year];
   const [listing, tags, offerings] = await Promise.all([
     pool.query<CatalogOverviewListing>(
       `
@@ -766,18 +896,18 @@ export async function getCatalogOverview(
         WHERE offering.race_listing_id = $1
           AND COALESCE(offering.is_merch_only, false) = false
           AND COALESCE(offering.is_volunteer, false) = false
-          AND offering.race_edition_id = ${preferredCatalogEditionSql("$1")}
+          AND offering.race_edition_id = ${preferredCatalogEditionSql("$1", year == null ? null : "$2")}
         ORDER BY offering.starts_at NULLS LAST, offering.name
         LIMIT 20
       `,
-      [listingId],
+      offeringParams,
     ),
   ]);
 
   return {
     listing: listing.rows[0] ?? null,
     tags: tags.rows,
-    offerings: offerings.rows,
+    offerings: offeringsMatchingOccurrenceDate(offerings.rows, raceDate),
   };
 }
 
@@ -839,7 +969,8 @@ export async function filePastProspectsWithPool() {
     return result;
   } catch (error) {
     await client.query("ROLLBACK");
-    throw error;
+    console.error("Filing past prospects failed", error);
+    return null;
   } finally {
     client.release();
   }
@@ -861,9 +992,10 @@ export async function reconcileProspectingWithPool(actor: {
     const catalog = skipCatalog
       ? { linked: 0, archived: 0, considered: 0 }
       : await reconcileProspectCatalogMatches(client, actor);
+    const blacklist = await applyEmailBlacklist(client, actor);
     await client.query("COMMIT");
     if (!skipCatalog) lastProspectingReconcileAt = Date.now();
-    return { past, catalog };
+    return { past, catalog, blacklist };
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Prospecting reconcile failed", error);

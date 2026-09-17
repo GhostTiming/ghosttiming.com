@@ -12,8 +12,13 @@ import { refreshCatalogLinkedViews } from "@/lib/crm/revalidate";
 import {
   estimateRaceDurationMinutes,
   recalculateOccurrenceTimes,
-  syncOccurrenceRacesFromCatalog,
 } from "@/lib/crm/race-operations";
+import {
+  formatAgeGroupsField,
+  formatAwardsField,
+  parseRaceScoring,
+} from "@/lib/crm/race-scoring";
+import { refreshOccurrenceFromOnlineListing } from "@/lib/crm/online-listings";
 
 const uuid = z.string().uuid();
 const optionalText = (maximum: number) =>
@@ -29,30 +34,43 @@ async function requireOperator(formData: FormData) {
   return requireBookingOperator(uuid.parse(formData.get("bookingId")));
 }
 
+function optionalFormField(formData: FormData, key: string) {
+  if (!formData.has(key)) return { present: false, value: null as string | null };
+  const value = String(formData.get(key) ?? "").trim();
+  return { present: true, value: value || null };
+}
+
 export async function updateOccurrenceOperationsAction(formData: FormData) {
   const { user } = await requireOperator(formData);
+  const timerLocation = optionalFormField(formData, "timerLocation");
+  const hardwareEventName = optionalFormField(formData, "hardwareEventName");
+  const scoringExpectations = optionalFormField(formData, "scoringExpectations");
+  const postEventExpectations = optionalFormField(formData, "postEventExpectations");
+  const notes = optionalFormField(formData, "operationsNotes");
+  const arrivalOverride = optionalFormField(formData, "arrivalOverride");
+  const departureOverride = optionalFormField(formData, "departureOverride");
   const input = z
     .object({
       bookingId: uuid,
       occurrenceId: uuid,
-      timerLocation: z.enum(["on_site", "remote"]).optional(),
-      hardwareEventName: optionalText(500),
-      scoringExpectations: optionalText(20_000),
-      postEventExpectations: optionalText(20_000),
-      notes: optionalText(20_000),
-      arrivalOverride: z.string().optional(),
-      departureOverride: z.string().optional(),
+      timerLocation: z.enum(["on_site", "remote"]).nullable(),
+      hardwareEventName: optionalText(500).nullable(),
+      scoringExpectations: optionalText(20_000).nullable(),
+      postEventExpectations: optionalText(20_000).nullable(),
+      notes: optionalText(20_000).nullable(),
+      arrivalOverride: z.string().nullable(),
+      departureOverride: z.string().nullable(),
     })
     .parse({
       bookingId: formData.get("bookingId"),
       occurrenceId: formData.get("occurrenceId"),
-      timerLocation: formData.get("timerLocation") || undefined,
-      hardwareEventName: formData.get("hardwareEventName") || undefined,
-      scoringExpectations: formData.get("scoringExpectations") || undefined,
-      postEventExpectations: formData.get("postEventExpectations") || undefined,
-      notes: formData.get("operationsNotes") || undefined,
-      arrivalOverride: formData.get("arrivalOverride") || undefined,
-      departureOverride: formData.get("departureOverride") || undefined,
+      timerLocation: timerLocation.value,
+      hardwareEventName: hardwareEventName.value,
+      scoringExpectations: scoringExpectations.value,
+      postEventExpectations: postEventExpectations.value,
+      notes: notes.value,
+      arrivalOverride: arrivalOverride.value,
+      departureOverride: departureOverride.value,
     });
   const client = await getPool().connect();
   try {
@@ -60,16 +78,25 @@ export async function updateOccurrenceOperationsAction(formData: FormData) {
     const changed = await client.query(
       `
       UPDATE crm.event_occurrences occurrence
-      SET timer_location = $3::crm.timer_location,
-          hardware_event_name = $4,
-          scoring_expectations = $5,
-          post_event_expectations = $6,
-          notes = $7,
-          arrival_override_at = CASE WHEN $8::text IS NULL THEN NULL
-            ELSE $8::timestamp AT TIME ZONE
+      SET timer_location = CASE WHEN $3::boolean THEN $4::crm.timer_location
+            ELSE occurrence.timer_location END,
+          hardware_event_name = CASE WHEN $5::boolean THEN $6
+            ELSE occurrence.hardware_event_name END,
+          scoring_expectations = CASE WHEN $7::boolean THEN $8
+            ELSE occurrence.scoring_expectations END,
+          post_event_expectations = CASE WHEN $9::boolean THEN $10
+            ELSE occurrence.post_event_expectations END,
+          notes = CASE WHEN $11::boolean THEN $12
+            ELSE occurrence.notes END,
+          arrival_override_at = CASE
+            WHEN NOT $13::boolean THEN occurrence.arrival_override_at
+            WHEN $14::text IS NULL THEN NULL
+            ELSE $14::timestamp AT TIME ZONE
               COALESCE(occurrence.timezone, 'America/New_York') END,
-          departure_override_at = CASE WHEN $9::text IS NULL THEN NULL
-            ELSE $9::timestamp AT TIME ZONE
+          departure_override_at = CASE
+            WHEN NOT $15::boolean THEN occurrence.departure_override_at
+            WHEN $16::text IS NULL THEN NULL
+            ELSE $16::timestamp AT TIME ZONE
               COALESCE(occurrence.timezone, 'America/New_York') END,
           updated_at = now()
       FROM crm.bookings booking
@@ -81,13 +108,20 @@ export async function updateOccurrenceOperationsAction(formData: FormData) {
       [
         input.bookingId,
         input.occurrenceId,
-        input.timerLocation ?? null,
-        input.hardwareEventName ?? null,
-        input.scoringExpectations ?? null,
-        input.postEventExpectations ?? null,
-        input.notes ?? null,
-        input.arrivalOverride ?? null,
-        input.departureOverride ?? null,
+        timerLocation.present,
+        input.timerLocation,
+        hardwareEventName.present,
+        input.hardwareEventName,
+        scoringExpectations.present,
+        input.scoringExpectations,
+        postEventExpectations.present,
+        input.postEventExpectations,
+        notes.present,
+        input.notes,
+        arrivalOverride.present,
+        input.arrivalOverride,
+        departureOverride.present,
+        input.departureOverride,
       ],
     );
     if (!changed.rowCount) throw new Error("Booking occurrence not found.");
@@ -115,8 +149,9 @@ export async function saveOccurrenceRaceAction(formData: FormData) {
       distanceMiles: optionalPositiveNumber,
       distanceMeters: z.coerce.number().int().positive().optional(),
       startTime: z.string().min(1),
-      ageGroups: optionalText(5_000),
-      awards: optionalText(5_000),
+      ageGroupRules: z.string().optional(),
+      awardRules: z.string().optional(),
+      scoringNotes: optionalText(5_000),
       durationOverrideMinutes: z.coerce.number().int().positive().optional(),
     })
     .parse({
@@ -128,11 +163,27 @@ export async function saveOccurrenceRaceAction(formData: FormData) {
       distanceMiles: formData.get("distanceMiles") || undefined,
       distanceMeters: formData.get("distanceMeters") || undefined,
       startTime: formData.get("startTime"),
-      ageGroups: formData.get("ageGroups") || undefined,
-      awards: formData.get("awards") || undefined,
+      ageGroupRules: formData.get("ageGroupRules") || undefined,
+      awardRules: formData.get("awardRules") || undefined,
+      scoringNotes: formData.get("scoringNotes") || undefined,
       durationOverrideMinutes:
         formData.get("durationOverrideMinutes") || undefined,
     });
+  let parsedAgeGroups: unknown = [];
+  let parsedAwards: unknown = [];
+  try {
+    parsedAgeGroups = JSON.parse(input.ageGroupRules || "[]");
+    parsedAwards = JSON.parse(input.awardRules || "[]");
+  } catch {
+    throw new Error("Age groups or awards could not be saved. Try again.");
+  }
+  const scoring = parseRaceScoring({
+    ageGroups: parsedAgeGroups,
+    awards: parsedAwards,
+    notes: input.scoringNotes ?? null,
+  });
+  const ageGroups = formatAgeGroupsField(scoring.ageGroups);
+  const awards = formatAwardsField(scoring.awards);
   const estimatedDuration = estimateRaceDurationMinutes(
     input.distanceLabel,
     input.distanceMiles,
@@ -156,9 +207,9 @@ export async function saveOccurrenceRaceAction(formData: FormData) {
           UPDATE crm.occurrence_races
           SET name = $3, distance_label = $4, distance_miles = $5,
               distance_meters = $6, start_time = $7::timestamp,
-              age_groups = $8, awards = $9,
-              estimated_duration_minutes = $10,
-              duration_override_minutes = $11, updated_at = now()
+              age_groups = $8, awards = $9, scoring = $10::jsonb,
+              estimated_duration_minutes = $11,
+              duration_override_minutes = $12, updated_at = now()
           WHERE id = $2::uuid AND occurrence_id = $1::uuid
         `,
         [
@@ -169,8 +220,9 @@ export async function saveOccurrenceRaceAction(formData: FormData) {
           input.distanceMiles ?? null,
           input.distanceMeters ?? null,
           input.startTime,
-          input.ageGroups ?? null,
-          input.awards ?? null,
+          ageGroups,
+          awards,
+          JSON.stringify(scoring),
           estimatedDuration,
           input.durationOverrideMinutes ?? null,
         ],
@@ -180,10 +232,10 @@ export async function saveOccurrenceRaceAction(formData: FormData) {
         `
           INSERT INTO crm.occurrence_races
             (occurrence_id, name, distance_label, distance_miles,
-             distance_meters, start_time, age_groups, awards,
+             distance_meters, start_time, age_groups, awards, scoring,
              estimated_duration_minutes, duration_override_minutes, sort_order)
           SELECT
-            $1::uuid, $2, $3, $4, $5, $6::timestamp, $7, $8, $9, $10,
+            $1::uuid, $2, $3, $4, $5, $6::timestamp, $7, $8, $9::jsonb, $10, $11,
             COALESCE(MAX(sort_order), -1) + 1
           FROM crm.occurrence_races
           WHERE occurrence_id = $1::uuid
@@ -195,8 +247,9 @@ export async function saveOccurrenceRaceAction(formData: FormData) {
           input.distanceMiles ?? null,
           input.distanceMeters ?? null,
           input.startTime,
-          input.ageGroups ?? null,
-          input.awards ?? null,
+          ageGroups,
+          awards,
+          JSON.stringify(scoring),
           estimatedDuration,
           input.durationOverrideMinutes ?? null,
         ],
@@ -627,9 +680,13 @@ export async function resyncBookingCatalogRacesAction(formData: FormData) {
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
-    const booking = await client.query<{ listing_id: string | null }>(
+    const booking = await client.query<{
+      listing_id: string | null;
+      event_id: string;
+    }>(
       `
-        SELECT event.catalog_race_listing_id AS listing_id
+        SELECT event.catalog_race_listing_id AS listing_id,
+               event.id::text AS event_id
         FROM crm.bookings booking
         JOIN crm.event_occurrences occurrence ON occurrence.id = booking.occurrence_id
         JOIN crm.events event ON event.id = occurrence.event_id
@@ -639,17 +696,17 @@ export async function resyncBookingCatalogRacesAction(formData: FormData) {
       [bookingId, occurrenceId],
     );
     if (!booking.rows[0]) throw new Error("Booking occurrence not found.");
-    if (!booking.rows[0].listing_id) {
-      throw new Error("Match a Get Run Vibes listing before re-syncing races.");
-    }
-    const result = await syncOccurrenceRacesFromCatalog(client, occurrenceId);
+    const result = await refreshOccurrenceFromOnlineListing(client, {
+      eventId: booking.rows[0].event_id,
+      occurrenceId,
+    });
     await appendAuditActivity(
       client,
       { bookingId },
       user,
       result.inserted
-        ? `Re-synced ${result.inserted} race${result.inserted === 1 ? "" : "s"} from Get Run Vibes`
-        : "Re-synced races from Get Run Vibes",
+        ? `Re-synced ${result.inserted} race${result.inserted === 1 ? "" : "s"} from the online listing`
+        : "Re-synced races from the online listing",
     );
     await client.query("COMMIT");
   } catch (error) {

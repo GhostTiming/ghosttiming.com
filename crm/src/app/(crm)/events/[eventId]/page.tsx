@@ -1,12 +1,14 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ExternalHref } from "@/components/crm-links";
 import { EventLogo } from "@/components/event-logo";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
 import { TableColumnHeader } from "@/components/table-column-header";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { getEventDetail, type EventOccurrenceRow } from "@/lib/crm/event-queries";
+import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Event" };
@@ -67,7 +69,7 @@ export default async function EventDetailPage({
   searchParams: Promise<EventDetailParams>;
 }) {
   const access = await requireOperationsAccess();
-  const { eventId } = await params;
+  const eventId = parseRouteUuid((await params).eventId);
   const query = await searchParams;
   const current = {
     sort: firstParam(query.sort),
@@ -180,9 +182,9 @@ export default async function EventDetailPage({
           {data.occurrences.length === 1 ? "year" : "years"}
         </p>
         {data.event.website ? (
-          <a href={data.event.website} className="mt-3 inline-block text-sm text-cyan-300 underline">
+          <ExternalHref href={data.event.website} className="mt-3 inline-block text-sm text-cyan-300 underline">
             {data.event.website}
-          </a>
+          </ExternalHref>
         ) : null}
       </header>
 

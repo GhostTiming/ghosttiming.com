@@ -18,6 +18,7 @@ import {
   chunk,
   emailsForGmailSearch,
   matchEmailsToCrm,
+  uniqueNormalizedEmails,
 } from "@/lib/google/email-match";
 import {
   getGmailMessage,
@@ -30,8 +31,10 @@ import {
   createGoogleCalendarEvent,
   listGoogleCalendars,
   updateGoogleCalendarEvent,
+  type GoogleCalendarEventWrite,
   type GoogleCalendarListEntry,
 } from "@/lib/google/calendar-api";
+import { googleMeetHangoutLink } from "@/lib/google/calendar-meeting";
 import {
   GoogleAuthError,
   GoogleQuotaError,
@@ -42,13 +45,13 @@ import { requestGoogleAccessToken, revokeGoogleAccessToken, waitForGis, type Goo
 import {
   canHydrateStoredGoogleToken,
   clearStoredGoogleToken,
-  googleLoginHint,
   readStoredGoogleToken,
   restorableGoogleConnections,
   shouldClearStoredGoogleTokenOnRestore,
   storedTokenFromResponse,
   writeStoredGoogleToken,
 } from "@/lib/google/token-store";
+import { hasGmailSendScope } from "@/lib/google/gmail-scopes";
 import {
   CALENDAR_EVENTS_SCOPE,
   GMAIL_INGEST_BATCH_SIZE,
@@ -63,6 +66,13 @@ export type GoogleProgress = {
   total?: number;
 };
 
+export type GmailSyncAttach = {
+  prospectIds?: string[];
+  bookingIds?: string[];
+  organizationIds?: string[];
+  personIds?: string[];
+};
+
 type GoogleSessionValue = {
   clientId: string;
   connection: GoogleConnectionRow | null;
@@ -74,15 +84,24 @@ type GoogleSessionValue = {
   error: string | null;
   calendars: GoogleCalendarListEntry[];
   pendingCalendarCount: number;
+  hasGmailSend: boolean;
   connect: (options?: { addAccount?: boolean }) => Promise<void>;
   disconnect: (googleSub?: string) => Promise<void>;
+  ensureGmailSendAccess: () => Promise<{ token: string; email: string; googleSub: string }>;
   backfillGmail: () => Promise<void>;
   syncGmail: () => Promise<void>;
+  syncGmailForEmails: (emails: string[], attach?: GmailSyncAttach) => Promise<void>;
   syncCalendar: () => Promise<void>;
   selectCalendar: (calendarId: string, summary: string) => Promise<void>;
   createBookingEvent: (bookingId: string) => Promise<void>;
   updateBookingEvent: (bookingId: string) => Promise<void>;
   unlinkBookingEvent: (bookingId: string) => Promise<void>;
+  createOutreachCalendarEvent: (event: GoogleCalendarEventWrite) => Promise<{
+    id: string;
+    calendarId: string;
+    htmlLink?: string;
+    hangoutLink?: string | null;
+  }>;
   refreshPendingCalendarCount: () => Promise<void>;
 };
 
@@ -145,16 +164,21 @@ export function GoogleSessionProvider({
   const [error, setError] = useState<string | null>(null);
   const [calendars, setCalendars] = useState<GoogleCalendarListEntry[]>([]);
   const [pendingCalendarCount, setPendingCalendarCount] = useState(0);
+  const [tokenScope, setTokenScope] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
+  const tokenScopeRef = useRef<string | null>(null);
   const restoreAttempted = useRef(false);
 
   const rememberToken = useCallback(
     (googleSub: string, tokenResponse: Pick<GoogleTokenResponse, "access_token" | "expires_in" | "scope">) => {
       const token = tokenResponse.access_token;
       if (!token) return;
+      const scope = tokenResponse.scope ?? tokenScopeRef.current ?? undefined;
+      tokenScopeRef.current = scope ?? null;
+      setTokenScope(scope ?? null);
       writeStoredGoogleToken(
         userId,
-        storedTokenFromResponse(googleSub, token, tokenResponse.expires_in, tokenResponse.scope),
+        storedTokenFromResponse(googleSub, token, tokenResponse.expires_in, scope),
       );
     },
     [userId],
@@ -369,10 +393,34 @@ export function GoogleSessionProvider({
   }, []);
 
   const runTargetedGmailSearch = useCallback(
-    async (token: string, extraQuery = "") => {
+    async (
+      token: string,
+      extraQuery = "",
+      options?: { emails?: string[]; attach?: GmailSyncAttach },
+    ) => {
       setProgress({ label: "Searching Gmail..." });
       const index = await loadMatchIndex();
-      const emails = emailsForGmailSearch(index);
+      const emails = options?.emails?.length
+        ? uniqueNormalizedEmails(options.emails)
+        : emailsForGmailSearch(index);
+      if (options?.attach) {
+        for (const email of emails) {
+          const existing = index[email] ?? {
+            prospectIds: [],
+            bookingIds: [],
+            organizationIds: [],
+            personIds: [],
+          };
+          index[email] = {
+            prospectIds: [...new Set([...existing.prospectIds, ...(options.attach.prospectIds ?? [])])],
+            bookingIds: [...new Set([...existing.bookingIds, ...(options.attach.bookingIds ?? [])])],
+            organizationIds: [
+              ...new Set([...existing.organizationIds, ...(options.attach.organizationIds ?? [])]),
+            ],
+            personIds: [...new Set([...existing.personIds, ...(options.attach.personIds ?? [])])],
+          };
+        }
+      }
       if (!emails.length) {
         const profile = await getGmailProfile(token);
         return profile;
@@ -468,13 +516,48 @@ export function GoogleSessionProvider({
   const disconnect = useCallback(async (googleSub?: string) => {
     if (tokenRef.current) revokeGoogleAccessToken(tokenRef.current);
     tokenRef.current = null;
+    tokenScopeRef.current = null;
     setAccessToken(null);
+    setTokenScope(null);
     clearStoredGoogleToken(userId);
     await persistConnection({
       googleSub: googleSub ?? connection?.google_sub,
       disconnect: true,
     });
   }, [connection, persistConnection, userId]);
+
+  const ensureGmailSendAccess = useCallback(async () => {
+    if (!clientId) {
+      throw new Error("NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.");
+    }
+    if (hasGmailSendScope(tokenScopeRef.current) && tokenRef.current) {
+      if (!connection?.google_email) throw new Error("Connect Google before sending.");
+      return {
+        token: tokenRef.current,
+        email: connection.google_email,
+        googleSub: connection.google_sub,
+      };
+    }
+    await waitForGis();
+    const tokenResponse = await requestGoogleAccessToken({
+      clientId,
+      scope: GOOGLE_SCOPE_STRING,
+      prompt: "consent",
+      loginHint: connection?.google_email,
+    });
+    const token = tokenResponse.access_token;
+    if (!token) throw new Error("Google did not return an access token.");
+    if (!hasGmailSendScope(tokenResponse.scope)) {
+      throw new Error("Gmail send permission was not granted.");
+    }
+    const userInfo = await getGoogleUserInfo(token);
+    rememberToken(userInfo.sub, tokenResponse);
+    tokenRef.current = token;
+    setAccessToken(token);
+    setExpired(false);
+    setActiveGoogleSub(userInfo.sub);
+    return { token, email: userInfo.email, googleSub: userInfo.sub };
+  }, [clientId, connection, rememberToken]);
 
   useEffect(() => {
     if (restoreAttempted.current) return;
@@ -483,6 +566,8 @@ export function GoogleSessionProvider({
       const stored = readStoredGoogleToken(userId);
       if (canHydrateStoredGoogleToken(stored, initialConnections) && stored) {
         try {
+          tokenScopeRef.current = stored.scope ?? null;
+          setTokenScope(stored.scope ?? null);
           await hydrateToken(stored.accessToken, stored.googleSub);
           setRestoring(false);
           return;
@@ -494,21 +579,9 @@ export function GoogleSessionProvider({
       if (shouldClearStoredGoogleTokenOnRestore(stored, initialConnections)) {
         clearStoredGoogleToken(userId);
       }
-
-      const loginHint = googleLoginHint(stored, initialConnections);
-      if (!clientId || !loginHint) {
-        setRestoring(false);
-        return;
-      }
-      try {
-        await requestSilentToken(loginHint);
-      } catch {
-        // Stay disconnected until the user clicks Authorize Google.
-      } finally {
-        setRestoring(false);
-      }
+      setRestoring(false);
     })();
-  }, [clientId, hydrateToken, initialConnections, requestSilentToken, userId]);
+  }, [hydrateToken, initialConnections, userId]);
 
   const backfillGmail = useCallback(async () => {
     setError(null);
@@ -610,6 +683,33 @@ export function GoogleSessionProvider({
       setProgress(null);
     }
   }, [connection, ingestMessages, loadMatchIndex, persistConnection, runTargetedGmailSearch, withGoogle]);
+
+  const syncGmailForEmails = useCallback(
+    async (emails: string[], attach?: GmailSyncAttach) => {
+      setError(null);
+      const current = connection;
+      if (!current) throw new Error("Connect Google before syncing Gmail.");
+      const targets = uniqueNormalizedEmails(emails);
+      if (!targets.length) throw new Error("No email address to sync.");
+      try {
+        await withGoogle((token) =>
+          runTargetedGmailSearch(token, "", { emails: targets, attach }),
+        );
+      } catch (caught) {
+        const message =
+          caught instanceof GoogleQuotaError
+            ? caught.message
+            : caught instanceof Error
+              ? caught.message
+              : "Gmail re-sync failed.";
+        setError(message);
+        throw caught;
+      } finally {
+        setProgress(null);
+      }
+    },
+    [connection, runTargetedGmailSearch, withGoogle],
+  );
 
   const persistCalendarResult = useCallback(
     async (input: {
@@ -848,6 +948,24 @@ export function GoogleSessionProvider({
     [connection, persistCalendarResult],
   );
 
+  const createOutreachCalendarEvent = useCallback(
+    async (event: GoogleCalendarEventWrite) => {
+      if (!connection) throw new Error("Connect Google first.");
+      return withGoogle(async (token) => {
+        const calendarId = connection.calendar_id || "primary";
+        const created = await createGoogleCalendarEvent(token, calendarId, event);
+        if (!created.id) throw new Error("Google Calendar did not return an event ID.");
+        return {
+          id: created.id,
+          calendarId,
+          htmlLink: created.htmlLink,
+          hangoutLink: googleMeetHangoutLink(created),
+        };
+      });
+    },
+    [connection, withGoogle],
+  );
+
   const value = useMemo<GoogleSessionValue>(
     () => ({
       clientId,
@@ -860,15 +978,19 @@ export function GoogleSessionProvider({
       error,
       calendars,
       pendingCalendarCount,
+      hasGmailSend: hasGmailSendScope(tokenScope),
       connect,
       disconnect,
+      ensureGmailSendAccess,
       backfillGmail,
       syncGmail,
+      syncGmailForEmails,
       syncCalendar,
       selectCalendar,
       createBookingEvent,
       updateBookingEvent,
       unlinkBookingEvent,
+      createOutreachCalendarEvent,
       refreshPendingCalendarCount,
     }),
     [
@@ -880,7 +1002,9 @@ export function GoogleSessionProvider({
       connection,
       connections,
       createBookingEvent,
+      createOutreachCalendarEvent,
       disconnect,
+      ensureGmailSendAccess,
       error,
       expired,
       pendingCalendarCount,
@@ -890,6 +1014,8 @@ export function GoogleSessionProvider({
       selectCalendar,
       syncCalendar,
       syncGmail,
+      syncGmailForEmails,
+      tokenScope,
       unlinkBookingEvent,
       updateBookingEvent,
     ],

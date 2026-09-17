@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarClock, ExternalLink, Mail, Phone } from "lucide-react";
+import { ArrowLeft, CalendarClock, ExternalLink, Mail } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -6,18 +6,14 @@ import {
   updateActivityAction,
 } from "@/app/activity-actions";
 import {
-  logActivityAction,
   updateTaskStatusAction,
 } from "@/app/actions";
-import { convertProspectToBookingAction } from "@/app/booking-actions";
 import {
   permanentlyDeleteProspectAction,
   setProspectArchivedAction,
 } from "@/app/lifecycle-actions";
 import {
   restoreProspectCatalogMatchAction,
-  removeProspectContactMethodAction,
-  saveProspectContactMethodAction,
   updateProspectEventAction,
   updateProspectRoutingAction,
 } from "@/app/prospect-actions";
@@ -25,11 +21,18 @@ import { removeTaskAction, saveTaskAction } from "@/app/task-actions";
 import { ActivityAndTasksFeed } from "@/components/activity-and-tasks-feed";
 import { CatalogMatchControls } from "@/components/catalog-match-controls";
 import { ActivityTimelineItem } from "@/components/activity-timeline-item";
+import { ExternalHref } from "@/components/crm-links";
 import { EventLogo } from "@/components/event-logo";
 import { EventTypeSelect } from "@/components/event-type-select";
+import { LeadEmailCard } from "@/components/google/lead-email-card";
+import { ActivityComposer } from "@/components/outreach/activity-composer";
+import { MeetingWrapUpButton } from "@/components/outreach/meeting-wrap-up-button";
+import { ResyncGmailButton } from "@/components/google/resync-gmail-button";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { ProspectEventOverview } from "@/components/prospecting/event-overview";
 import { ProspectGlance } from "@/components/prospecting/glance";
+import { LeadContactPanel } from "@/components/prospecting/lead-contact-panel";
+import { LeadProfileLayout } from "@/components/prospecting/lead-profile-layout";
 import { ProspectStagePath } from "@/components/prospecting/stage-path";
 import { getPool } from "@/db";
 import { requireProspectingAccess } from "@/lib/auth/server";
@@ -37,7 +40,6 @@ import { buildActivityTaskFeed } from "@/lib/crm/activity-feed";
 import {
   activityEventType,
   closedLostReasonLabels,
-  dispositions,
   formatCalendarDate,
   formatTaskHeadline,
   isClosedLostReason,
@@ -45,6 +47,7 @@ import {
   taskDescription,
   timelineLabel,
 } from "@/lib/crm/domain";
+import { parseMeetingMetadata, isMeetingActivity } from "@/lib/crm/outreach-activity";
 import {
   asCatalogQuery,
   loadCatalogListingCandidates,
@@ -52,7 +55,13 @@ import {
   suggestCatalogMatches,
 } from "@/lib/crm/catalog-link";
 import { eventMatchKey } from "@/lib/crm/event-matching";
-import { getProspectDetail, reconcileProspectingWithPool } from "@/lib/crm/queries";
+import { getProspectDetail, filePastProspectsWithPool } from "@/lib/crm/queries";
+import {
+  groupMessagesIntoThreads,
+  listProspectEmailDrafts,
+  listProspectEmailMessages,
+} from "@/lib/crm/email-compose";
+import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
 
 function formatDateTime(value: string | null) {
@@ -72,20 +81,23 @@ export default async function ProspectDetailPage({
   searchParams,
 }: {
   params: Promise<{ prospectId: string }>;
-  searchParams: Promise<{ edit?: string; listingQ?: string }>;
+  searchParams: Promise<{
+    edit?: string;
+    listingQ?: string;
+    replyThread?: string;
+    draftId?: string;
+  }>;
 }) {
   const access = await requireProspectingAccess();
   const user = access.user;
-  const { prospectId } = await params;
-  const { edit, listingQ } = await searchParams;
-  await reconcileProspectingWithPool(user);
+  const prospectId = parseRouteUuid((await params).prospectId);
+  const { edit, listingQ, replyThread, draftId } = await searchParams;
+  await filePastProspectsWithPool();
   const data = await getProspectDetail(prospectId);
   if (!data.prospect) notFound();
   const { prospect } = data;
   const organizations =
-    access.canAccessOperations &&
-    prospect.stage_key === "confirmed" &&
-    !prospect.converted_booking_id
+    access.canAccessOperations && !prospect.converted_booking_id
       ? await getPool().query<{ id: string; name: string; is_direct_client: boolean }>(
           `
             SELECT org.id::text, org.name,
@@ -103,15 +115,28 @@ export default async function ProspectDetailPage({
   const directClients = organizations.rows.filter(
     (organization) => organization.is_direct_client,
   );
-  const [users, people] = await Promise.all([
+  const [users, people, emailDrafts, emailMessages, googleConnection] = await Promise.all([
     getPool().query<{ id: string; name: string }>(
       `SELECT id::text, name FROM crm.users WHERE is_active ORDER BY name`,
     ),
-    getPool().query<{ id: string; display_name: string }>(
-      `SELECT id::text, display_name FROM crm.people
+    getPool().query<{ id: string; display_name: string; email: string | null }>(
+      `SELECT id::text, display_name, email FROM crm.people
        WHERE is_active AND archived_at IS NULL ORDER BY display_name`,
     ),
+    listProspectEmailDrafts(getPool(), prospect.id),
+    listProspectEmailMessages(getPool(), prospect.id),
+    getPool().query<{ google_email: string }>(
+      `SELECT google_email FROM crm.google_connections
+       WHERE user_id = $1::uuid
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [user.id],
+    ),
   ]);
+  const emailThreads = groupMessagesIntoThreads(
+    emailMessages,
+    googleConnection.rows[0]?.google_email,
+  );
   const listingQuery = firstParam(listingQ)?.trim() || "";
   const needsCatalogMatch = !prospect.catalog_slug && !prospect.catalog_match_dismissed_at;
   let catalogSuggestions: ReturnType<typeof suggestCatalogMatches> = [];
@@ -155,13 +180,23 @@ export default async function ProspectDetailPage({
   }
 
   const lastActivity = latestNonStageActivity(data.activities);
+  const prospectEmails = [
+    ...new Set(
+      data.contactMethods
+        .filter((contact) => contact.type === "email")
+        .map((contact) => contact.raw_value.trim())
+        .filter(Boolean),
+    ),
+  ];
   const feed = buildActivityTaskFeed(data.activities, data.tasks);
   const activityById = new Map(data.activities.map((activity) => [activity.id, activity]));
   const taskById = new Map(data.tasks.map((task) => [task.id, task]));
   const feedActivityCount = feed.filter((item) => item.kind === "activity").length;
 
   return (
-    <div className="space-y-6">
+    <LeadProfileLayout
+      header={
+        <div className="space-y-3">
       <Link
         href="/prospecting"
         className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-950"
@@ -170,7 +205,7 @@ export default async function ProspectDetailPage({
         Back to prospects
       </Link>
 
-      <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-4">
             <EventLogo
@@ -189,24 +224,30 @@ export default async function ProspectDetailPage({
                   </span>
                 ) : null}
               </div>
-              <h1 className="text-3xl font-bold tracking-tight">{prospect.race_name}</h1>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{prospect.race_name}</h1>
               <p className="mt-2 text-slate-600">
                 {formatDateTime(prospect.event_date)} · {prospect.location || "Location unknown"}
               </p>
               {prospect.registration_url ? (
-                <a
+                <ExternalHref
                   href={prospect.registration_url}
-                  target="_blank"
-                  rel="noreferrer"
                   className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-cyan-700 hover:text-cyan-900"
                 >
                   Registration page
                   <ExternalLink aria-hidden className="size-4" />
-                </a>
+                </ExternalHref>
               ) : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <a
+              href="#lead-email"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md bg-cyan-700 px-3 text-sm font-semibold text-white hover:bg-cyan-800"
+            >
+              <Mail aria-hidden className="size-4" />
+              Email
+            </a>
+            <ResyncGmailButton emails={prospectEmails} prospectId={prospect.id} />
             <Link href={`/prospecting/${prospect.id}?edit=event`}
               className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">Edit event</Link>
             <Link href={`/prospecting/${prospect.id}?edit=routing`}
@@ -219,7 +260,7 @@ export default async function ProspectDetailPage({
               <h2 className="text-lg font-bold">Edit private event details</h2>
               <Link href={`/prospecting/${prospect.id}`} className="text-sm font-semibold">Cancel</Link>
             </div>
-            <p className="mt-1 text-sm text-slate-500">Catalog/Get Run Vibes source data will not be changed.</p>
+            <p className="mt-1 text-sm text-slate-500">Online catalog source data will not be changed.</p>
             <form action={updateProspectEventAction} className="mt-4 grid gap-3 sm:grid-cols-2">
               <input type="hidden" name="prospectId" value={prospect.id} />
               <input type="hidden" name="eventId" value={prospect.event_id} />
@@ -227,12 +268,12 @@ export default async function ProspectDetailPage({
               <label className="text-sm sm:col-span-2">Event name<input required name="eventName" defaultValue={prospect.race_name} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
               <label className="text-sm">Date and time<input type="datetime-local" name="raceDate" defaultValue={prospect.event_date_local ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
               <label className="text-sm">Timezone<input required name="timezone" defaultValue={prospect.timezone ?? "America/New_York"} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-              <label className="text-sm sm:col-span-2">Registration URL<input type="url" name="registrationUrl" defaultValue={prospect.registration_url ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-              <label className="text-sm sm:col-span-2">Street<input name="street" defaultValue={prospect.street ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-              <label className="text-sm">Street 2<input name="street2" defaultValue={prospect.street2 ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-              <label className="text-sm">City<input name="city" defaultValue={prospect.city ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-              <label className="text-sm">State<input name="state" defaultValue={prospect.state ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-              <label className="text-sm">ZIP code<input name="zipcode" defaultValue={prospect.zipcode ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+              <label className="text-sm sm:col-span-2">Registration URL<input type="url" name="registrationUrl" defaultValue={prospect.registration_url_override ?? ""} placeholder={prospect.registration_url ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+              <label className="text-sm sm:col-span-2">Street<input name="street" defaultValue={prospect.street_override ?? ""} placeholder={prospect.street ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+              <label className="text-sm">Street 2<input name="street2" defaultValue={prospect.street2_override ?? ""} placeholder={prospect.street2 ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+              <label className="text-sm">City<input name="city" defaultValue={prospect.city_override ?? ""} placeholder={prospect.city ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+              <label className="text-sm">State<input name="state" defaultValue={prospect.state_override ?? ""} placeholder={prospect.state ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+              <label className="text-sm">ZIP code<input name="zipcode" defaultValue={prospect.zipcode_override ?? ""} placeholder={prospect.zipcode ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
               <PendingSubmitButton className="rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white sm:col-span-2">Save event details</PendingSubmitButton>
             </form>
           </div>
@@ -253,8 +294,29 @@ export default async function ProspectDetailPage({
             </form>
           </div>
         ) : null}
+        <ProspectStagePath
+          prospectId={prospect.id}
+          currentStageKey={prospect.stage_key}
+          stages={data.stages}
+          variant="embedded"
+          convertToBooking={
+            access.canAccessOperations && !prospect.converted_booking_id
+              ? {
+                  directClients,
+                  organizations: organizations.rows,
+                  canViewFinancials: access.canViewAnyFinancials,
+                }
+              : null
+          }
+        />
       </header>
-
+        </div>
+      }
+      contacts={
+        <LeadContactPanel prospectId={prospect.id} contacts={data.contactMethods} />
+      }
+      glance={
+        <>
       <ProspectGlance
         key={`${prospect.last_step_note ?? ""}-${prospect.next_step_on ?? ""}-${prospect.next_step_note ?? ""}`}
         prospectId={prospect.id}
@@ -267,11 +329,6 @@ export default async function ProspectDetailPage({
         nextStepNote={prospect.next_step_note}
       />
 
-      <ProspectStagePath
-        prospectId={prospect.id}
-        currentStageKey={prospect.stage_key}
-        stages={data.stages}
-      />
       {prospect.stage_key === "closed_lost" ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
@@ -300,11 +357,53 @@ export default async function ProspectDetailPage({
         </section>
       ) : null}
 
+          {prospect.converted_booking_id ? (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <h2 className="font-bold text-emerald-950">Converted to Booking</h2>
+              {access.canAccessOperations ? (
+                <Link
+                  href={`/bookings/${prospect.converted_booking_id}`}
+                  className="mt-2 inline-block text-sm font-semibold text-emerald-800 underline"
+                >
+                  Open booking
+                </Link>
+              ) : (
+                <p className="mt-2 text-sm text-emerald-900">
+                  The operations team now owns the booking.
+                </p>
+              )}
+            </section>
+          ) : null}
+        </>
+      }
+      email={
+        <LeadEmailCard
+          prospectId={prospect.id}
+          raceName={prospect.race_name}
+          doNotContact={prospect.do_not_contact}
+          contactEmails={data.contactMethods
+            .filter((contact) => contact.type === "email")
+            .map((contact) => ({
+              value: contact.raw_value,
+              isPrimary: contact.is_primary,
+              status: contact.status,
+            }))}
+          drafts={emailDrafts}
+          threads={emailThreads}
+          initialReplyThreadId={firstParam(replyThread)?.trim() || null}
+          initialDraftId={firstParam(draftId)?.trim() || null}
+          variant="workspace"
+          collapsible
+        />
+      }
+      race={
+        <>
       {prospect.catalog_slug ? (
         <ProspectEventOverview
           prospect={prospect}
           tags={data.catalogTags}
           offerings={data.catalogOfferings}
+          collapsible
         />
       ) : prospect.catalog_match_dismissed_at ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -312,7 +411,7 @@ export default async function ProspectDetailPage({
             Event overview
           </h2>
           <p className="mt-2 text-sm text-slate-600">
-            Marked as not a Get Run Vibes race.
+            Marked as not in the online catalog.
           </p>
           <form action={restoreProspectCatalogMatchAction} className="mt-2">
             <input type="hidden" name="prospectId" value={prospect.id} />
@@ -324,11 +423,11 @@ export default async function ProspectDetailPage({
       ) : (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
-            Match Get Run Vibes listing
+            Match online listing
           </h2>
           <p className="mt-1 mb-3 text-sm text-slate-600">
-            Search by name, location, or year, then match so event details,
-            distances, and tags fill in from Get Run Vibes.
+            Search the online catalog or RunSignUp, or paste a registration
+            link, then match so event details, distances, and tags fill in.
           </p>
           <CatalogMatchControls
             prospectId={prospect.id}
@@ -338,66 +437,39 @@ export default async function ProspectDetailPage({
           />
         </section>
       )}
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="space-y-6">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold">Log what happened</h2>
-            <form action={logActivityAction} className="mt-4 grid gap-4">
-              <input type="hidden" name="prospectId" value={prospect.id} />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-1 text-sm font-medium">
-                  Event type
-                  <EventTypeSelect className="rounded-lg border border-slate-300 bg-white px-3 py-2" />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Disposition
-                  <select
-                    name="disposition"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2"
-                  >
-                    <option value="">None</option>
-                    {dispositions.map((disposition) => (
-                      <option key={disposition}>{disposition}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <label className="grid gap-1 text-sm font-medium">
-                Description
-                <textarea
-                  name="body"
-                  required
-                  rows={4}
-                  placeholder="What happened?"
-                  className="rounded-lg border border-slate-300 px-3 py-2"
-                />
-              </label>
-              <fieldset className="grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
-                <legend className="px-1 text-sm font-semibold">Optional follow-up task</legend>
-                <label className="grid gap-1 text-sm font-medium">
-                  Next action
-                  <input
-                    name="followUpTitle"
-                    placeholder="Email Sarah"
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Due
-                  <input
-                    name="followUpDueAt"
-                    type="datetime-local"
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                  />
-                </label>
-              </fieldset>
-              <PendingSubmitButton className="justify-self-start rounded-lg bg-cyan-600 px-5 py-2.5 font-semibold text-white hover:bg-cyan-700 disabled:opacity-60">
-                Save activity
-              </PendingSubmitButton>
-            </form>
-          </section>
-
+          {prospect.legacy_note ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <h2 className="font-bold text-amber-950">Legacy lead note</h2>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-amber-900">
+                {prospect.legacy_note}
+              </p>
+              {prospect.legacy_status ? (
+                <p className="mt-2 text-xs text-amber-700">{prospect.legacy_status}</p>
+              ) : null}
+            </section>
+          ) : null}
+        </>
+      }
+      log={
+        <ActivityComposer
+          recordKind="prospect"
+          recordId={prospect.id}
+          recordTitle={prospect.race_name}
+          contacts={data.contactMethods
+            .filter((contact) => contact.type === "email")
+            .map((contact, index) => ({
+              email: contact.raw_value,
+              label: contact.label || (contact.is_primary ? "Primary" : "Lead email"),
+              defaultSelected: contact.is_primary || index === 0,
+            }))}
+          people={people.rows.map((person) => ({
+            id: person.id,
+            name: person.display_name,
+            email: person.email,
+          }))}
+        />
+      }
+      timeline={
           <ActivityAndTasksFeed
             taskCount={data.tasks.length}
             activityCount={feedActivityCount}
@@ -460,7 +532,23 @@ export default async function ProspectDetailPage({
               if (!activity) return null;
               return (
                 <div key={`activity-${activity.id}`} data-feed-kind="activity">
-                  <ActivityTimelineItem activity={activity} />
+                  <ActivityTimelineItem
+                    activity={activity}
+                    replyHref={
+                      activity.metadata?.gmailThreadId
+                        ? `/prospecting/${prospect.id}?replyThread=${encodeURIComponent(activity.metadata.gmailThreadId)}#lead-email`
+                        : undefined
+                    }
+                    actions={
+                      isMeetingActivity(activity) &&
+                      !parseMeetingMetadata(activity.metadata)?.wrapUp ? (
+                        <MeetingWrapUpButton
+                          activityId={activity.id}
+                          recordKind="prospect"
+                        />
+                      ) : null
+                    }
+                  />
                   {user.role === "admin" && activity.metadata?.source !== "gmail" ? (
                     <details className="mt-2">
                       <summary className="cursor-pointer text-xs font-semibold text-cyan-700">
@@ -517,131 +605,8 @@ export default async function ProspectDetailPage({
               );
             })}
           </ActivityAndTasksFeed>
-        </div>
-
-        <aside className="space-y-6">
-          {prospect.converted_booking_id ? (
-            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-              <h2 className="font-bold text-emerald-950">Converted to Booking</h2>
-              {access.canAccessOperations ? (
-                <Link
-                  href={`/bookings/${prospect.converted_booking_id}`}
-                  className="mt-2 inline-block text-sm font-semibold text-emerald-800 underline"
-                >
-                  Open booking
-                </Link>
-              ) : (
-                <p className="mt-2 text-sm text-emerald-900">
-                  The operations team now owns the booking.
-                </p>
-              )}
-            </section>
-          ) : access.canAccessOperations && prospect.stage_key === "confirmed" ? (
-            <section className="rounded-2xl border border-cyan-200 bg-cyan-50 p-5">
-              <h2 className="font-bold text-cyan-950">Convert to Booking</h2>
-              {directClients.length ? (
-                <form action={convertProspectToBookingAction} className="mt-4 space-y-3">
-                  <input type="hidden" name="prospectId" value={prospect.id} />
-                  <label className="block text-sm font-medium">
-                    Direct client
-                    <select name="directClientId" required className="mt-1 w-full rounded-lg border border-cyan-200 bg-white px-3 py-2">
-                      <option value="">Select client</option>
-                      {directClients.map((client) => (
-                        <option key={client.id} value={client.id}>{client.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Event owner (optional)
-                    <select name="eventOwnerId" className="mt-1 w-full rounded-lg border border-cyan-200 bg-white px-3 py-2">
-                      <option value="">Same as direct client</option>
-                      {organizations.rows.map((client) => (
-                        <option key={client.id} value={client.id}>{client.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  {access.canViewAnyFinancials ? (
-                    <label className="block text-sm font-medium">
-                      Expected revenue
-                      <input name="expectedRevenue" inputMode="decimal" placeholder="0.00" className="mt-1 w-full rounded-lg border border-cyan-200 bg-white px-3 py-2" />
-                    </label>
-                  ) : null}
-                  <button className="w-full rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white">
-                    Create Booking
-                  </button>
-                </form>
-              ) : (
-                <p className="mt-2 text-sm text-cyan-900">
-                  Add a Direct Client organization before converting.
-                </p>
-              )}
-            </section>
-          ) : null}
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="font-bold">Contact methods</h2>
-            <div className="mt-3 space-y-2 text-sm">
-              {data.contactMethods.map((contact) => (
-                <details key={`${contact.id}-${contact.type}`} className="rounded-lg bg-slate-50 p-2">
-                  <summary className="flex cursor-pointer items-center gap-2">
-                    {contact.type === "email" ? <Mail aria-hidden className="size-4 text-slate-400" /> : <Phone aria-hidden className="size-4 text-slate-400" />}
-                    <span>{contact.raw_value}</span>
-                    {contact.label ? <span className="text-xs text-slate-500">({contact.label})</span> : null}
-                  </summary>
-                  {contact.editable ? (
-                    <>
-                      <form action={saveProspectContactMethodAction} className="mt-2 space-y-2">
-                        <input type="hidden" name="prospectId" value={prospect.id} />
-                        <input type="hidden" name="contactMethodId" value={contact.id} />
-                        <label className="block">Type<select name="type" defaultValue={contact.type} className="mt-1 w-full rounded-lg border px-2 py-1"><option value="email">Email</option><option value="phone">Phone</option></select></label>
-                        <label className="block">Value<input required name="value" defaultValue={contact.raw_value} className="mt-1 w-full rounded-lg border px-2 py-1" /></label>
-                        <label className="block">Label<input name="label" defaultValue={contact.label ?? ""} className="mt-1 w-full rounded-lg border px-2 py-1" /></label>
-                        <label className="block">Status<select name="status" defaultValue={contact.status} className="mt-1 w-full rounded-lg border px-2 py-1"><option value="unknown">Unknown</option><option value="valid">Valid</option><option value="invalid">Invalid</option><option value="opted_out">Opted out</option></select></label>
-                        <label className="flex gap-2"><input type="checkbox" name="isPrimary" defaultChecked={contact.is_primary} /> Primary</label>
-                        <button className="font-semibold text-cyan-700">Save contact method</button>
-                      </form>
-                      <form action={removeProspectContactMethodAction} className="mt-2">
-                        <input type="hidden" name="prospectId" value={prospect.id} />
-                        <input type="hidden" name="contactMethodId" value={contact.id} />
-                        <button className="font-semibold text-red-700">Remove</button>
-                      </form>
-                    </>
-                  ) : <p className="mt-2 text-xs text-slate-500">Edit this person from their organization record.</p>}
-                </details>
-              ))}
-              {data.contactMethods.length === 0 ? (
-                <p className="text-slate-500">
-                  Contact detected in the description; structured extraction comes next.
-                </p>
-              ) : null}
-            </div>
-            <details className="mt-4 rounded-lg border border-dashed p-3 text-sm">
-              <summary className="cursor-pointer font-semibold text-cyan-700">+ Add contact method</summary>
-              <form action={saveProspectContactMethodAction} className="mt-3 space-y-2">
-                <input type="hidden" name="prospectId" value={prospect.id} />
-                <label className="block">Type<select name="type" className="mt-1 w-full rounded-lg border px-2 py-1"><option value="email">Email</option><option value="phone">Phone</option></select></label>
-                <label className="block">Value<input required name="value" className="mt-1 w-full rounded-lg border px-2 py-1" /></label>
-                <label className="block">Label<input name="label" className="mt-1 w-full rounded-lg border px-2 py-1" /></label>
-                <input type="hidden" name="status" value="unknown" />
-                <label className="flex gap-2"><input type="checkbox" name="isPrimary" /> Primary</label>
-                <button className="font-semibold text-cyan-700">Add</button>
-              </form>
-            </details>
-          </section>
-
-          {prospect.legacy_note ? (
-            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-              <h2 className="font-bold text-amber-950">Legacy lead note</h2>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-amber-900">
-                {prospect.legacy_note}
-              </p>
-              {prospect.legacy_status ? (
-                <p className="mt-2 text-xs text-amber-700">{prospect.legacy_status}</p>
-              ) : null}
-            </section>
-          ) : null}
-        </aside>
-      </div>
+      }
+      footer={
       <section className="rounded-2xl border border-red-200 bg-red-50 p-5">
         <h2 className="font-bold text-red-950">Danger zone</h2>
         {prospect.archived_at ? (
@@ -669,6 +634,7 @@ export default async function ProspectDetailPage({
           </form>
         )}
       </section>
-    </div>
+      }
+    />
   );
 }

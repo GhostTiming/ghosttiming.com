@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireCrmUser } from "@/lib/auth/server";
+import { getAccessContext } from "@/lib/auth/server";
 import { loadEmailMatchIndex } from "@/lib/crm/google-queries";
 
 export async function GET() {
-  await requireCrmUser();
-  const entries = await loadEmailMatchIndex();
+  const access = await getAccessContext();
+  const entries = await loadEmailMatchIndex({
+    organizationIds: access.isSuperAdmin ? null : access.assignedOrgIds,
+  });
   return NextResponse.json({
     count: entries.length,
     index: Object.fromEntries(entries.map((entry) => [entry.email, entry])),

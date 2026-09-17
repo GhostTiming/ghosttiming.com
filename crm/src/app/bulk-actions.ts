@@ -14,6 +14,7 @@ import { appendAuditActivity } from "@/lib/crm/audit";
 import {
   isDestructiveBulkUpdate,
   parseBulkIds,
+  parseBulkListingIds,
   validateBulkUpdate,
 } from "@/lib/crm/bulk-update";
 import {
@@ -22,7 +23,8 @@ import {
 } from "@/lib/crm/catalog-refresh";
 import { loadContactOrgScope } from "@/lib/crm/contact-queries";
 import { personInContactScopeSql } from "@/lib/crm/contacts";
-import { changeProspectStage } from "@/lib/crm/mutations";
+import { assertBookingStageRequirements } from "@/app/booking-actions";
+import { changeProspectStage, closeCandidateListing } from "@/lib/crm/mutations";
 import { refreshCatalogLinkedViews } from "@/lib/crm/revalidate";
 
 export type BulkActionResult = {
@@ -160,6 +162,70 @@ export async function bulkUpdateProspectsAction(input: {
   return result(updated, skipped, failed, firstError);
 }
 
+export async function bulkUpdateCandidatesAction(input: {
+  ids: string[];
+  field: string;
+  value: string;
+  extra?: Record<string, string | null | undefined>;
+}): Promise<BulkActionResult> {
+  const user = await requireProspectingUser();
+  const ids = parseBulkListingIds(input.ids);
+  if (!ids.success) return result(0, 0, 0, ids.error);
+  const allowed = validateBulkUpdate("candidates", {
+    field: String(input.field ?? "").trim(),
+    value: String(input.value ?? ""),
+    extra: input.extra ?? {},
+  });
+  if (!allowed.success) return result(0, 0, ids.ids.length, allowed.error);
+  if (
+    isDestructiveBulkUpdate("candidates", input.field, input.value) &&
+    input.extra?.confirmed !== "1"
+  ) {
+    return result(0, 0, 0, "Confirm this change before applying it.");
+  }
+  if (input.value !== "disqualified" && input.value !== "unqualified") {
+    return result(0, 0, ids.ids.length, "Choose Disqualify or Unqualified.");
+  }
+
+  const client = await getPool().connect();
+  let updated = 0;
+  let skipped = 0;
+  let failed = 0;
+  let firstError: string | undefined;
+  try {
+    await client.query("BEGIN");
+    for (const raceListingId of ids.ids) {
+      try {
+        await client.query("SAVEPOINT bulk_row");
+        const changed = await closeCandidateListing(client, {
+          raceListingId,
+          userId: user.id,
+          userName: user.name,
+          stageKey: input.value,
+          reason: input.extra?.reason,
+          note: input.extra?.note,
+        });
+        if (changed) updated += 1;
+        else skipped += 1;
+        await client.query("RELEASE SAVEPOINT bulk_row");
+      } catch (error) {
+        await client.query("ROLLBACK TO SAVEPOINT bulk_row");
+        failed += 1;
+        firstError ??= error instanceof Error ? error.message : "Update failed.";
+      }
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  revalidatePath("/prospecting");
+  revalidatePath("/tasks");
+  return result(updated, skipped, failed, firstError);
+}
+
 export async function bulkUpdateBookingsAction(input: {
   ids: string[];
   field: string;
@@ -199,17 +265,7 @@ export async function bulkUpdateBookingsAction(input: {
       try {
         await client.query("SAVEPOINT bulk_row");
         if (parsed.field === "stage") {
-          if (parsed.value === "ready") {
-            const prep = await client.query<{ pending_count: number }>(
-              `SELECT COUNT(*)::integer AS pending_count
-               FROM crm.booking_prep_items
-               WHERE booking_id = $1::uuid AND status = 'pending'`,
-              [bookingId],
-            );
-            if ((prep.rows[0]?.pending_count ?? 0) > 0) {
-              throw new Error("Finish prep items before Ready.");
-            }
-          }
+            await assertBookingStageRequirements(client, bookingId, parsed.value);
           const changed = await client.query<{ old_name: string; new_name: string }>(
             `
               WITH target AS (

@@ -6,6 +6,7 @@ export type CalendarRace = {
   startTime?: string | null;
   ageGroups?: string | null;
   awards?: string | null;
+  notes?: string | null;
 };
 
 export type CalendarCrewMember = {
@@ -38,20 +39,50 @@ export function formatCalendarRaceClock(startTime?: string | null) {
   if (!Number.isFinite(hours)) return "TBD";
   const period = hours >= 12 ? "PM" : "AM";
   hours = hours % 12 || 12;
-  return minutes === "00" ? `${hours} ${period}` : `${hours}:${minutes} ${period}`;
+  return `${hours}:${minutes}${period}`;
+}
+
+function calendarFieldLines(value?: string | null) {
+  return (value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length);
+}
+
+export function formatCalendarLabeledField(label: string, items: string[]) {
+  return [`${label}:`, ...items].join("\n");
 }
 
 export function formatCalendarMultilineField(
   label: string,
   value?: string | null,
 ) {
-  const lines = (value ?? "")
-    .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter((line) => line.length);
-  if (!lines.length) return `${label}: Not set`;
-  if (lines.length === 1) return `${label}: ${lines[0]}`;
-  return [`${label}:`, ...lines.map((line) => `  ${line}`)].join("\n");
+  const lines = calendarFieldLines(value);
+  return formatCalendarLabeledField(label, lines.length ? lines : ["Not set"]);
+}
+
+export const DEFAULT_CALENDAR_CREW_MEMBER: CalendarCrewMember = {
+  name: "Michelle Splitstone-Laloggia",
+  phone: "(407) 687-2570",
+};
+
+function isDefaultCalendarCrewMember(member: CalendarCrewMember) {
+  return member.name.trim().toLowerCase().includes("splitstone");
+}
+
+export function withDefaultCalendarCrew(crew: CalendarCrewMember[]) {
+  const hasDefault = crew.some(isDefaultCalendarCrewMember);
+  if (hasDefault) {
+    return crew.map((member) =>
+      isDefaultCalendarCrewMember(member)
+        ? {
+            ...member,
+            phone: member.phone?.trim() || DEFAULT_CALENDAR_CREW_MEMBER.phone,
+          }
+        : member,
+    );
+  }
+  return [DEFAULT_CALENDAR_CREW_MEMBER, ...crew];
 }
 
 export function calendarCrewLabel(member: CalendarCrewMember) {
@@ -79,17 +110,29 @@ export function calendarCrewAttendees(crew: CalendarCrewMember[]) {
   return attendees;
 }
 
-function raceDescription(race: CalendarRace) {
-  const heading =
+function optionalCalendarField(label: string, value?: string | null) {
+  const lines = calendarFieldLines(value);
+  if (!lines.length) return null;
+  return formatCalendarLabeledField(label, lines);
+}
+
+export function formatCalendarRaceHeading(race: CalendarRace) {
+  const title =
     race.distanceLabel && race.distanceLabel !== race.name
       ? `${race.name} (${race.distanceLabel})`
       : race.name;
+  return `${title} @ ${formatCalendarRaceClock(race.startTime)} Start`;
+}
+
+function raceDescription(race: CalendarRace) {
   return [
-    heading,
-    `Start: ${formatCalendarRaceClock(race.startTime)}`,
-    formatCalendarMultilineField("Age Groups", race.ageGroups),
-    formatCalendarMultilineField("Awards", race.awards),
-  ].join("\n\n");
+    formatCalendarRaceHeading(race),
+    optionalCalendarField("Age Groups", race.ageGroups),
+    optionalCalendarField("Awards", race.awards),
+    optionalCalendarField("Notes", race.notes),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export const CRM_BOOKING_PRIVATE_PROPERTY = "crmBookingId";
@@ -99,18 +142,23 @@ export function googleCalendarEventTitle(input: GoogleCalendarBooking) {
 }
 
 export function googleCalendarEventDescription(input: GoogleCalendarBooking) {
-  const crewLabels = input.crew
+  const crewLabels = withDefaultCalendarCrew(input.crew)
     .map((member) => calendarCrewDescriptionLine(member))
     .filter(Boolean);
   return [
-    `Race Registration: ${input.registrationUrl || "Not set"}`,
-    `Crew: ${crewLabels.length ? crewLabels.join(", ") : "None assigned"}`,
-    [
-      "Races:",
+    formatCalendarLabeledField("Race Registration", [
+      input.registrationUrl || "Not set",
+    ]),
+    formatCalendarLabeledField(
+      "Crew",
+      crewLabels.length ? crewLabels : ["None assigned"],
+    ),
+    formatCalendarLabeledField(
+      "Race(s)",
       input.races.length
-        ? input.races.map(raceDescription).join("\n\n")
-        : "No races entered",
-    ].join("\n\n"),
+        ? [input.races.map(raceDescription).join("\n\n")]
+        : ["No races entered"],
+    ),
   ].join("\n\n");
 }
 

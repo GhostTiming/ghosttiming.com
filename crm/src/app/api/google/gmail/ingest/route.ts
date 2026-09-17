@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPool } from "@/db";
-import { requireCrmUser } from "@/lib/auth/server";
+import { getAccessContext } from "@/lib/auth/server";
 import { ingestGmailMessages } from "@/lib/crm/google-sync";
 
 const messageSchema = z.object({
@@ -19,14 +19,15 @@ const messageSchema = z.object({
   bodyText: z.string().nullable(),
   occurredAt: z.string().min(1),
   involvedEmails: z.array(z.string()).optional().default([]),
-  prospectIds: z.array(z.string().uuid()),
-  bookingIds: z.array(z.string().uuid()),
-  organizationIds: z.array(z.string().uuid()),
-  personIds: z.array(z.string().uuid()),
+  prospectIds: z.array(z.string().uuid()).optional().default([]),
+  bookingIds: z.array(z.string().uuid()).optional().default([]),
+  organizationIds: z.array(z.string().uuid()).optional().default([]),
+  personIds: z.array(z.string().uuid()).optional().default([]),
 });
 
 export async function POST(request: Request) {
-  const user = await requireCrmUser();
+  const access = await getAccessContext();
+  const user = access.user;
   const body = z
     .object({
       googleSub: z.string().min(1),
@@ -55,6 +56,8 @@ export async function POST(request: Request) {
     const result = await ingestGmailMessages(client, {
       googleSub: body.googleSub,
       googleEmail: body.googleEmail.toLowerCase(),
+      actorUserId: user.id,
+      organizationIds: access.isSuperAdmin ? null : access.assignedOrgIds,
       messages: body.messages,
     });
     await client.query("COMMIT");

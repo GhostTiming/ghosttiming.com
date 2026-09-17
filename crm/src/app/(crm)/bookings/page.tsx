@@ -2,6 +2,7 @@ import { CalendarDays, Columns3, List, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { BookingBulkBar } from "@/components/booking-bulk-bar";
 import { CatalogMatchControls } from "@/components/catalog-match-controls";
+import { BookingCalendarSyncControl } from "@/components/google/booking-calendar-sync-control";
 import {
   DatasetBulkRoot,
   DatasetCheckbox,
@@ -17,7 +18,6 @@ import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { redactBookingFinancials } from "@/lib/auth/financials";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import {
-  autoLinkUniqueCatalogMatches,
   asCatalogQuery,
   loadCatalogListingCandidates,
   suggestCatalogMatches,
@@ -46,6 +46,7 @@ type BookingRow = {
   amount_paid: string | null;
   payment_at: string | null;
   catalog_race_listing_id: string | null;
+  calendar_sync_status: string | null;
 };
 
 type BookingParams = {
@@ -81,7 +82,6 @@ export default async function BookingsPage({
   searchParams: Promise<BookingParams>;
 }) {
   const access = await requireOperationsAccess();
-  const user = access.user;
   const orgScope = bookingOrgScopeParam(access);
   const params = await searchParams;
   const current = {
@@ -108,19 +108,6 @@ export default async function BookingsPage({
   };
   const sort = sortExpressions[current.sort ?? ""] ? current.sort! : "date";
   const direction = current.direction === "desc" ? "DESC" : "ASC";
-  if (stageFilter === "needs_listing") {
-    const client = await getPool().connect();
-    try {
-      await client.query("BEGIN");
-      await autoLinkUniqueCatalogMatches(client, user);
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Booking catalog auto-link failed", error);
-    } finally {
-      client.release();
-    }
-  }
   const result = await getPool().query<BookingRow>(
     `
       SELECT
@@ -144,10 +131,12 @@ export default async function BookingsPage({
         b.actual_revenue::text,
         b.amount_paid::text,
         b.payment_at::text,
-        event.catalog_race_listing_id
+        event.catalog_race_listing_id,
+        calendar_link.sync_status::text AS calendar_sync_status
       FROM crm.bookings b
       JOIN crm.event_occurrences occurrence ON occurrence.id = b.occurrence_id
       JOIN crm.events event ON event.id = occurrence.event_id
+      LEFT JOIN crm.google_calendar_links calendar_link ON calendar_link.booking_id = b.id
       LEFT JOIN catalog.race_listings listing
         ON listing.id = event.catalog_race_listing_id
       LEFT JOIN crm.prospects source_prospect
@@ -178,6 +167,7 @@ export default async function BookingsPage({
         )
         AND ($7::uuid[] IS NULL OR b.direct_client_organization_id = ANY($7::uuid[]))
       ORDER BY ${sortExpressions[sort]} ${direction} NULLS LAST, event.name
+      LIMIT 500
     `,
     [
       stageFilter,
@@ -340,7 +330,13 @@ export default async function BookingsPage({
                     <ListRowLink className="font-semibold text-cyan-700" href={`/bookings/${booking.id}`}>
                       <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
                       <span>
-                        {booking.event_name}
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          {booking.event_name}
+                          <BookingCalendarSyncControl
+                            bookingId={booking.id}
+                            syncStatus={booking.calendar_sync_status}
+                          />
+                        </span>
                         <span className="mt-0.5 block text-xs font-normal text-slate-500">
                           {booking.direct_client}
                         </span>
@@ -365,7 +361,7 @@ export default async function BookingsPage({
           })}
           {!rows.length ? (
             <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
-              Every booking is linked or marked as not in Get Run Vibes.
+              Every booking is linked or marked as not in the online catalog.
             </p>
           ) : null}
         </div>
@@ -418,7 +414,13 @@ export default async function BookingsPage({
                       <ListRowLink className="font-semibold text-cyan-700" href={`/bookings/${booking.id}`}>
                         <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
                         <span>
-                          {booking.event_name}
+                          <span className="inline-flex flex-wrap items-center gap-1.5">
+                            {booking.event_name}
+                            <BookingCalendarSyncControl
+                              bookingId={booking.id}
+                              syncStatus={booking.calendar_sync_status}
+                            />
+                          </span>
                           <span className="mt-0.5 block text-xs font-normal text-slate-500">{booking.direct_client}</span>
                         </span>
                       </ListRowLink>
@@ -446,7 +448,7 @@ export default async function BookingsPage({
               {!rows.length ? (
                 <tr>
                   <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
-                    Every booking is linked or marked as not in Get Run Vibes.
+                    Every booking is linked or marked as not in the online catalog.
                   </td>
                 </tr>
               ) : null}
@@ -483,7 +485,13 @@ export default async function BookingsPage({
                       >
                       <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
                       <span>
-                        <p className="font-semibold text-slate-950">{booking.event_name}</p>
+                        <p className="inline-flex flex-wrap items-center gap-1.5 font-semibold text-slate-950">
+                          {booking.event_name}
+                          <BookingCalendarSyncControl
+                            bookingId={booking.id}
+                            syncStatus={booking.calendar_sync_status}
+                          />
+                        </p>
                         <p className="mt-1 text-sm text-slate-600">{booking.direct_client}</p>
                         {showFinancials ? (
                           <p className="mt-3 text-sm font-medium">
@@ -517,7 +525,13 @@ export default async function BookingsPage({
                   <span className="flex items-start gap-2.5">
                     <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
                     <span>
-                      <span className="block font-semibold text-slate-950">{booking.event_name}</span>
+                      <span className="inline-flex flex-wrap items-center gap-1.5 font-semibold text-slate-950">
+                        {booking.event_name}
+                        <BookingCalendarSyncControl
+                          bookingId={booking.id}
+                          syncStatus={booking.calendar_sync_status}
+                        />
+                      </span>
                       <span className="mt-1 block text-sm text-slate-600">{booking.direct_client}</span>
                       <span className="mt-1 block text-sm text-slate-500">
                         {booking.race_date ? date(booking.race_date) : "TBD"}
@@ -613,7 +627,13 @@ export default async function BookingsPage({
                     <ListRowLink className="font-semibold text-cyan-700" href={`/bookings/${booking.id}`}>
                       <EventLogo url={booking.logo_url} name={booking.event_name} size="list" />
                       <span>
-                        {booking.event_name}
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          {booking.event_name}
+                          <BookingCalendarSyncControl
+                            bookingId={booking.id}
+                            syncStatus={booking.calendar_sync_status}
+                          />
+                        </span>
                         <span className="mt-0.5 block text-xs font-normal text-slate-500">
                           {booking.timer_location?.replace("_", " ") ?? "Location TBD"}
                         </span>

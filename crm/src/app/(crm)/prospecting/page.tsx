@@ -1,12 +1,12 @@
-import { ArrowLeft, ArrowRight, Plus } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, Plus } from "lucide-react";
 import Link from "next/link";
-import { startProspectAction } from "@/app/actions";
 import {
   DatasetBulkRoot,
   DatasetCheckbox,
   DatasetHeaderCheckbox,
 } from "@/components/dataset-bulk";
 import { ProspectBulkBar } from "@/components/prospect-bulk-bar";
+import { MailtoLink } from "@/components/crm-links";
 import { EventLogo } from "@/components/event-logo";
 import { ListRowActions, ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
@@ -17,7 +17,7 @@ import { TableColumnHeader } from "@/components/table-column-header";
 import { getPool } from "@/db";
 import { requireProspectingUser } from "@/lib/auth/server";
 import { formatNextStep } from "@/lib/crm/domain";
-import { reconcileProspectingWithPool, listProspects } from "@/lib/crm/queries";
+import { filePastProspectsWithPool, listProspects } from "@/lib/crm/queries";
 import { CHIP_ROW, MOBILE_CARDS } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
@@ -39,6 +39,8 @@ type ProspectingParams = {
   miles?: string | string[];
   sort?: string | string[];
   direction?: string | string[];
+  hasPerk?: string | string[];
+  missingPerk?: string | string[];
 };
 
 const presenceOptions = [
@@ -65,8 +67,8 @@ export default async function ProspectingPage({
 }: {
   searchParams: Promise<ProspectingParams>;
 }) {
-  const user = await requireProspectingUser();
-  await reconcileProspectingWithPool(user);
+  await requireProspectingUser();
+  await filePastProspectsWithPool();
   const params = await searchParams;
   const current = {
     view: firstParam(params.view) || "active",
@@ -82,6 +84,8 @@ export default async function ProspectingPage({
     miles: firstParam(params.miles),
     sort: firstParam(params.sort),
     direction: firstParam(params.direction) || "asc",
+    hasPerk: firstParam(params.hasPerk),
+    missingPerk: firstParam(params.missingPerk),
   };
   const requestedPage = Number(firstParam(params.page) ?? 1);
   const result = await listProspects({
@@ -101,6 +105,8 @@ export default async function ProspectingPage({
     city: current.city,
     zip: current.zip,
     miles: parseOptionalInteger(current.miles, 1),
+    hasPerk: current.hasPerk,
+    missingPerk: current.missingPerk,
     sort: current.sort,
     direction: current.direction === "desc" ? "desc" : "asc",
   });
@@ -108,6 +114,18 @@ export default async function ProspectingPage({
     `SELECT id::text, name FROM crm.users WHERE is_active ORDER BY name`,
   );
   const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const candidateView = current.view === "candidate";
+  const bulkIds = result.rows
+    .map((row) => (candidateView ? row.race_listing_id : row.prospect_id))
+    .filter((id): id is string => Boolean(id));
+  const rowHref = (row: (typeof result.rows)[number]) =>
+    row.prospect_id
+      ? `/prospecting/${row.prospect_id}`
+      : row.race_listing_id
+        ? `/prospecting/listing/${encodeURIComponent(row.race_listing_id)}`
+        : null;
+  const rowBulkId = (row: (typeof result.rows)[number]) =>
+    candidateView ? row.race_listing_id : row.prospect_id;
   const viewOptions = [
     { key: "active", label: "Active" },
     { key: "candidate", label: "1 Candidates" },
@@ -153,10 +171,16 @@ export default async function ProspectingPage({
             listings flagged with a phone or email. Closed Lost, Disqualified,
             Unqualified, and Past events are outcomes. Races whose date has
             already passed move to Past events automatically. Use Filter for
-            city, state, or ZIP radius.
+            dates, medals/awards/swag, city, state, or ZIP radius.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/prospecting/blacklist"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            <Ban className="mr-1 inline size-4" /> Email blacklist
+          </Link>
           <Link href="/prospecting/new"
             className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white">
             <Plus className="mr-1 inline size-4" /> Add lead
@@ -184,28 +208,26 @@ export default async function ProspectingPage({
 
       <DatasetBulkRoot>
       <div className="space-y-3">
-      <ProspectBulkBar users={users.rows} />
+      <ProspectBulkBar
+        users={users.rows}
+        mode={current.view === "candidate" ? "candidates" : "prospects"}
+      />
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className={MOBILE_CARDS + " p-3"}>
           <label className="flex items-center gap-2 px-1 text-sm text-slate-600">
-            <DatasetHeaderCheckbox
-              ids={result.rows
-                .map((row) => row.prospect_id)
-                .filter((id): id is string => Boolean(id))}
-            />
+            <DatasetHeaderCheckbox ids={bulkIds} />
             Select all
           </label>
           {result.rows.map((row) => {
-            const href = row.prospect_id
-              ? `/prospecting/${row.prospect_id}`
-              : null;
+            const href = rowHref(row);
+            const bulkId = rowBulkId(row);
             return (
               <article
                 key={row.prospect_id ?? row.race_listing_id}
                 className="relative rounded-xl border border-slate-200 bg-slate-50 p-3"
               >
                 <div className="flex items-start gap-3">
-                  {row.prospect_id ? <DatasetCheckbox id={row.prospect_id} /> : null}
+                  {bulkId ? <DatasetCheckbox id={bulkId} /> : null}
                   <div className="min-w-0 flex-1 space-y-2">
                     {href ? (
                       <ListRowLink
@@ -243,31 +265,24 @@ export default async function ProspectingPage({
                     <p className="text-xs text-slate-500">
                       {row.owner_name ?? "Unassigned"}
                       {row.primary_phone ? ` · ${row.primary_phone}` : ""}
-                      {row.primary_email ? ` · ${row.primary_email}` : ""}
+                      {row.primary_email ? (
+                        <>
+                          {" · "}
+                          <MailtoLink
+                            email={row.primary_email}
+                            className="text-cyan-700 underline hover:text-cyan-900"
+                          />
+                        </>
+                      ) : null}
                     </p>
-                    <ListRowActions>
-                      {row.prospect_id ? (
+                    {row.prospect_id ? (
+                      <ListRowActions>
                         <ProspectListStageBubbles
                           prospectId={row.prospect_id}
                           currentStageKey={row.stage_key}
                         />
-                      ) : (
-                        <form action={startProspectAction}>
-                          <input
-                            type="hidden"
-                            name="raceListingId"
-                            value={row.race_listing_id ?? undefined}
-                          />
-                          <button
-                            type="submit"
-                            className="inline-flex items-center gap-1 font-semibold text-cyan-700"
-                          >
-                            <Plus aria-hidden className="size-4" />
-                            Start
-                          </button>
-                        </form>
-                      )}
-                    </ListRowActions>
+                      </ListRowActions>
+                    ) : null}
                   </div>
                 </div>
               </article>
@@ -279,11 +294,7 @@ export default async function ProspectingPage({
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="w-10 px-4 py-3">
-                  <DatasetHeaderCheckbox
-                    ids={result.rows
-                      .map((row) => row.prospect_id)
-                      .filter((id): id is string => Boolean(id))}
-                  />
+                  <DatasetHeaderCheckbox ids={bulkIds} />
                 </th>
                 <th className="px-4 py-3">
                   {column("Race", "race", [
@@ -344,18 +355,15 @@ export default async function ProspectingPage({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {result.rows.map((row) => {
-                const href = row.prospect_id
-                  ? `/prospecting/${row.prospect_id}`
-                  : null;
+                const href = rowHref(row);
+                const bulkId = rowBulkId(row);
                 return (
                 <tr
                   key={row.prospect_id ?? row.race_listing_id}
                   className={href ? listRowClassName() : "hover:bg-slate-50"}
                 >
                   <td className="px-4 py-3">
-                    {row.prospect_id ? (
-                      <DatasetCheckbox id={row.prospect_id} />
-                    ) : null}
+                    {bulkId ? <DatasetCheckbox id={bulkId} /> : null}
                   </td>
                   <td className="px-4 py-3">
                     {href ? (
@@ -403,7 +411,14 @@ export default async function ProspectingPage({
                     {row.primary_phone ?? (row.contact_processed ? "—" : "Detected")}
                   </td>
                   <td className="px-4 py-3">
-                    {row.primary_email ?? (row.contact_processed ? "—" : "Detected")}
+                    {row.primary_email ? (
+                      <MailtoLink
+                        email={row.primary_email}
+                        className="text-cyan-700 underline hover:text-cyan-900"
+                      />
+                    ) : (
+                      row.contact_processed ? "—" : "Detected"
+                    )}
                   </td>
                   <td className="px-4 py-3">{row.touch_count}</td>
                   <td className="whitespace-nowrap px-4 py-3">
@@ -419,29 +434,14 @@ export default async function ProspectingPage({
                   </td>
                   <td className="px-4 py-3">{row.owner_name ?? "Unassigned"}</td>
                   <td className="px-4 py-3 text-right">
-                    <ListRowActions>
-                      {row.prospect_id ? (
+                    {row.prospect_id ? (
+                      <ListRowActions>
                         <ProspectListStageBubbles
                           prospectId={row.prospect_id}
                           currentStageKey={row.stage_key}
                         />
-                      ) : (
-                        <form action={startProspectAction}>
-                          <input
-                            type="hidden"
-                            name="raceListingId"
-                            value={row.race_listing_id ?? undefined}
-                          />
-                          <button
-                            type="submit"
-                            className="inline-flex items-center gap-1 font-semibold text-cyan-700 hover:text-cyan-900"
-                          >
-                            <Plus aria-hidden className="size-4" />
-                            Start
-                          </button>
-                        </form>
-                      )}
-                    </ListRowActions>
+                      </ListRowActions>
+                    ) : null}
                   </td>
                 </tr>
                 );

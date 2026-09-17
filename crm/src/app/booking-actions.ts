@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import type { PoolClient } from "pg";
 import { getPool } from "@/db";
 import {
   requireBookingOperator,
@@ -18,11 +19,21 @@ import {
   linkEventToCatalogListing,
   loadCatalogListingCandidates,
   resolveCatalogListingQuery,
-  unlinkEventFromCatalogListing,
 } from "@/lib/crm/catalog-link";
 import { catalogListingSearchQuery } from "@/lib/crm/catalog-search";
 import { renewBooking } from "@/lib/crm/booking-renewal";
-import { findOrCreateStandingEvent } from "@/lib/crm/mutations";
+import { findOrCreateStandingEvent, changeProspectStage } from "@/lib/crm/mutations";
+import {
+  linkEventToOnlineListing,
+  unlinkEventFromOnlineListing,
+  resolveOnlineListingId,
+} from "@/lib/crm/online-listings";
+import { earliestRunSignupStart } from "@/lib/crm/runsignup";
+import {
+  preferredCatalogEditionSql,
+  recalculateOccurrenceTimes,
+  shiftOccurrenceRaceTimes,
+} from "@/lib/crm/race-operations";
 import { refreshCatalogLinkedViews } from "@/lib/crm/revalidate";
 
 const uuid = z.string().uuid();
@@ -32,9 +43,46 @@ const money = z
   .regex(/^\d{1,10}(\.\d{1,2})?$/)
   .optional();
 
+const optionalUrl = z.string().trim().url().max(2_000).optional();
+
+export async function assertBookingStageRequirements(
+  client: PoolClient,
+  bookingId: string,
+  stageKey: string,
+) {
+  if (stageKey === "ready") {
+    const prep = await client.query<{ pending_count: number }>(
+      `
+        SELECT COUNT(*)::integer AS pending_count
+        FROM crm.booking_prep_items
+        WHERE booking_id = $1::uuid AND status = 'pending'
+      `,
+      [bookingId],
+    );
+    if ((prep.rows[0]?.pending_count ?? 0) > 0) {
+      throw new Error(
+        "Complete or mark every prep item Not Applicable before moving to Ready.",
+      );
+    }
+  }
+  if (stageKey === "paid") {
+    const pay = await client.query<{ amount_paid: string | null }>(
+      `SELECT amount_paid::text FROM crm.bookings WHERE id = $1::uuid`,
+      [bookingId],
+    );
+    const amount = Number(pay.rows[0]?.amount_paid ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Record amount paid before moving this booking to Paid.");
+    }
+  }
+}
+
 export async function convertProspectToBookingAction(formData: FormData) {
   const access = await requireProspectingAccess();
   const user = access.user;
+  if (!access.canAccessOperations) {
+    throw new Error("Operations access is required to convert a prospect.");
+  }
   const prospectId = uuid.parse(formData.get("prospectId"));
   const directClientId = uuid.parse(formData.get("directClientId"));
   const eventOwnerId = uuid.parse(
@@ -117,7 +165,11 @@ export async function convertProspectToBookingAction(formData: FormData) {
       throw new Error("This prospect has already been converted.");
     }
     if (source.stage_key !== "confirmed") {
-      throw new Error("Only a Confirmed prospect can be converted.");
+      await changeProspectStage(client, prospectId, "confirmed", {
+        actorType: "human",
+        actorUserId: user.id,
+        actorName: user.name,
+      });
     }
 
     await client.query(
@@ -146,11 +198,6 @@ export async function convertProspectToBookingAction(formData: FormData) {
             (name, catalog_race_listing_id, source_type,
              default_owner_organization_id, website)
           VALUES ($1, $2, 'other', $3::uuid, $4)
-          ON CONFLICT (catalog_race_listing_id)
-          DO UPDATE SET
-            default_owner_organization_id =
-              COALESCE(events.default_owner_organization_id, EXCLUDED.default_owner_organization_id),
-            updated_at = now()
           RETURNING id::text
         `,
         [
@@ -181,12 +228,6 @@ export async function convertProspectToBookingAction(formData: FormData) {
             (event_id, catalog_race_edition_id, occurrence_year, race_date,
              timezone, event_owner_organization_id)
           VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid)
-          ON CONFLICT (catalog_race_edition_id)
-          DO UPDATE SET
-            event_owner_organization_id =
-              COALESCE(event_occurrences.event_owner_organization_id,
-                       EXCLUDED.event_owner_organization_id),
-            updated_at = now()
           RETURNING id::text
         `,
         [
@@ -246,20 +287,13 @@ export async function convertProspectToBookingAction(formData: FormData) {
         [eventId],
       );
       if (!linked.rows[0]?.catalog_race_listing_id) {
-        const taken = await client.query<{ id: string }>(
-          `SELECT id::text FROM crm.events
-           WHERE catalog_race_listing_id = $1 AND id <> $2::uuid`,
-          [source.race_listing_id, eventId],
-        );
-        if (!taken.rows[0]) {
-          await linkEventToCatalogListing(client, {
-            eventId,
-            listingId: source.race_listing_id,
-            occurrenceId,
-            actor: user,
-            archiveProspects: false,
-          });
-        }
+        await linkEventToCatalogListing(client, {
+          eventId,
+          listingId: source.race_listing_id,
+          occurrenceId,
+          actor: user,
+          archiveProspects: false,
+        });
       }
     }
     await client.query(
@@ -320,21 +354,7 @@ export async function changeBookingStageAction(formData: FormData) {
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
-    if (stageKey === "ready") {
-      const prep = await client.query<{ pending_count: number }>(
-        `
-          SELECT COUNT(*)::integer AS pending_count
-          FROM crm.booking_prep_items
-          WHERE booking_id = $1::uuid AND status = 'pending'
-        `,
-        [bookingId],
-      );
-      if (prep.rows[0].pending_count > 0) {
-        throw new Error(
-          "Complete or mark every prep item Not Applicable before moving to Ready.",
-        );
-      }
-    }
+    await assertBookingStageRequirements(client, bookingId, stageKey);
     const changed = await client.query<{ old_name: string; new_name: string }>(
       `
         WITH target AS (
@@ -457,7 +477,6 @@ export async function updateBookingFinancialsAction(formData: FormData) {
   redirect(`/bookings/${bookingId}`);
 }
 
-const optionalUrl = z.string().trim().url().max(2_000).optional();
 const optionalUuid = z.string().uuid().optional();
 
 export async function updateBookingEventAction(formData: FormData) {
@@ -490,6 +509,11 @@ export async function updateBookingEventAction(formData: FormData) {
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
+    const previous = await client.query<{ race_date: string | null }>(
+      `SELECT race_date::text FROM crm.event_occurrences
+       WHERE id = $1::uuid FOR UPDATE`,
+      [input.occurrenceId],
+    );
     const changed = await client.query(
       `
         UPDATE crm.event_occurrences occurrence
@@ -527,6 +551,14 @@ export async function updateBookingEventAction(formData: FormData) {
        WHERE id = $1`,
       [changed.rows[0].event_id, input.eventName, input.registrationUrl ?? null],
     );
+    await shiftOccurrenceRaceTimes(
+      client,
+      input.occurrenceId,
+      previous.rows[0]?.race_date ?? null,
+      input.raceDate ?? null,
+      input.timezone,
+    );
+    await recalculateOccurrenceTimes(client, input.occurrenceId);
     await appendAuditActivity(client, { bookingId: input.bookingId }, user,
       "Event details updated");
     await client.query("COMMIT");
@@ -692,7 +724,10 @@ export async function createManualBookingAction(formData: FormData) {
        RETURNING id::text`,
       [occurrence.rows[0].id, input.directClientId,
         input.primaryContactPersonId ?? null, input.assignedUserId ?? user.id,
-        expectedRevenue ?? null, input.notes ?? null, input.stageKey],
+        expectedRevenue ?? null, input.notes ?? null,
+        input.stageKey === "ready" || input.stageKey === "paid"
+          ? "confirmed"
+          : input.stageKey],
     );
     if (!booking.rows[0]) throw new Error("Booking stage not found.");
     bookingId = booking.rows[0].id;
@@ -725,6 +760,251 @@ export async function createManualBookingAction(formData: FormData) {
       occurrenceId: occurrence.rows[0].id,
       actor: user,
     });
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  refreshCatalogLinkedViews({ bookingId });
+  redirect(`/bookings/${bookingId}`);
+}
+
+export async function createBookingFromOnlineListingAction(formData: FormData) {
+  const access = await requireOperationsAccess();
+  const user = access.user;
+  const input = z
+    .object({
+      listingId: z.string().trim().min(1).max(200),
+      directClientId: uuid,
+      eventOwnerId: optionalUuid,
+      primaryContactPersonId: optionalUuid,
+      assignedUserId: optionalUuid,
+      stageKey: z.enum(bookingStageKeys),
+      expectedRevenue: money,
+    })
+    .parse({
+      listingId: formData.get("listingId"),
+      directClientId: formData.get("directClientId"),
+      eventOwnerId: formData.get("eventOwnerId") || undefined,
+      primaryContactPersonId: formData.get("primaryContactPersonId") || undefined,
+      assignedUserId: formData.get("assignedUserId") || undefined,
+      stageKey: formData.get("stageKey") || "confirmed",
+      expectedRevenue: formData.get("expectedRevenue") || undefined,
+    });
+  if (!access.canAccessOrganization(input.directClientId)) {
+    throw new Error("You cannot create a booking for that client organization.");
+  }
+  if (input.eventOwnerId && !access.canAccessOrganization(input.eventOwnerId)) {
+    throw new Error("You cannot assign that event owner organization.");
+  }
+  const expectedRevenue = access.canViewFinancials(input.directClientId)
+    ? input.expectedRevenue
+    : undefined;
+  const resolved = await resolveOnlineListingId(input.listingId);
+  const client = await getPool().connect();
+  let bookingId = "";
+  try {
+    await client.query("BEGIN");
+    let eventName = "";
+    let website: string | null = null;
+    let timezone = "America/New_York";
+    let raceDate: Date | null = null;
+    let raceDateLocal: string | null = null;
+    let occurrenceYear: number | null = null;
+    let street: string | null = null;
+    let street2: string | null = null;
+    let city: string | null = null;
+    let state: string | null = null;
+    let zipcode: string | null = null;
+    let existingEventId: string | null = null;
+
+    if (resolved.kind === "catalog") {
+      const listing = await client.query<{
+        name: string;
+        city: string | null;
+        state: string | null;
+        zipcode: string | null;
+        street: string | null;
+        street2: string | null;
+        website: string | null;
+        timezone: string | null;
+        race_date: Date | null;
+        occurrence_year: number | null;
+        existing_event_id: string | null;
+      }>(
+        `
+          SELECT listing.name,
+                 listing.city,
+                 listing.state,
+                 listing.zipcode,
+                 listing.street,
+                 listing.street2,
+                 COALESCE(listing.registration_url, listing.external_race_url) AS website,
+                 COALESCE(edition.timezone, listing.timezone, 'America/New_York') AS timezone,
+                 COALESCE(edition.starts_at, listing.next_start_at) AS race_date,
+                 COALESCE(
+                   edition.edition_year,
+                   EXTRACT(YEAR FROM COALESCE(edition.starts_at, listing.next_start_at))::integer
+                 ) AS occurrence_year,
+                 (
+                   SELECT event.id::text
+                   FROM crm.events event
+                   WHERE event.catalog_race_listing_id = listing.id
+                     AND event.archived_at IS NULL
+                   ORDER BY event.created_at
+                   LIMIT 1
+                 ) AS existing_event_id
+          FROM catalog.race_listings listing
+          LEFT JOIN catalog.race_editions edition
+            ON edition.id = ${preferredCatalogEditionSql("$1")}
+          WHERE listing.id = $1
+        `,
+        [resolved.listingId],
+      );
+      const row = listing.rows[0];
+      if (!row) throw new Error("That online listing was not found.");
+      eventName = row.name;
+      website = row.website;
+      timezone = row.timezone?.trim() || "America/New_York";
+      raceDate = row.race_date;
+      occurrenceYear = row.occurrence_year;
+      street = row.street;
+      street2 = row.street2;
+      city = row.city;
+      state = row.state;
+      zipcode = row.zipcode;
+      existingEventId = row.existing_event_id;
+    } else {
+      const race = resolved.race;
+      const start = earliestRunSignupStart(race);
+      eventName = race.name;
+      website = race.url ?? race.external_race_url ?? null;
+      timezone = race.timezone?.trim() || "America/New_York";
+      raceDateLocal = start?.local ?? null;
+      occurrenceYear = start?.year ?? null;
+      street = race.address?.street ?? null;
+      street2 = race.address?.street2 ?? null;
+      city = race.address?.city ?? null;
+      state = race.address?.state ?? null;
+      zipcode = race.address?.zipcode ?? null;
+      const existing = await client.query<{ id: string }>(
+        `SELECT id::text
+         FROM crm.events
+         WHERE archived_at IS NULL
+           AND source_type = 'runsignup'
+           AND external_source_id = $1
+         ORDER BY created_at
+         LIMIT 1`,
+        [String(race.race_id)],
+      );
+      existingEventId = existing.rows[0]?.id ?? null;
+    }
+
+    const eventId =
+      existingEventId ??
+      (
+        await client.query<{ id: string }>(
+          `INSERT INTO crm.events
+            (name, source_type, default_owner_organization_id, website)
+           VALUES ($1, 'manual', $2::uuid, $3)
+           RETURNING id::text`,
+          [eventName, input.eventOwnerId ?? null, website],
+        )
+      ).rows[0].id;
+
+    const occurrence = await client.query<{ id: string }>(
+      `INSERT INTO crm.event_occurrences
+        (event_id, occurrence_year, race_date, timezone,
+         event_owner_organization_id, registration_url_override,
+         street_override, street2_override, city_override, state_override,
+         zipcode_override)
+       VALUES (
+         $1::uuid,
+         COALESCE($2, EXTRACT(YEAR FROM COALESCE($3::timestamptz, CASE
+           WHEN $4::text IS NOT NULL THEN $4::timestamp AT TIME ZONE $5
+           ELSE NULL
+         END))::integer),
+         COALESCE(
+           $3::timestamptz,
+           CASE WHEN $4::text IS NOT NULL THEN $4::timestamp AT TIME ZONE $5 ELSE NULL END
+         ),
+         $5, $6::uuid, $7, $8, $9, $10, $11, $12
+       )
+       RETURNING id::text`,
+      [
+        eventId,
+        occurrenceYear,
+        raceDate,
+        raceDateLocal,
+        timezone,
+        input.eventOwnerId ?? null,
+        website,
+        street,
+        street2,
+        city,
+        state,
+        zipcode,
+      ],
+    );
+    const booking = await client.query<{ id: string }>(
+      `INSERT INTO crm.bookings
+        (occurrence_id, direct_client_organization_id,
+         primary_contact_person_id, stage_id, assigned_user_id,
+         expected_revenue)
+       SELECT $1::uuid, $2::uuid, $3::uuid, stage.id, $4::uuid, $5::numeric
+       FROM crm.pipeline_stages stage
+       WHERE stage.pipeline = 'booking' AND stage.key = $6 AND stage.is_active
+       RETURNING id::text`,
+      [
+        occurrence.rows[0].id,
+        input.directClientId,
+        input.primaryContactPersonId ?? null,
+        input.assignedUserId ?? user.id,
+        expectedRevenue ?? null,
+        input.stageKey === "ready" || input.stageKey === "paid"
+          ? "confirmed"
+          : input.stageKey,
+      ],
+    );
+    if (!booking.rows[0]) throw new Error("Booking stage not found.");
+    bookingId = booking.rows[0].id;
+    await client.query(
+      `INSERT INTO crm.booking_prep_items (booking_id, key, label)
+       VALUES
+         ($1::uuid, 'crew_email_sent', 'Crew email sent'),
+         ($1::uuid, 'race_built', 'Race built')
+       ON CONFLICT (booking_id, key) DO NOTHING`,
+      [bookingId],
+    );
+    await client.query(
+      `INSERT INTO crm.organization_roles (organization_id, role)
+       VALUES ($1::uuid, 'direct_client')
+       ON CONFLICT (organization_id, role) DO NOTHING`,
+      [input.directClientId],
+    );
+    if (input.eventOwnerId) {
+      await client.query(
+        `INSERT INTO crm.organization_roles (organization_id, role)
+         VALUES ($1::uuid, 'event_owner')
+         ON CONFLICT (organization_id, role) DO NOTHING`,
+        [input.eventOwnerId],
+      );
+    }
+    await linkEventToOnlineListing(client, {
+      eventId,
+      listingId: input.listingId,
+      occurrenceId: occurrence.rows[0].id,
+      actor: user,
+    });
+    await appendAuditActivity(
+      client,
+      { bookingId },
+      user,
+      "Booking created from online listing",
+      { listingId: input.listingId },
+    );
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -791,8 +1071,8 @@ export async function matchBookingCatalogListingAction(formData: FormData) {
         }
       }
       if (!searchRedirect) {
-        if (!listingId) throw new Error("Choose a Get Run Vibes listing to match.");
-        const result = await linkEventToCatalogListing(client, {
+        if (!listingId) throw new Error("Choose an online listing to match.");
+        const result = await linkEventToOnlineListing(client, {
           eventId: row.event_id,
           listingId,
           occurrenceId: row.occurrence_id,
@@ -802,7 +1082,7 @@ export async function matchBookingCatalogListingAction(formData: FormData) {
           client,
           { bookingId },
           user,
-          "Matched Get Run Vibes listing",
+          "Matched online listing",
           {
             raceListingId: listingId,
             archivedProspects: result.archivedCount,
@@ -848,7 +1128,7 @@ export async function dismissBookingCatalogMatchAction(formData: FormData) {
       client,
       { bookingId },
       user,
-      "Marked as not in Get Run Vibes",
+      "Marked as not in the online catalog",
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -897,7 +1177,7 @@ export async function restoreBookingCatalogMatchAction(formData: FormData) {
       client,
       { bookingId },
       user,
-      "Undid not-a-Get-Run-Vibes mark",
+      "Undid not-an-online-listing mark",
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -944,12 +1224,12 @@ export async function unlinkBookingCatalogListingAction(formData: FormData) {
       city: booking.rows[0].city,
       state: booking.rows[0].state,
     });
-    await unlinkEventFromCatalogListing(client, eventId);
+    await unlinkEventFromOnlineListing(client, eventId);
     await appendAuditActivity(
       client,
       { bookingId },
       user,
-      "Uncoupled Get Run Vibes listing",
+      "Uncoupled online listing",
     );
     await client.query("COMMIT");
   } catch (error) {

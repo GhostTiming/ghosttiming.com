@@ -11,15 +11,17 @@ import {
   asCatalogQuery,
   clearCatalogMatchDismissed,
   dismissCatalogMatch,
-  linkEventToCatalogListing,
   loadCatalogListingCandidates,
   resolveCatalogListingQuery,
-  unlinkEventFromCatalogListing,
 } from "@/lib/crm/catalog-link";
 import { catalogListingSearchQuery } from "@/lib/crm/catalog-search";
 import { changeProspectStage, findOrCreateStandingEvent } from "@/lib/crm/mutations";
-import { cancelOpenProspectTasks, PAST_EVENT_STAGE_KEY } from "@/lib/crm/past-events";
+import {
+  linkEventToOnlineListing,
+  unlinkEventFromOnlineListing,
+} from "@/lib/crm/online-listings";
 import { refreshCatalogLinkedViews } from "@/lib/crm/revalidate";
+import { prospectPipelineStageKeys } from "@/lib/crm/domain";
 
 const uuid = z.string().uuid();
 const optionalUuid = uuid.optional();
@@ -57,7 +59,7 @@ export async function updateProspectStageAction(formData: FormData) {
   const user = await requireProspectingUser();
   const input = z.object({
     prospectId: uuid,
-    stageKey: z.string().trim().min(1).max(80),
+    stageKey: z.enum(prospectPipelineStageKeys),
   }).parse({
     prospectId: formData.get("prospectId"),
     stageKey: formData.get("stageKey"),
@@ -160,7 +162,7 @@ export async function updateProspectRoutingAction(formData: FormData) {
   const user = await requireProspectingUser();
   const input = z.object({
     prospectId: uuid,
-    stageKey: z.string().trim().min(1).max(80),
+    stageKey: z.enum(prospectPipelineStageKeys),
     assignedUserId: optionalUuid,
     primaryContactPersonId: optionalUuid,
     doNotContact: z.boolean(),
@@ -174,24 +176,27 @@ export async function updateProspectRoutingAction(formData: FormData) {
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
+    await changeProspectStage(client, input.prospectId, input.stageKey, {
+      actorType: "human",
+      actorUserId: user.id,
+      actorName: user.name,
+    });
     const changed = await client.query(
-      `UPDATE crm.prospects prospect
-       SET stage_id = stage.id, assigned_user_id = $3::uuid,
-         primary_contact_person_id = $4::uuid, do_not_contact = $5,
-         closed_at = CASE WHEN stage.is_terminal THEN
-           COALESCE(prospect.closed_at, now()) ELSE NULL END,
-         updated_at = now()
-       FROM crm.pipeline_stages stage
-       WHERE prospect.id = $1::uuid AND stage.pipeline = 'prospect'
-         AND stage.key = $2 AND stage.is_active = true
-       RETURNING prospect.id`,
-      [input.prospectId, input.stageKey, input.assignedUserId ?? null,
-        input.primaryContactPersonId ?? null, input.doNotContact],
+      `UPDATE crm.prospects
+       SET assigned_user_id = $2::uuid,
+           primary_contact_person_id = $3::uuid,
+           do_not_contact = $4,
+           updated_at = now()
+       WHERE id = $1::uuid
+       RETURNING id`,
+      [
+        input.prospectId,
+        input.assignedUserId ?? null,
+        input.primaryContactPersonId ?? null,
+        input.doNotContact,
+      ],
     );
-    if (!changed.rowCount) throw new Error("Prospect or stage not found.");
-    if (input.stageKey === PAST_EVENT_STAGE_KEY) {
-      await cancelOpenProspectTasks(client, [input.prospectId]);
-    }
+    if (!changed.rowCount) throw new Error("Prospect not found.");
     await appendAuditActivity(client, { prospectId: input.prospectId }, user,
       "Stage, owner, contact, or contact preference updated");
     await client.query("COMMIT");
@@ -321,7 +326,7 @@ export async function createManualProspectAction(formData: FormData) {
     city: optionalText(200),
     state: optionalText(100),
     zipcode: optionalText(30),
-    stageKey: z.string().trim().min(1).max(80),
+    stageKey: z.enum(prospectPipelineStageKeys),
     assignedUserId: optionalUuid,
     organizationId: optionalUuid,
     contactName: optionalText(300),
@@ -494,8 +499,8 @@ export async function matchProspectCatalogListingAction(formData: FormData) {
         }
       }
       if (!searchRedirect) {
-        if (!listingId) throw new Error("Choose a Get Run Vibes listing to match.");
-        await linkEventToCatalogListing(client, {
+        if (!listingId) throw new Error("Choose an online listing to match.");
+        await linkEventToOnlineListing(client, {
           eventId: row.event_id,
           listingId,
           occurrenceId: row.occurrence_id,
@@ -506,7 +511,7 @@ export async function matchProspectCatalogListingAction(formData: FormData) {
           client,
           { prospectId },
           user,
-          "Matched Get Run Vibes listing",
+          "Matched online listing",
           { raceListingId: listingId },
         );
       }
@@ -546,7 +551,7 @@ export async function dismissProspectCatalogMatchAction(formData: FormData) {
       client,
       { prospectId },
       user,
-      "Marked as not in Get Run Vibes",
+      "Marked as not in the online catalog",
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -578,7 +583,7 @@ export async function restoreProspectCatalogMatchAction(formData: FormData) {
       client,
       { prospectId },
       user,
-      "Returned to Get Run Vibes listing review",
+      "Returned to online listing review",
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -625,12 +630,12 @@ export async function unlinkProspectCatalogListingAction(formData: FormData) {
       city: prospect.rows[0].city,
       state: prospect.rows[0].state,
     });
-    await unlinkEventFromCatalogListing(client, eventId);
+    await unlinkEventFromOnlineListing(client, eventId);
     await appendAuditActivity(
       client,
       { prospectId },
       user,
-      "Uncoupled Get Run Vibes listing",
+      "Uncoupled online listing",
     );
     await client.query("COMMIT");
   } catch (error) {

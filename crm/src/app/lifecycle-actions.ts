@@ -45,7 +45,10 @@ export async function setBookingArchivedAction(formData: FormData) {
 
 export async function permanentlyDeleteBookingAction(formData: FormData) {
   const bookingId = uuid.parse(formData.get("bookingId"));
-  await requireBookingOperator(bookingId);
+  const { access, organizationId } = await requireBookingOperator(bookingId);
+  if (!access.canViewFinancials(organizationId)) {
+    throw new Error("Admin access is required to permanently delete a booking.");
+  }
   if (formData.get("confirmation") !== "DELETE") {
     throw new Error('Type "DELETE" to permanently delete this booking.');
   }

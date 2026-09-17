@@ -16,10 +16,16 @@ import type {
   CatalogListingSuggestion,
 } from "@/lib/crm/catalog-link";
 import {
-  catalogSearchLikeNeedles,
   listingEventYear,
   listingMatchesSearch,
 } from "@/lib/crm/catalog-search";
+import { looksLikeEventUrl, shouldSearchOnlineListings } from "@/lib/crm/runsignup-parse";
+
+type SearchableListing = CatalogListingCandidate & {
+  source_label?: string;
+  reason?: CatalogListingSuggestion["reason"];
+  score?: number;
+};
 
 function listingPlace(listing: {
   city: string | null;
@@ -27,25 +33,29 @@ function listingPlace(listing: {
   zipcode?: string | null;
   next_start_at?: string | Date | null;
   edition_year?: number | null;
+  source_label?: string;
 }) {
   const cityState = [listing.city, listing.state].filter(Boolean).join(", ");
   const place = [cityState, listing.zipcode].filter(Boolean).join(" ") || "Location unknown";
   const year = listingEventYear(listing.next_start_at, listing.edition_year);
-  return year ? `${place} · ${year}` : place;
+  const source = listing.source_label ? ` · ${listing.source_label}` : "";
+  return year ? `${place} · ${year}${source}` : `${place}${source}`;
 }
 
-function asSuggestion(
-  listing: CatalogListingCandidate | CatalogListingSuggestion,
-): CatalogListingSuggestion {
-  if ("reason" in listing) return listing;
+function asSuggestion(listing: SearchableListing): CatalogListingSuggestion & {
+  source_label?: string;
+} {
+  if ("reason" in listing && listing.reason) {
+    return listing as CatalogListingSuggestion & { source_label?: string };
+  }
   return { ...listing, score: 50, reason: "similar" };
 }
 
 const EMPTY_SUGGESTIONS: CatalogListingSuggestion[] = [];
 
-function uniqueListings(rows: CatalogListingSuggestion[]) {
+function uniqueListings(rows: Array<CatalogListingSuggestion & { source_label?: string }>) {
   const seen = new Set<string>();
-  const unique: CatalogListingSuggestion[] = [];
+  const unique: Array<CatalogListingSuggestion & { source_label?: string }> = [];
   for (const row of rows) {
     if (seen.has(row.id)) continue;
     seen.add(row.id);
@@ -66,22 +76,21 @@ export function CatalogMatchControls({
   bookingId?: string;
   prospectId?: string;
   suggestions: CatalogListingSuggestion[];
-  searchResults?: CatalogListingSuggestion[];
+  searchResults?: SearchableListing[];
   searchQuery?: string;
   returnTo?: string;
   compact?: boolean;
 }) {
   const [query, setQuery] = useState(searchQuery);
-  const [remote, setRemote] = useState<CatalogListingCandidate[]>(searchResults);
+  const [remote, setRemote] = useState<SearchableListing[]>(searchResults);
   const [remoteQuery, setRemoteQuery] = useState(searchQuery);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const needles = catalogSearchLikeNeedles(query);
-  const searching = needles.length > 0 && remoteQuery !== query.trim();
+  const canSearch = shouldSearchOnlineListings(query);
+  const searching = canSearch && remoteQuery !== query.trim();
 
   useEffect(() => {
     const requested = query.trim();
-    const searchNeedles = catalogSearchLikeNeedles(requested);
-    if (!searchNeedles.length) return;
+    if (!shouldSearchOnlineListings(requested)) return;
     let cancelled = false;
     const handle = window.setTimeout(() => {
       void searchCatalogListingsAction(requested)
@@ -104,10 +113,14 @@ export function CatalogMatchControls({
   }, [query]);
 
   const listings = useMemo(() => {
+    const remoteSuggestions = remote.map(asSuggestion);
+    if (looksLikeEventUrl(query) || /^\d{3,}$/.test(query.trim())) {
+      return uniqueListings([...searchResults.map(asSuggestion), ...remoteSuggestions]);
+    }
     const pooled = uniqueListings([
       ...suggestions,
-      ...searchResults,
-      ...remote.map(asSuggestion),
+      ...searchResults.map(asSuggestion),
+      ...remoteSuggestions,
     ]);
     if (!query.trim()) return suggestions;
     return pooled
@@ -126,9 +139,9 @@ export function CatalogMatchControls({
 
   const emptyLabel = query.trim()
     ? searching
-      ? "Searching Get Run Vibes…"
-      : "No Get Run Vibes listings match that search."
-    : "No close Get Run Vibes matches.";
+      ? "Searching online listings…"
+      : "No online listings match that search."
+    : "No close online listing matches.";
   const matchAction = prospectId
     ? matchProspectCatalogListingAction
     : matchBookingCatalogListingAction;
@@ -154,11 +167,11 @@ export function CatalogMatchControls({
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name, location, or year…"
+          placeholder="Search by name, or paste a RunSignUp / Race Roster link…"
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
       </label>
-      {searchError && needles.length ? (
+      {searchError && canSearch ? (
         <p className="text-sm text-red-700" role="alert">
           {searchError}
         </p>
@@ -194,7 +207,7 @@ export function CatalogMatchControls({
       <form action={dismissAction}>
         {entityFields()}
         <PendingSubmitButton className="text-sm font-semibold text-slate-600 hover:text-slate-900 disabled:opacity-60">
-          Not in Get Run Vibes
+          Not in the online catalog
         </PendingSubmitButton>
       </form>
     </div>

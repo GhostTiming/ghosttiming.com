@@ -3,7 +3,12 @@ import {
   formatGmailActivityBody,
   type CanonicalGmailMessage,
 } from "@/lib/google/gmail-parse";
-import type { EmailMatchTargets } from "@/lib/google/email-match";
+import {
+  matchEmailsToCrm,
+  uniqueNormalizedEmails,
+  type EmailMatchTargets,
+} from "@/lib/google/email-match";
+import { loadEmailMatchIndex } from "./google-queries";
 
 export type GoogleConnectionRow = {
   id?: string;
@@ -30,11 +35,31 @@ export async function ingestGmailMessages(
   input: {
     googleSub: string;
     googleEmail: string;
+    actorUserId?: string | null;
+    organizationIds?: string[] | null;
     messages: IngestGmailMessage[];
   },
 ) {
+  const indexEntries = await loadEmailMatchIndex({
+    organizationIds: input.organizationIds ?? null,
+  });
+  const index = Object.fromEntries(
+    indexEntries.map((entry) => [entry.email, entry]),
+  );
   let createdActivities = 0;
   for (const message of input.messages) {
+    const emails = uniqueNormalizedEmails(
+      message.fromAddress,
+      message.toAddresses,
+      message.ccAddresses,
+    );
+    const matched = matchEmailsToCrm(emails, index);
+    const prospectIds = [...new Set([...matched.prospectIds, ...message.prospectIds])];
+    const bookingIds = [...new Set([...matched.bookingIds, ...message.bookingIds])];
+    const organizationIds = [
+      ...new Set([...matched.organizationIds, ...message.organizationIds]),
+    ];
+    const personIds = [...new Set([...matched.personIds, ...message.personIds])];
     const stored = await client.query<{ id: string }>(
       `
         INSERT INTO crm.google_email_messages (
@@ -80,25 +105,25 @@ export async function ingestGmailMessages(
       organizationId: string | null;
       personId: string | null;
     }> = [
-      ...message.prospectIds.map((prospectId) => ({
+      ...prospectIds.map((prospectId) => ({
         prospectId,
         bookingId: null,
         organizationId: null,
         personId: null,
       })),
-      ...message.bookingIds.map((bookingId) => ({
+      ...bookingIds.map((bookingId) => ({
         prospectId: null,
         bookingId,
         organizationId: null,
         personId: null,
       })),
-      ...message.organizationIds.map((organizationId) => ({
+      ...organizationIds.map((organizationId) => ({
         prospectId: null,
         bookingId: null,
         organizationId,
         personId: null,
       })),
-      ...message.personIds.map((personId) => ({
+      ...personIds.map((personId) => ({
         prospectId: null,
         bookingId: null,
         organizationId: null,
@@ -111,6 +136,7 @@ export async function ingestGmailMessages(
       eventType: message.direction === "incoming" ? "email_in" : "email_out",
       gmailMessageId: message.gmailMessageId,
       gmailThreadId: message.gmailThreadId,
+      rfcMessageId: message.rfcMessageId,
       googleSub: input.googleSub,
     };
     const body = formatGmailActivityBody(message);
@@ -144,7 +170,13 @@ export async function ingestGmailMessages(
             SELECT id::text
             FROM crm.activities
             WHERE metadata->>'source' = 'gmail'
-              AND metadata->>'gmailMessageId' = $1
+              AND (
+                metadata->>'gmailMessageId' = $1
+                OR (
+                  $5::text IS NOT NULL
+                  AND metadata->>'rfcMessageId' = $5
+                )
+              )
               AND prospect_id IS NOT DISTINCT FROM $2::uuid
               AND booking_id IS NOT DISTINCT FROM $3::uuid
               AND organization_id IS NOT DISTINCT FROM $4::uuid
@@ -155,6 +187,7 @@ export async function ingestGmailMessages(
             record.prospectId,
             record.bookingId,
             record.organizationId,
+            message.rfcMessageId,
           ],
         );
         if (duplicateActivity.rows[0]) {
@@ -164,11 +197,11 @@ export async function ingestGmailMessages(
             `
               INSERT INTO crm.activities (
                 prospect_id, booking_id, organization_id, type, occurred_at,
-                body, actor_type, actor_name, metadata
+                body, actor_type, actor_user_id, actor_name, metadata
               )
               VALUES (
                 $1::uuid, $2::uuid, $3::uuid, 'email', $4::timestamptz, $5,
-                'system', 'Gmail Sync', $6::jsonb
+                'system', $7::uuid, 'Gmail Sync', $6::jsonb
               )
               RETURNING id::text
             `,
@@ -179,6 +212,7 @@ export async function ingestGmailMessages(
               message.occurredAt,
               body,
               JSON.stringify(metadata),
+              input.actorUserId ?? null,
             ],
           );
           activityId = created.rows[0]?.id ?? null;

@@ -344,7 +344,7 @@ export const events = crm.table(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("events_catalog_listing_uidx").on(table.catalogRaceListingId),
+    index("events_catalog_listing_idx").on(table.catalogRaceListingId),
     index("events_name_idx").on(table.name),
   ],
 );
@@ -390,7 +390,7 @@ export const eventOccurrences = crm.table(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex("event_occurrences_catalog_edition_uidx").on(
+    index("event_occurrences_catalog_edition_idx").on(
       table.catalogRaceEditionId,
     ),
     index("event_occurrences_event_year_idx").on(
@@ -416,6 +416,7 @@ export const occurrenceRaces = crm.table(
     startTime: timestamp("start_time"),
     ageGroups: text("age_groups"),
     awards: text("awards"),
+    scoring: jsonb("scoring").notNull().default({}),
     estimatedDurationMinutes: integer("estimated_duration_minutes"),
     durationOverrideMinutes: integer("duration_override_minutes"),
     sortOrder: integer("sort_order").notNull().default(0),
@@ -649,6 +650,7 @@ export const prospects = crm.table(
       "prospects_disqualified_reason_check",
       sql`${table.disqualifiedReason} IS NULL OR ${table.disqualifiedReason} IN (
         'is_a_timing_company',
+        'blacklisted_email',
         'other'
       )`,
     ),
@@ -712,6 +714,65 @@ export const contactExtractionState = crm.table(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("contact_extraction_state_updated_idx").on(table.updatedAt)],
+);
+
+export const prospectEmailBlacklist = crm.table(
+  "prospect_email_blacklist",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    pattern: text("pattern").notNull(),
+    matchKind: text("match_kind").notNull(),
+    reason: text("reason").notNull(),
+    note: text("note"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("prospect_email_blacklist_pattern_uidx").on(table.pattern),
+    check(
+      "prospect_email_blacklist_match_kind_check",
+      sql`${table.matchKind} IN ('email', 'domain')`,
+    ),
+    check(
+      "prospect_email_blacklist_reason_check",
+      sql`${table.reason} IN (
+        'is_a_timing_company',
+        'blacklisted_email',
+        'other'
+      )`,
+    ),
+  ],
+);
+
+export const emailDrafts = crm.table(
+  "email_drafts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    prospectId: uuid("prospect_id")
+      .notNull()
+      .references(() => prospects.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    gmailThreadId: text("gmail_thread_id"),
+    inReplyToRfcMessageId: text("in_reply_to_rfc_message_id"),
+    replyToGmailMessageId: text("reply_to_gmail_message_id"),
+    toAddresses: text("to_addresses").array().notNull().default([]),
+    ccAddresses: text("cc_addresses").array().notNull().default([]),
+    subject: text("subject").notNull().default(""),
+    bodyText: text("body_text").notNull().default(""),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    sentGmailMessageId: text("sent_gmail_message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("email_drafts_prospect_idx").on(table.prospectId),
+    index("email_drafts_author_idx").on(table.createdByUserId),
+  ],
 );
 
 export const activities = crm.table(
@@ -970,5 +1031,6 @@ export type EventOccurrence = typeof eventOccurrences.$inferSelect;
 export type OccurrenceRace = typeof occurrenceRaces.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
 export type Prospect = typeof prospects.$inferSelect;
+export type EmailDraft = typeof emailDrafts.$inferSelect;
 export type Activity = typeof activities.$inferSelect;
 export type Task = typeof tasks.$inferSelect;

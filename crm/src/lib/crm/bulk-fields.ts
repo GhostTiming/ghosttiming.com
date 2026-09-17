@@ -63,6 +63,30 @@ export function prospectBulkFields(
   ];
 }
 
+export function candidateBulkFields(): BulkField[] {
+  return [
+    {
+      key: "stage",
+      label: "Outcome",
+      type: "select",
+      options: [
+        {
+          value: "disqualified",
+          label: "Disqualify",
+          destructive: true,
+          extra: reasonField(disqualifiedReasons, disqualifiedReasonLabels),
+        },
+        {
+          value: "unqualified",
+          label: "Unqualified",
+          destructive: true,
+          extra: reasonField(unqualifiedReasons, unqualifiedReasonLabels),
+        },
+      ],
+    },
+  ];
+}
+
 export function bookingBulkFields(
   stages: Array<{ key: string; name: string }>,
   users: Array<{ id: string; name: string }>,

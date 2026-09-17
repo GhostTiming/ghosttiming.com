@@ -151,6 +151,7 @@ export function TableColumnFilter({
     }
     const qs = next.toString();
     popover.hidePopover();
+    window.dispatchEvent(new Event("crm:navigate"));
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 

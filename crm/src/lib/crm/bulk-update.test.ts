@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isDestructiveBulkUpdate,
   parseBulkIds,
+  parseBulkListingIds,
   validateBulkUpdate,
 } from "./bulk-update";
 
@@ -14,6 +15,20 @@ describe("bulk update validation", () => {
       "22222222-2222-4222-8222-222222222222",
     ];
     expect(parseBulkIds(ids)).toEqual({ success: true, ids });
+  });
+
+  it("accepts catalog listing ids for candidate bulk updates", () => {
+    expect(parseBulkListingIds(["listing-mount-dora", "abc"]).success).toBe(true);
+    expect(
+      validateBulkUpdate("candidates", {
+        field: "stage",
+        value: "disqualified",
+        extra: { reason: "is_a_timing_company" },
+      }),
+    ).toEqual({ success: true });
+    expect(
+      validateBulkUpdate("candidates", { field: "assignee", value: "x" }).success,
+    ).toBe(false);
   });
 
   it("requires an unqualified reason including Event too soon", () => {

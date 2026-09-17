@@ -5,6 +5,7 @@ import {
   matchEmailsToCrm,
   parseAddressList,
   shouldLinkEmailToBooking,
+  uniqueNormalizedEmails,
 } from "./email-match";
 import { formatGmailActivityBody, parseGmailMessage } from "./gmail-parse";
 
@@ -69,7 +70,7 @@ describe("Gmail address matching", () => {
     expect(buildGmailAddressQuery(["a@example.org"])).toContain("-in:spam -in:trash");
   });
 
-  it("does not search Gmail for organization-only inboxes", () => {
+  it("includes organization inboxes in Gmail search queries", () => {
     expect(
       emailsForGmailSearch({
         "info@run4acause.org": {
@@ -85,7 +86,17 @@ describe("Gmail address matching", () => {
           personIds: ["33333333-3333-3333-3333-333333333333"],
         },
       }),
-    ).toEqual(["rd@example.org"]);
+    ).toEqual(["info@run4acause.org", "rd@example.org"]);
+  });
+
+  it("dedupes emails for a targeted Gmail search", () => {
+    expect(
+      uniqueNormalizedEmails(
+        "Jane@Example.org",
+        ["jane@example.org", "rd@example.org"],
+        "not-an-email",
+      ),
+    ).toEqual(["jane@example.org", "rd@example.org"]);
   });
 });
 

@@ -1,10 +1,17 @@
+import { AddressListMailto } from "@/components/crm-links";
 import { ChevronDown } from "lucide-react";
+import type { ReactNode } from "react";
 import {
   isEmailTimelineActivity,
   parseEmailActivityBody,
   timelineLabel,
   type TimelineEventType,
 } from "@/lib/crm/domain";
+import {
+  formatMeetingWhen,
+  parseMeetingMetadata,
+  wrapUpLabel,
+} from "@/lib/crm/outreach-activity";
 
 export type TimelineActivity = {
   id: string;
@@ -19,6 +26,8 @@ export type TimelineActivity = {
     source?: string;
     gmailMessageId?: string;
     gmailThreadId?: string;
+    rfcMessageId?: string;
+    meeting?: unknown;
   } | null;
 };
 
@@ -62,7 +71,7 @@ function EmailActivityBody({ body }: { body: string }) {
               <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 From
               </dt>
-              <dd>{parsed.from}</dd>
+              <dd><AddressListMailto value={parsed.from} className="text-cyan-700 underline hover:text-cyan-900" /></dd>
             </div>
           ) : null}
           {parsed.to ? (
@@ -70,7 +79,7 @@ function EmailActivityBody({ body }: { body: string }) {
               <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 To
               </dt>
-              <dd>{parsed.to}</dd>
+              <dd><AddressListMailto value={parsed.to} className="text-cyan-700 underline hover:text-cyan-900" /></dd>
             </div>
           ) : null}
           {parsed.cc ? (
@@ -78,7 +87,7 @@ function EmailActivityBody({ body }: { body: string }) {
               <dt className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Cc
               </dt>
-              <dd>{parsed.cc}</dd>
+              <dd><AddressListMailto value={parsed.cc} className="text-cyan-700 underline hover:text-cyan-900" /></dd>
             </div>
           ) : null}
         </dl>
@@ -90,9 +99,18 @@ function EmailActivityBody({ body }: { body: string }) {
   );
 }
 
-export function ActivityTimelineItem({ activity }: { activity: TimelineActivity }) {
+export function ActivityTimelineItem({
+  activity,
+  replyHref,
+  actions,
+}: {
+  activity: TimelineActivity;
+  replyHref?: string;
+  actions?: ReactNode;
+}) {
   const gmail = activity.metadata?.source === "gmail";
   const email = isEmailTimelineActivity(activity);
+  const meeting = parseMeetingMetadata(activity.metadata);
   return (
     <article className={`border-l-2 pl-4 ${gmail ? "border-blue-400" : "border-cyan-200"}`}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -102,12 +120,81 @@ export function ActivityTimelineItem({ activity }: { activity: TimelineActivity 
             Gmail
           </span>
         ) : null}
+        {meeting?.wrapUp ? (
+          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+            {wrapUpLabel(meeting.wrapUp)}
+          </span>
+        ) : meeting ? (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
+            Invite sent
+          </span>
+        ) : null}
         <span className="text-slate-500">{formatDateTime(activity.occurred_at)}</span>
         {activity.disposition ? (
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs">{activity.disposition}</span>
         ) : null}
+        {replyHref ? (
+          <a
+            href={replyHref}
+            className="text-xs font-semibold text-cyan-700 hover:text-cyan-900"
+          >
+            Reply
+          </a>
+        ) : null}
       </div>
-      {email ? (
+      {meeting ? (
+        <div className="mt-1 space-y-1 text-sm text-slate-700">
+          <p className="font-medium">{meeting.subject}</p>
+          <p>{formatMeetingWhen(meeting.startsAt, meeting.durationMinutes)}</p>
+          <p>
+            Attendees:{" "}
+            {meeting.attendees.length ? (
+              <AddressListMailto
+                value={meeting.attendees.join(", ")}
+                className="text-cyan-700 underline hover:text-cyan-900"
+              />
+            ) : (
+              "Organizer only"
+            )}
+          </p>
+          {meeting.hangoutLink ? (
+            <p>
+              <a
+                href={meeting.hangoutLink}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-cyan-700 hover:text-cyan-900"
+              >
+                Google Meet
+              </a>
+            </p>
+          ) : null}
+          {meeting.htmlLink ? (
+            <p>
+              <a
+                href={meeting.htmlLink}
+                target="_blank"
+                rel="noreferrer"
+                className="text-cyan-700 underline hover:text-cyan-900"
+              >
+                Open calendar event
+              </a>
+            </p>
+          ) : null}
+          {meeting.agenda ? (
+            <p className="whitespace-pre-wrap">{meeting.agenda}</p>
+          ) : null}
+          {meeting.wrapUp ? (
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Wrap-up
+              </p>
+              <p className="mt-1 font-medium">{wrapUpLabel(meeting.wrapUp)}</p>
+              <p className="mt-1 whitespace-pre-wrap">{meeting.wrapUp.notes}</p>
+            </div>
+          ) : null}
+        </div>
+      ) : email ? (
         <EmailActivityBody body={activity.body} />
       ) : (
         <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{activity.body}</p>
@@ -115,6 +202,7 @@ export function ActivityTimelineItem({ activity }: { activity: TimelineActivity 
       <p className="mt-1 text-xs text-slate-500">
         {provenance(activity)} · {activity.actor_type}
       </p>
+      {actions}
     </article>
   );
 }

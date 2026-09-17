@@ -418,13 +418,13 @@ async function copyOccurrenceRacesShifted(
       INSERT INTO crm.occurrence_races
         (occurrence_id, catalog_race_offering_id, name, distance_label,
          distance_miles, distance_meters, start_time, age_groups, awards,
-         estimated_duration_minutes, duration_override_minutes, sort_order)
+         scoring, estimated_duration_minutes, duration_override_minutes, sort_order)
       SELECT
         $2::uuid, catalog_race_offering_id, name, distance_label,
         distance_miles, distance_meters,
         CASE WHEN start_time IS NULL THEN NULL
              ELSE start_time + ($3::integer * interval '1 year') END,
-        age_groups, awards, estimated_duration_minutes,
+        age_groups, awards, scoring, estimated_duration_minutes,
         duration_override_minutes, sort_order
       FROM crm.occurrence_races
       WHERE occurrence_id = $1::uuid
@@ -449,7 +449,7 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
   const refreshFromCatalog =
     input.refreshFromCatalog && Boolean(source.catalog_race_listing_id);
   if (input.refreshFromCatalog && !source.catalog_race_listing_id) {
-    throw new Error("This booking is not linked to Get Run Vibes.");
+    throw new Error("This booking is not linked to an online listing.");
   }
 
   let listing: CatalogListingRow | null = null;
@@ -462,7 +462,7 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
   } | null = null;
   if (refreshFromCatalog && source.catalog_race_listing_id) {
     listing = await loadCatalogListing(client, source.catalog_race_listing_id);
-    if (!listing) throw new Error("Get Run Vibes listing was not found.");
+    if (!listing) throw new Error("Online listing was not found.");
     const yearListing = await findYearSpecificListing(
       client,
       listing,
@@ -589,7 +589,7 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
             yearDelta,
             source.event_owner_organization_id,
             refreshFromCatalog
-              ? (listing?.registration_url ?? listing?.external_race_url ?? null)
+              ? null
               : (input.registrationUrl ?? source.registration_url_override),
             refreshFromCatalog ? null : (input.street ?? source.street_override),
             refreshFromCatalog ? null : (input.street2 ?? source.street2_override),

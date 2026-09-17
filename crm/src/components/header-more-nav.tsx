@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, CalendarDays, ChevronDown, Contact } from "lucide-react";
+import { Ban, Building2, CalendarDays, ChevronDown, Contact } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -28,6 +28,13 @@ export function HeaderMoreNav({
           href: "/contacts",
           label: "Contacts",
           icon: Contact,
+        }
+      : null,
+    canAccessProspecting
+      ? {
+          href: "/prospecting/blacklist",
+          label: "Email blacklist",
+          icon: Ban,
         }
       : null,
     canAccessOperations

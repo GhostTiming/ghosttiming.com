@@ -15,6 +15,7 @@ export const MAX_BULK_IDS = 500;
 
 export const bulkDatasets = [
   "prospects",
+  "candidates",
   "bookings",
   "contacts",
   "organizations",
@@ -24,6 +25,32 @@ export const bulkDatasets = [
 export type BulkDataset = (typeof bulkDatasets)[number];
 
 const uuid = z.string().uuid();
+
+export function parseBulkListingIds(raw: unknown) {
+  const values = Array.isArray(raw)
+    ? raw.map((value) => String(value))
+    : typeof raw === "string"
+      ? raw.split(",").map((value) => value.trim()).filter(Boolean)
+      : [];
+  if (!values.length) {
+    return { success: false as const, error: "Select at least one row." };
+  }
+  if (values.length > MAX_BULK_IDS) {
+    return {
+      success: false as const,
+      error: `Select at most ${MAX_BULK_IDS} rows at a time.`,
+    };
+  }
+  const parsed: string[] = [];
+  for (const value of values) {
+    const id = value.trim();
+    if (!id || id.length > 200) {
+      return { success: false as const, error: "One or more selected ids are invalid." };
+    }
+    parsed.push(id);
+  }
+  return { success: true as const, ids: [...new Set(parsed)] };
+}
 
 export function parseBulkIds(raw: unknown) {
   const values = Array.isArray(raw)
@@ -76,6 +103,9 @@ export function isDestructiveBulkUpdate(
 ) {
   if (dataset === "prospects" && field === "stage") {
     return (destructiveProspectStageKeys as readonly string[]).includes(value);
+  }
+  if (dataset === "candidates" && field === "stage") {
+    return value === "disqualified" || value === "unqualified";
   }
   if (dataset === "bookings" && field === "stage") {
     return value === "closed_lost";
@@ -133,6 +163,31 @@ export function validateProspectBulkUpdate(input: {
     return { success: true };
   }
   return { success: false, error: "That prospect field cannot be mass-updated." };
+}
+
+export function validateCandidateBulkUpdate(input: {
+  field: string;
+  value: string;
+  extra?: BulkUpdateInput["extra"];
+}): { success: true } | { success: false; error: string } {
+  if (input.field !== "stage") {
+    return { success: false, error: "That candidate field cannot be mass-updated." };
+  }
+  if (input.value === "unqualified") {
+    const result = validateUnqualifiedDetails({
+      reason: extraValue(input.extra, "reason"),
+      note: extraValue(input.extra, "note"),
+    });
+    return result.success ? { success: true } : result;
+  }
+  if (input.value === "disqualified") {
+    const result = validateDisqualifiedDetails({
+      reason: extraValue(input.extra, "reason"),
+      note: extraValue(input.extra, "note"),
+    });
+    return result.success ? { success: true } : result;
+  }
+  return { success: false, error: "Choose Disqualify or Unqualified." };
 }
 
 export function validateBookingBulkUpdate(input: {
@@ -221,6 +276,8 @@ export function validateBulkUpdate(
   switch (dataset) {
     case "prospects":
       return validateProspectBulkUpdate(input);
+    case "candidates":
+      return validateCandidateBulkUpdate(input);
     case "bookings":
       return validateBookingBulkUpdate(input);
     case "contacts":

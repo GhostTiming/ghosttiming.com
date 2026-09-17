@@ -5,8 +5,10 @@ import {
   estimateRaceDurationMinutes,
   excludeVirtualCatalogOfferings,
   isVirtualCatalogOffering,
+  offeringsMatchingOccurrenceDate,
   parseCatalogClock,
   preferredCatalogEditionId,
+  preferredCatalogEditionSql,
 } from "./race-operations";
 
 describe("race duration defaults", () => {
@@ -109,6 +111,28 @@ describe("virtual catalog offerings", () => {
     ).toEqual(["Marathon"]);
   });
 
+  it("keeps split-weekend offerings on their own calendar day", () => {
+    const offerings = [
+      {
+        name: "5K",
+        start_time_raw: "3/14/2026 07:30",
+        starts_at: "2026-03-14 07:30:00",
+      },
+      {
+        name: "Half Marathon",
+        start_time_raw: "3/15/2026 07:00",
+        starts_at: "2026-03-15 07:00:00",
+      },
+    ];
+    expect(
+      offeringsMatchingOccurrenceDate(offerings, "2026-03-14").map((row) => row.name),
+    ).toEqual(["5K"]);
+    expect(
+      offeringsMatchingOccurrenceDate(offerings, "2026-03-15").map((row) => row.name),
+    ).toEqual(["Half Marathon"]);
+    expect(offeringsMatchingOccurrenceDate(offerings, "2026-03-16")).toEqual([]);
+  });
+
   it("uses the earliest non-virtual start for booking date and time", () => {
     expect(
       earliestNonVirtualCatalogStart([
@@ -153,6 +177,12 @@ describe("virtual catalog offerings", () => {
 });
 
 describe("preferred catalog edition", () => {
+  it("does not shadow an outer listing alias in the next-start subquery", () => {
+    const sql = preferredCatalogEditionSql("listing.id");
+    expect(sql).toContain("WHERE id = listing.id");
+    expect(sql).not.toContain("WHERE listing.id = listing.id");
+  });
+
   it("picks the live Get Run Vibes edition instead of a past year", () => {
     expect(
       preferredCatalogEditionId(

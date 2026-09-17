@@ -4,6 +4,7 @@ import { GoogleConnectionControl } from "@/components/google/google-connection-c
 import { GoogleSessionProvider } from "@/components/google/google-session-provider";
 import { HeaderMoreNav } from "@/components/header-more-nav";
 import { MobileShell } from "@/components/mobile-shell";
+import { NavigationProgress } from "@/components/navigation-progress";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { SignOutForm } from "@/components/sign-out-form";
 import {
@@ -52,9 +53,14 @@ export function AppShell({
       initialConnections={googleConnections}
     >
     <div className="min-h-screen bg-slate-100">
+      <NavigationProgress />
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950 text-white">
         <div className="mx-auto hidden max-w-screen-2xl items-center gap-x-3 px-6 py-3 md:flex">
-          <Link href="/dashboard" className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/dashboard"
+            suppressHydrationWarning
+            className="flex shrink-0 items-center gap-2"
+          >
             <Image
               src={GHOST_TIMING_LOGO_WHITE}
               alt="Ghost Timing"
@@ -68,6 +74,7 @@ export function AppShell({
           <nav className="flex shrink-0 items-center gap-1" aria-label="Main navigation">
             <Link
               href="/dashboard"
+              suppressHydrationWarning
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
             >
               <LayoutDashboard aria-hidden className="size-4" />
@@ -76,6 +83,7 @@ export function AppShell({
             {canAccessOperations ? (
               <Link
                 href="/bookings"
+                suppressHydrationWarning
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
               >
                 <BriefcaseBusiness aria-hidden className="size-4" />
@@ -85,6 +93,7 @@ export function AppShell({
             {canAccessProspecting ? (
               <Link
                 href="/prospecting"
+                suppressHydrationWarning
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
               >
                 <Search aria-hidden className="size-4" />
@@ -94,6 +103,7 @@ export function AppShell({
             {canAccessTasks ? (
               <Link
                 href="/tasks"
+                suppressHydrationWarning
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
               >
                 <ClipboardList aria-hidden className="size-4" />
@@ -107,6 +117,7 @@ export function AppShell({
             {canAccessAdminConsole ? (
               <Link
                 href="/admin"
+                suppressHydrationWarning
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
               >
                 <Shield aria-hidden className="size-4" />

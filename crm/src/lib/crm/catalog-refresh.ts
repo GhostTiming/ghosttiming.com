@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { appendAuditActivity } from "./audit";
-import { syncOccurrenceRacesFromCatalog } from "./race-operations";
+import { refreshOccurrenceFromOnlineListing } from "./online-listings";
 
 export type CatalogRefreshStatus = "updated" | "skipped" | "failed";
 
@@ -45,11 +45,17 @@ export async function refreshBookingFromCatalog(
 ): Promise<CatalogRefreshRow> {
   const booking = await client.query<{
     occurrence_id: string;
+    event_id: string;
     listing_id: string | null;
+    source_type: string;
+    external_source_id: string | null;
   }>(
     `
       SELECT occurrence.id::text AS occurrence_id,
-             event.catalog_race_listing_id AS listing_id
+             event.id::text AS event_id,
+             event.catalog_race_listing_id AS listing_id,
+             event.source_type::text AS source_type,
+             event.external_source_id
       FROM crm.bookings booking
       JOIN crm.event_occurrences occurrence ON occurrence.id = booking.occurrence_id
       JOIN crm.events event ON event.id = occurrence.event_id
@@ -61,21 +67,24 @@ export async function refreshBookingFromCatalog(
   if (!row) {
     return { bookingId: input.bookingId, status: "failed", error: "Booking not found." };
   }
-  if (!row.listing_id) {
+  if (!row.listing_id && !(row.source_type === "runsignup" && row.external_source_id)) {
     return {
       bookingId: input.bookingId,
       status: "skipped",
-      error: "Not linked to Get Run Vibes.",
+      error: "Not linked to an online listing.",
     };
   }
-  const result = await syncOccurrenceRacesFromCatalog(client, row.occurrence_id);
+  const result = await refreshOccurrenceFromOnlineListing(client, {
+    eventId: row.event_id,
+    occurrenceId: row.occurrence_id,
+  });
   await appendAuditActivity(
     client,
     { bookingId: input.bookingId },
     input.actor,
     result.inserted
-      ? `Refreshed ${result.inserted} race${result.inserted === 1 ? "" : "s"} from Get Run Vibes`
-      : "Refreshed from Get Run Vibes",
+      ? `Refreshed ${result.inserted} race${result.inserted === 1 ? "" : "s"} from the online listing`
+      : "Refreshed from the online listing",
   );
   return { bookingId: input.bookingId, status: "updated" };
 }

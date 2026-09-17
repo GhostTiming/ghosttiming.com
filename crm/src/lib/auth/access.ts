@@ -122,3 +122,10 @@ export function displayAccessRole(access: AccessContext): string {
 export function bookingOrgScopeParam(access: AccessContext): string[] | null {
   return access.isSuperAdmin ? null : access.assignedOrgIds;
 }
+
+export function financialOrgScopeParam(access: AccessContext): string[] | null {
+  if (access.isSuperAdmin) return null;
+  return access.memberships
+    .filter((item) => item.orgRole === "org_admin")
+    .map((item) => item.organizationId);
+}

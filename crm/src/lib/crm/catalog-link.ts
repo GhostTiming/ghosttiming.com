@@ -337,31 +337,24 @@ export async function loadCatalogListingCandidates(
           ${listingYearSubselectSql()} AS edition_year
      FROM catalog.race_listings`;
   const searchNeedles = catalogSearchLikeNeedles(search);
-  const [listings, taken] = await Promise.all([
-    searchNeedles.length
-      ? query<CatalogListingCandidate>(
+  const listings = searchNeedles.length
+    ? await query<CatalogListingCandidate>(
+        `${listingSql}
+         WHERE ${catalogListingSearchWhereSql(searchNeedles.length)}
+         ORDER BY next_start_at DESC NULLS LAST
+         LIMIT 50`,
+        searchNeedles,
+      )
+    : keys.length
+      ? await query<CatalogListingCandidate>(
           `${listingSql}
-           WHERE ${catalogListingSearchWhereSql(searchNeedles.length)}
-           ORDER BY next_start_at DESC NULLS LAST
-           LIMIT 50`,
-          searchNeedles,
+           WHERE ${catalogNameMatchKeySql} = ANY($1::text[])`,
+          [keys],
         )
-      : keys.length
-        ? query<CatalogListingCandidate>(
-            `${listingSql}
-             WHERE ${catalogNameMatchKeySql} = ANY($1::text[])`,
-            [keys],
-          )
-        : Promise.resolve({ rows: [] as CatalogListingCandidate[] }),
-    query<{ id: string }>(
-      `SELECT catalog_race_listing_id AS id
-       FROM crm.events
-       WHERE catalog_race_listing_id IS NOT NULL`,
-    ),
-  ]);
+      : { rows: [] as CatalogListingCandidate[] };
   return {
     listings: listings.rows,
-    takenIds: new Set(taken.rows.map((row) => row.id)),
+    takenIds: new Set<string>(),
   };
 }
 
@@ -543,12 +536,20 @@ async function linkOccurrenceEditionIfUnique(
   );
   const editionId = preferred.rows[0]?.id;
   if (!editionId) return;
-  await client.query(
-    `UPDATE crm.event_occurrences
-     SET catalog_race_edition_id = $2, updated_at = now()
-     WHERE id = $1::uuid`,
-    [occurrenceId, editionId],
-  );
+  try {
+    await client.query(
+      `UPDATE crm.event_occurrences
+       SET catalog_race_edition_id = $2, updated_at = now()
+       WHERE id = $1::uuid`,
+      [occurrenceId, editionId],
+    );
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "";
+    if (code !== "23505") throw error;
+  }
 }
 
 export async function linkEventToCatalogListing(
@@ -561,18 +562,6 @@ export async function linkEventToCatalogListing(
     archiveProspects?: boolean;
   },
 ) {
-  const taken = await client.query<{ id: string }>(
-    `SELECT id::text
-     FROM crm.events
-     WHERE catalog_race_listing_id = $1
-       AND id <> $2::uuid`,
-    [input.listingId, input.eventId],
-  );
-  if (taken.rows[0]) {
-    throw new Error(
-      "That Get Run Vibes listing is already linked to another event.",
-    );
-  }
   const updated = await client.query(
     `UPDATE crm.events
      SET catalog_race_listing_id = $2,
@@ -617,7 +606,7 @@ export async function unlinkEventFromCatalogListing(
     [eventId],
   );
   if (!updated.rowCount) {
-    throw new Error("This event is not linked to Get Run Vibes.");
+    throw new Error("This event is not linked to an online listing.");
   }
   await client.query(
     `UPDATE crm.event_occurrences
@@ -673,15 +662,6 @@ async function autoLinkEvents(
     events.map((event) => event.name),
   );
   const listingsByKey = listingsByMatchKey(listings);
-  const taken = new Set(
-    (
-      await client.query<{ id: string }>(
-        `SELECT catalog_race_listing_id AS id
-         FROM crm.events
-         WHERE catalog_race_listing_id IS NOT NULL`,
-      )
-    ).rows.map((row) => row.id),
-  );
   let linked = 0;
   let archived = 0;
   for (const event of events) {
@@ -700,7 +680,7 @@ async function autoLinkEvents(
             },
             named,
           );
-    if (!match || taken.has(match.id)) continue;
+    if (!match) continue;
     if (actor) {
       const result = await linkEventToCatalogListing(client, {
         eventId: event.id,
@@ -718,7 +698,6 @@ async function autoLinkEvents(
         [event.id, match.id],
       );
     }
-    taken.add(match.id);
     linked += 1;
   }
   return { linked, archived, considered: events.length };
@@ -825,38 +804,4 @@ export async function reconcileProspectCatalogMatches(
     archived: linked.archived + archivedOwned + archivedNamed,
     considered: linked.considered,
   };
-}
-
-export async function linkStandingEventsToCatalog(query: QueryFn) {
-  const [events, listings] = await Promise.all([
-    query<EventCandidate>(
-      `SELECT id::text, name, catalog_race_listing_id
-       FROM crm.events
-       WHERE archived_at IS NULL
-         AND catalog_match_dismissed_at IS NULL`,
-    ),
-    query<CatalogCandidate>(`SELECT id, name FROM catalog.race_listings`),
-  ]);
-
-  const listingsByKey = listingsByMatchKey(listings.rows);
-  const taken = new Set(
-    events.rows
-      .map((event) => event.catalog_race_listing_id)
-      .filter((id): id is string => Boolean(id)),
-  );
-  let linked = 0;
-  for (const event of events.rows) {
-    if (event.catalog_race_listing_id) continue;
-    const match = uniqueCatalogMatch(event.name, listingsByKey);
-    if (!match || taken.has(match.id)) continue;
-    await query(
-      `UPDATE crm.events
-       SET catalog_race_listing_id = $2, updated_at = now()
-       WHERE id = $1::uuid AND catalog_race_listing_id IS NULL`,
-      [event.id, match.id],
-    );
-    taken.add(match.id);
-    linked += 1;
-  }
-  return { linked, considered: events.rows.length };
 }

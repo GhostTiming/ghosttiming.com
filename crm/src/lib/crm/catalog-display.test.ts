@@ -4,6 +4,7 @@ import {
   getRunVibesEventUrl,
   htmlToPlainText,
   labelPerkTag,
+  parsePerkFilterParams,
   sortPerkKeys,
   sortVibeKeys,
 } from "./catalog-display";
@@ -22,6 +23,18 @@ describe("catalog display helpers", () => {
       ["swag_included", "shirt", "medal"],
     );
     expect(labelPerkTag("food_drink")).toBe("Food & drink");
+  });
+
+  it("parses has/missing perk filters and ignores unknown keys", () => {
+    expect(
+      parsePerkFilterParams({
+        hasPerk: "medal,swag,not-a-tag",
+        missingPerk: "awards",
+      }),
+    ).toEqual({
+      hasPerk: ["medal", "swag"],
+      missingPerk: ["awards"],
+    });
   });
 
   it("orders vibe tags the way Get Run Vibes lists race feel", () => {

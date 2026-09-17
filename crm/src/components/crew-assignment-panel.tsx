@@ -8,6 +8,7 @@ import {
   deleteCrewAssignmentAction,
   saveCrewAssignmentAction,
 } from "@/app/operations-actions";
+import { MailtoLink } from "@/components/crm-links";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { filterCrewSearchResults } from "@/lib/crm/crew";
 
@@ -46,7 +47,13 @@ function ContactTileBody({
     <>
       <p className="font-semibold text-slate-950">{name}</p>
       {role ? <p className="text-xs font-medium text-cyan-800">{role}</p> : null}
-      <p className="mt-1 text-sm text-slate-600">{email || "No email"}</p>
+      <p className="mt-1 text-sm text-slate-600">
+        {email ? (
+          <MailtoLink email={email} className="text-cyan-700 underline hover:text-cyan-900" />
+        ) : (
+          "No email"
+        )}
+      </p>
       <p className="text-sm text-slate-600">{phone || "No phone"}</p>
     </>
   );
@@ -99,7 +106,7 @@ export function CrewAssignmentPanel({
         people are hidden from search.
       </p>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {assigned.map((member) => (
           <article
             key={member.id}
@@ -180,7 +187,7 @@ export function CrewAssignmentPanel({
           </article>
         ))}
         {!assigned.length ? (
-          <p className="text-sm text-slate-500 sm:col-span-2">No crew assigned.</p>
+          <p className="text-sm text-slate-500 sm:col-span-2 xl:col-span-3">No crew assigned.</p>
         ) : null}
       </div>
 
@@ -196,7 +203,7 @@ export function CrewAssignmentPanel({
           />
         </label>
         {query.trim() ? (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {matches.map((person) => (
               <form key={person.id} action={addCrewAssignmentAction}>
                 <input type="hidden" name="bookingId" value={bookingId} />
@@ -218,7 +225,7 @@ export function CrewAssignmentPanel({
               </form>
             ))}
             {!matches.length ? (
-              <p className="text-sm text-slate-500 sm:col-span-2">
+              <p className="text-sm text-slate-500 sm:col-span-2 xl:col-span-3">
                 No matching crew for this client.
               </p>
             ) : null}

@@ -1,11 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { notFound } from "next/navigation";
 import { z } from "zod";
 import { getPool } from "@/db";
-import { requireProspectingUser } from "@/lib/auth/server";
+import { requireTasksAccess } from "@/lib/auth/server";
 import { appendAuditActivity, upsertTaskTimelineActivity } from "@/lib/crm/audit";
 import { timelineEventTypes } from "@/lib/crm/domain";
+import {
+  requireTaskMutationAccess,
+  requireTaskRecordAccess,
+} from "@/lib/crm/task-access";
 
 const uuid = z.string().uuid();
 
@@ -23,7 +28,8 @@ function refreshRelated(input: {
 }
 
 export async function saveTaskAction(formData: FormData) {
-  const user = await requireProspectingUser();
+  const access = await requireTasksAccess();
+  const user = access.user;
   const input = z.object({
     taskId: uuid.optional(),
     prospectId: uuid.optional(),
@@ -49,6 +55,7 @@ export async function saveTaskAction(formData: FormData) {
     dueAt: formData.get("dueAt"),
     status: formData.get("status") || "open",
   });
+  await requireTaskRecordAccess(access, input);
   const notes = input.description || null;
   const related = {
     prospectId: input.prospectId,
@@ -86,11 +93,22 @@ export async function saveTaskAction(formData: FormData) {
       taskId = duplicate.rows[0]?.id;
     }
     if (taskId) {
-      const existing = await client.query<{ title: string }>(
-        `SELECT title FROM crm.tasks WHERE id = $1::uuid`,
+      const existing = await client.query<{
+        title: string;
+        assigned_user_id: string | null;
+        prospect_id: string | null;
+        booking_id: string | null;
+        organization_id: string | null;
+      }>(
+        `SELECT title, assigned_user_id::text, prospect_id::text, booking_id::text,
+                organization_id::text
+         FROM crm.tasks WHERE id = $1::uuid`,
         [taskId],
       );
-      legacyTitle = existing.rows[0]?.title;
+      const row = existing.rows[0];
+      if (!row) throw new Error("Task not found.");
+      await requireTaskMutationAccess(access, row);
+      legacyTitle = row.title;
       const changed = await client.query(
         `UPDATE crm.tasks SET assigned_user_id = $5::uuid, title = $6,
            notes = $7, due_at = $8::timestamp AT TIME ZONE 'America/New_York',
@@ -143,7 +161,7 @@ export async function saveTaskAction(formData: FormData) {
 }
 
 export async function removeTaskAction(formData: FormData) {
-  const user = await requireProspectingUser();
+  const access = await requireTasksAccess();
   const taskId = uuid.parse(formData.get("taskId"));
   const client = await getPool().connect();
   let related: {
@@ -154,6 +172,22 @@ export async function removeTaskAction(formData: FormData) {
   } | undefined;
   try {
     await client.query("BEGIN");
+    const existing = await client.query<{
+      prospect_id: string | null;
+      booking_id: string | null;
+      organization_id: string | null;
+      title: string;
+      assigned_user_id: string | null;
+    }>(
+      `SELECT prospect_id::text, booking_id::text, organization_id::text, title,
+              assigned_user_id::text
+       FROM crm.tasks
+       WHERE id = $1::uuid`,
+      [taskId],
+    );
+    const row = existing.rows[0];
+    if (!row) notFound();
+    await requireTaskMutationAccess(access, row);
     const removed = await client.query<{
       prospect_id: string | null;
       booking_id: string | null;
@@ -161,22 +195,22 @@ export async function removeTaskAction(formData: FormData) {
       title: string;
     }>(
       `DELETE FROM crm.tasks
-       WHERE id = $1::uuid AND (assigned_user_id = $2::uuid OR $3::boolean)
+       WHERE id = $1::uuid
        RETURNING prospect_id::text, booking_id::text, organization_id::text, title`,
-      [taskId, user.id, user.role === "admin"],
+      [taskId],
     );
     related = removed.rows[0];
     if (related) {
       const body = `Task removed: ${related.title}`;
       if (related.prospect_id) {
-        await appendAuditActivity(client, { prospectId: related.prospect_id }, user, body);
+        await appendAuditActivity(client, { prospectId: related.prospect_id }, access.user, body);
       } else if (related.booking_id) {
-        await appendAuditActivity(client, { bookingId: related.booking_id }, user, body);
+        await appendAuditActivity(client, { bookingId: related.booking_id }, access.user, body);
       } else if (related.organization_id) {
         await appendAuditActivity(
           client,
           { organizationId: related.organization_id },
-          user,
+          access.user,
           body,
         );
       }

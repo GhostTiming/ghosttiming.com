@@ -113,7 +113,7 @@ describe("catalog listing matching", () => {
     ).toBeNull();
   });
 
-  it("suggests exact key matches before similar overlapping names", () => {
+  it("keeps already-linked listings out of suggestions only when asked", () => {
     const suggestions = suggestCatalogMatches(
       { name: "Hannah's Heroes 5K", city: "Raleigh", state: "NC" },
       [hannah, hannahTrail, spring5k, takenListing],
@@ -127,6 +127,12 @@ describe("catalog listing matching", () => {
       true,
     );
     expect(suggestions.some((row) => row.id === "listing-taken")).toBe(false);
+    expect(
+      suggestCatalogMatches(
+        { name: "Taken Town Run", city: "Raleigh", state: "NC" },
+        [takenListing],
+      ).some((row) => row.id === "listing-taken"),
+    ).toBe(true);
   });
 
   it("does not suggest generic private races or weak 5K collisions", () => {

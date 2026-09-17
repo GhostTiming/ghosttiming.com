@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Ban,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
@@ -54,6 +55,11 @@ export function MobileShell({
   const pathname = usePathname();
   const titleId = useId();
   const [open, setOpen] = useState(false);
+  const [menuPath, setMenuPath] = useState(pathname);
+  if (menuPath !== pathname) {
+    setMenuPath(pathname);
+    setOpen(false);
+  }
   const primary: NavItem[] = [
     {
       href: "/dashboard",
@@ -81,14 +87,13 @@ export function MobileShell({
     ...(canAccessOperations || canAccessProspecting
       ? [{ href: "/contacts", label: "Contacts", icon: Contact }]
       : []),
+    ...(canAccessProspecting
+      ? [{ href: "/prospecting/blacklist", label: "Email blacklist", icon: Ban }]
+      : []),
     ...(canAccessAdminConsole
       ? [{ href: "/admin", label: "Admin", icon: Shield }]
       : []),
   ];
-
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     if (!open) return;

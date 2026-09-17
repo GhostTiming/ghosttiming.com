@@ -141,12 +141,18 @@ describe("prospecting business rules", () => {
     ).toBe(false);
   });
 
-  it("requires Is a timing company or Other when disqualifying", () => {
+  it("requires Is a timing company, Blacklisted email, or Other when disqualifying", () => {
     expect(
       validateDisqualifiedDetails({ reason: "is_a_timing_company" }),
     ).toEqual({
       success: true,
       data: { reason: "is_a_timing_company", note: null },
+    });
+    expect(
+      validateDisqualifiedDetails({ reason: "blacklisted_email" }),
+    ).toEqual({
+      success: true,
+      data: { reason: "blacklisted_email", note: null },
     });
     expect(
       validateDisqualifiedDetails({ reason: "went_with_another_timer" }).success,

@@ -40,6 +40,7 @@ export function PipelineStagePath({
   label = "Pipeline stage",
   hint = "Select a stage, then apply.",
   ariaLabel = "Pipeline stage",
+  variant = "card",
   onSubmit,
 }: {
   action: (formData: FormData) => void | Promise<void>;
@@ -50,6 +51,7 @@ export function PipelineStagePath({
   label?: ReactNode;
   hint?: string;
   ariaLabel?: string;
+  variant?: "card" | "embedded";
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +74,11 @@ export function PipelineStagePath({
       key={currentStageKey}
       action={submit}
       onSubmit={onSubmit}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+      className={
+        variant === "embedded"
+          ? "mt-5 border-t border-slate-200 pt-4"
+          : "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+      }
     >
       {Object.entries(hiddenFields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />

@@ -7,6 +7,7 @@ import {
   DatasetCheckbox,
   DatasetHeaderCheckbox,
 } from "@/components/dataset-bulk";
+import { MailtoLink } from "@/components/crm-links";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
 import { TableColumnHeader } from "@/components/table-column-header";
@@ -426,7 +427,16 @@ export default async function ContactsPage({
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3">{contact.email ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    {contact.email ? (
+                      <MailtoLink
+                        email={contact.email}
+                        className="text-cyan-700 underline hover:text-cyan-900"
+                      />
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-4 py-3">{contact.phone ?? "—"}</td>
                   <td className="px-4 py-3">{contact.race_name ?? "—"}</td>
                 </tr>
@@ -477,7 +487,13 @@ function PersonCells({
           {name}
         </ListRowLink>
       </td>
-      <td className="px-4 py-3">{email ?? "—"}</td>
+      <td className="px-4 py-3">
+        {email ? (
+          <MailtoLink email={email} className="text-cyan-700 underline hover:text-cyan-900" />
+        ) : (
+          "—"
+        )}
+      </td>
       <td className="px-4 py-3">{phone ?? "—"}</td>
       <td className="px-4 py-3">
         <OrganizationChips names={organizationNames} />

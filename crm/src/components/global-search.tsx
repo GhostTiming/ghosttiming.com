@@ -66,11 +66,9 @@ export function GlobalSearch() {
     [visibleGroups],
   );
 
-  useEffect(() => {
-    if (!more.some((group) => group.key === moreKey) && more[0]) {
-      setMoreKey(more[0].key);
-    }
-  }, [more, moreKey]);
+  if (!more.some((group) => group.key === moreKey) && more[0] && moreKey !== more[0].key) {
+    setMoreKey(more[0].key);
+  }
 
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {

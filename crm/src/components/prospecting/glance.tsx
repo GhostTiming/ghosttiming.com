@@ -53,7 +53,7 @@ export function ProspectGlance({
     <FormSaveFailedContext.Provider value={saveFailed}>
     <form
       action={submit}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
     >
       <input type="hidden" name="prospectId" value={prospectId} />
       <div className="flex flex-wrap items-start justify-between gap-3">

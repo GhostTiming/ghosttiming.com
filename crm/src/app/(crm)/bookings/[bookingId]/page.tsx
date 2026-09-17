@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock3,
   Flag,
+  ListChecks,
   MapPin,
   Route,
   Users,
@@ -21,6 +22,7 @@ import {
   addCoursePointAction,
   deleteCoursePointAction,
   deleteOccurrenceRaceAction,
+  resyncBookingCatalogRacesAction,
   saveCoursePointAction,
   saveOccurrenceRaceAction,
   updateOccurrenceOperationsAction,
@@ -34,6 +36,8 @@ import {
 import { ActivityAndTasksFeed } from "@/components/activity-and-tasks-feed";
 import { CatalogMatchControls } from "@/components/catalog-match-controls";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { ExternalHref, MailtoLink } from "@/components/crm-links";
+import { UncoupleCatalogButton } from "@/components/uncouple-catalog-button";
 import { RenewBookingDialog } from "@/components/renew-booking-dialog";
 import { CopyEventStartTimeButton } from "@/components/copy-event-start-time-button";
 import { BookingStagePath } from "@/components/booking-stage-path";
@@ -43,7 +47,11 @@ import { CatalogEventOverview } from "@/components/prospecting/event-overview";
 import { ScheduleOverrideEditor } from "@/components/schedule-override-editor";
 import { ActivityTimelineItem } from "@/components/activity-timeline-item";
 import { CrewAssignmentPanel } from "@/components/crew-assignment-panel";
+import { RaceScoringEditor } from "@/components/race-scoring-editor";
 import { BookingCalendarCard } from "@/components/google/booking-calendar-card";
+import { ResyncGmailButton } from "@/components/google/resync-gmail-button";
+import { ActivityComposer } from "@/components/outreach/activity-composer";
+import { MeetingWrapUpButton } from "@/components/outreach/meeting-wrap-up-button";
 import { getPool } from "@/db";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { redactBookingFinancials } from "@/lib/auth/financials";
@@ -61,8 +69,12 @@ import {
 import { eventMatchKey } from "@/lib/crm/event-matching";
 import { buildGoogleCalendarUrl } from "@/lib/crm/google-calendar";
 import { formatTaskHeadline } from "@/lib/crm/domain";
+import { isMeetingActivity, parseMeetingMetadata } from "@/lib/crm/outreach-activity";
 import { getCatalogOverview } from "@/lib/crm/queries";
+import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
+import { uniqueNormalizedEmails } from "@/lib/google/email-match";
+import { parseRaceScoring } from "@/lib/crm/race-scoring";
 
 type BookingDetail = {
   id: string;
@@ -74,16 +86,24 @@ type BookingDetail = {
   logo_url: string | null;
   catalog_race_listing_id: string | null;
   catalog_match_dismissed_at: string | null;
+  source_type: string;
+  external_source_id: string | null;
   race_date_local: string | null;
   race_date: string | null;
   timezone: string | null;
   registration_url: string | null;
+  registration_url_override: string | null;
   location: string;
   street: string | null;
   street2: string | null;
   city: string | null;
   state: string | null;
   zipcode: string | null;
+  street_override: string | null;
+  street2_override: string | null;
+  city_override: string | null;
+  state_override: string | null;
+  zipcode_override: string | null;
   timer_location: string | null;
   direct_client: string;
   direct_client_id: string;
@@ -91,6 +111,7 @@ type BookingDetail = {
   event_owner_id: string | null;
   primary_contact_person_id: string | null;
   primary_contact: string | null;
+  primary_contact_email: string | null;
   assigned_user_id: string | null;
   assignee: string | null;
   stage_key: string;
@@ -135,7 +156,7 @@ export default async function BookingDetailPage({
 }) {
   const access = await requireOperationsAccess();
   const contactScope = await loadContactOrgScope(access);
-  const { bookingId } = await params;
+  const bookingId = parseRouteUuid((await params).bookingId);
   const { edit, listingQ } = await searchParams;
   const detail = await getPool().query<BookingDetail>(
     `
@@ -149,26 +170,34 @@ export default async function BookingDetailPage({
         COALESCE(listing.logo_url, source_listing.logo_url) AS logo_url,
         event.catalog_race_listing_id,
         event.catalog_match_dismissed_at::text,
+        event.source_type::text AS source_type,
+        event.external_source_id,
         occurrence.race_date::text,
         to_char(occurrence.race_date AT TIME ZONE
           COALESCE(occurrence.timezone, 'America/New_York'),
           'YYYY-MM-DD"T"HH24:MI') AS race_date_local,
         COALESCE(occurrence.timezone, listing.timezone, source_listing.timezone) AS timezone,
-        COALESCE(occurrence.registration_url_override, listing.registration_url,
+        COALESCE(occurrence.registration_url_override, event.website, listing.registration_url,
                  listing.external_race_url, source_listing.registration_url,
                  source_listing.external_race_url) AS registration_url,
+        occurrence.registration_url_override,
         concat_ws(', ',
-          NULLIF(COALESCE(occurrence.street_override, listing.street, source_listing.street), ''),
-          NULLIF(COALESCE(occurrence.street2_override, listing.street2, source_listing.street2), ''),
-          NULLIF(COALESCE(occurrence.city_override, listing.city, source_listing.city), ''),
-          NULLIF(COALESCE(occurrence.state_override, listing.state, source_listing.state), ''),
-          NULLIF(COALESCE(occurrence.zipcode_override, listing.zipcode, source_listing.zipcode), '')
+          NULLIF(COALESCE(NULLIF(occurrence.street_override, ''), listing.street, source_listing.street), ''),
+          NULLIF(COALESCE(NULLIF(occurrence.street2_override, ''), listing.street2, source_listing.street2), ''),
+          NULLIF(COALESCE(NULLIF(occurrence.city_override, ''), listing.city, source_listing.city), ''),
+          NULLIF(COALESCE(NULLIF(occurrence.state_override, ''), listing.state, source_listing.state), ''),
+          NULLIF(COALESCE(NULLIF(occurrence.zipcode_override, ''), listing.zipcode, source_listing.zipcode), '')
         ) AS location,
-        COALESCE(occurrence.street_override, listing.street, source_listing.street) AS street,
-        COALESCE(occurrence.street2_override, listing.street2, source_listing.street2) AS street2,
-        COALESCE(occurrence.city_override, listing.city, source_listing.city) AS city,
-        COALESCE(occurrence.state_override, listing.state, source_listing.state) AS state,
-        COALESCE(occurrence.zipcode_override, listing.zipcode, source_listing.zipcode) AS zipcode,
+        COALESCE(NULLIF(occurrence.street_override, ''), listing.street, source_listing.street) AS street,
+        COALESCE(NULLIF(occurrence.street2_override, ''), listing.street2, source_listing.street2) AS street2,
+        COALESCE(NULLIF(occurrence.city_override, ''), listing.city, source_listing.city) AS city,
+        COALESCE(NULLIF(occurrence.state_override, ''), listing.state, source_listing.state) AS state,
+        COALESCE(NULLIF(occurrence.zipcode_override, ''), listing.zipcode, source_listing.zipcode) AS zipcode,
+        occurrence.street_override,
+        occurrence.street2_override,
+        occurrence.city_override,
+        occurrence.state_override,
+        occurrence.zipcode_override,
         occurrence.timer_location::text,
         client.name AS direct_client,
         client.id::text AS direct_client_id,
@@ -176,6 +205,7 @@ export default async function BookingDetailPage({
         owner.id::text AS event_owner_id,
         b.primary_contact_person_id::text,
         primary_contact.display_name AS primary_contact,
+        primary_contact.email AS primary_contact_email,
         b.assigned_user_id::text,
         assignee.name AS assignee,
         stage.key AS stage_key,
@@ -239,7 +269,9 @@ export default async function BookingDetailPage({
     ? getCatalogOverview(booking.catalog_race_listing_id, booking.race_date)
     : Promise.resolve(null);
   const catalogContextPromise =
-    !booking.catalog_race_listing_id && !booking.catalog_match_dismissed_at
+    !booking.catalog_race_listing_id
+    && !booking.catalog_match_dismissed_at
+    && booking.source_type !== "runsignup"
       ? loadCatalogListingCandidates(
           asCatalogQuery((sql, params) => getPool().query(sql, params)),
           {
@@ -300,12 +332,13 @@ export default async function BookingDetailPage({
       start_time: string | null;
       age_groups: string | null;
       awards: string | null;
+      scoring: unknown;
       estimated_duration_minutes: number | null;
       duration_override_minutes: number | null;
     }>(
       `
         SELECT id::text, name, distance_label, distance_miles::text,
-          distance_meters, start_time::text, age_groups, awards,
+          distance_meters, start_time::text, age_groups, awards, scoring,
           estimated_duration_minutes, duration_override_minutes
         FROM crm.occurrence_races
         WHERE occurrence_id = $1::uuid
@@ -444,6 +477,22 @@ export default async function BookingDetailPage({
       [bookingId],
     ),
   ]);
+  const sourceEmails = booking.source_prospect_id
+    ? await getPool().query<{ email: string }>(
+        `
+          SELECT method.normalized_value AS email
+          FROM crm.contact_methods method
+          WHERE method.prospect_id = $1::uuid AND method.type = 'email'
+            AND method.normalized_value LIKE '%@%'
+        `,
+        [booking.source_prospect_id],
+      )
+    : { rows: [] };
+  const bookingEmails = uniqueNormalizedEmails(
+    booking.primary_contact_email,
+    ...crew.rows.map((member) => member.email),
+    ...sourceEmails.rows.map((row) => row.email),
+  );
   const listingQuery = firstParam(listingQ)?.trim() || "";
   let catalogSuggestions: ReturnType<typeof suggestCatalogMatches> = [];
   let catalogSearchResults: ReturnType<typeof suggestCatalogMatches> = [];
@@ -508,6 +557,7 @@ export default async function BookingDetailPage({
             startTime: race.start_time,
             ageGroups: race.age_groups,
             awards: race.awards,
+            notes: parseRaceScoring(race.scoring).notes,
           })),
         })
       : null;
@@ -515,6 +565,7 @@ export default async function BookingDetailPage({
   const activityById = new Map(activities.rows.map((activity) => [activity.id, activity]));
   const taskById = new Map(tasks.rows.map((task) => [task.id, task]));
   const feedActivityCount = feed.filter((item) => item.kind === "activity").length;
+  const prepPendingCount = prepItems.rows.filter((item) => item.status === "pending").length;
 
   return (
     <div className="space-y-6">
@@ -544,20 +595,27 @@ export default async function BookingDetailPage({
               <MapPin className="size-4" /> {booking.location || "Location TBD"}
             </span>
           </div>
-          <RenewBookingDialog
-            bookingId={booking.id}
-            eventName={booking.event_name}
-            raceDateLocal={booking.race_date_local}
-            occurrenceYear={booking.occurrence_year}
-            timezone={booking.timezone ?? "America/New_York"}
-            registrationUrl={booking.registration_url}
-            street={booking.street}
-            street2={booking.street2}
-            city={booking.city}
-            state={booking.state}
-            zipcode={booking.zipcode}
-            catalogLinked={Boolean(booking.catalog_race_listing_id)}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ResyncGmailButton
+              emails={bookingEmails}
+              bookingId={booking.id}
+              tone="dark"
+            />
+            <RenewBookingDialog
+              bookingId={booking.id}
+              eventName={booking.event_name}
+              raceDateLocal={booking.race_date_local}
+              occurrenceYear={booking.occurrence_year}
+              timezone={booking.timezone ?? "America/New_York"}
+              registrationUrl={booking.registration_url}
+              street={booking.street}
+              street2={booking.street2}
+              city={booking.city}
+              state={booking.state}
+              zipcode={booking.zipcode}
+              catalogLinked={Boolean(booking.catalog_race_listing_id)}
+            />
+          </div>
         </div>
         <BookingCalendarCard
           bookingId={booking.id}
@@ -573,8 +631,7 @@ export default async function BookingDetailPage({
         stages={stages.rows}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
-        <div className="space-y-6">
+      <div className="space-y-6">
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-bold text-slate-950">Event details</h2>
@@ -591,12 +648,12 @@ export default async function BookingDetailPage({
                 <label className="text-sm sm:col-span-2">Event name<input required name="eventName" defaultValue={booking.event_name} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
                 <label className="text-sm">Date and time<input type="datetime-local" name="raceDate" defaultValue={booking.race_date_local ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
                 <label className="text-sm">Timezone<input required name="timezone" defaultValue={booking.timezone ?? "America/New_York"} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                <label className="text-sm sm:col-span-2">Registration URL<input type="url" name="registrationUrl" defaultValue={booking.registration_url ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                <label className="text-sm sm:col-span-2">Street<input name="street" defaultValue={booking.street ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                <label className="text-sm">Street 2<input name="street2" defaultValue={booking.street2 ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                <label className="text-sm">City<input name="city" defaultValue={booking.city ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                <label className="text-sm">State<input name="state" defaultValue={booking.state ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                <label className="text-sm">ZIP code<input name="zipcode" defaultValue={booking.zipcode ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                <label className="text-sm sm:col-span-2">Registration URL<input type="url" name="registrationUrl" defaultValue={booking.registration_url_override ?? ""} placeholder={booking.registration_url ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                <label className="text-sm sm:col-span-2">Street<input name="street" defaultValue={booking.street_override ?? ""} placeholder={booking.street ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                <label className="text-sm">Street 2<input name="street2" defaultValue={booking.street2_override ?? ""} placeholder={booking.street2 ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                <label className="text-sm">City<input name="city" defaultValue={booking.city_override ?? ""} placeholder={booking.city ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                <label className="text-sm">State<input name="state" defaultValue={booking.state_override ?? ""} placeholder={booking.state ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                <label className="text-sm">ZIP code<input name="zipcode" defaultValue={booking.zipcode_override ?? ""} placeholder={booking.zipcode ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
                 <PendingSubmitButton className="rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white sm:col-span-2">Save event details</PendingSubmitButton>
               </form>
             ) : (
@@ -604,7 +661,7 @@ export default async function BookingDetailPage({
                 <div><dt className="text-xs uppercase text-slate-500">Date and time</dt><dd className="font-medium">{formatDate(booking.race_date, true)}</dd></div>
                 <div><dt className="text-xs uppercase text-slate-500">Timezone</dt><dd className="font-medium">{booking.timezone ?? "Not set"}</dd></div>
                 <div className="sm:col-span-2"><dt className="text-xs uppercase text-slate-500">Address</dt><dd className="font-medium">{booking.location || "Not set"}</dd></div>
-                <div className="sm:col-span-2"><dt className="text-xs uppercase text-slate-500">Registration</dt><dd>{booking.registration_url ? <a className="text-cyan-700 underline" href={booking.registration_url}>Open registration page</a> : "Not set"}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-xs uppercase text-slate-500">Registration</dt><dd>{booking.registration_url ? <ExternalHref className="text-cyan-700 underline" href={booking.registration_url}>Open registration page</ExternalHref> : "Not set"}</dd></div>
               </dl>
             )}
             {catalogOverview?.listing ? (
@@ -628,18 +685,49 @@ export default async function BookingDetailPage({
                 }}
                 uncouple={{ bookingId: booking.id }}
               />
+            ) : booking.source_type === "runsignup" && booking.external_source_id ? (
+              <div id="catalog-match" className="mt-5 border-t border-slate-200 pt-5">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Online listing
+                </h3>
+                <p className="mt-1 mb-3 text-sm text-slate-600">
+                  Linked to RunSignUp. Refresh to pull the current name, date,
+                  location, and race distances.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  {booking.registration_url ? (
+                    <ExternalHref
+                      href={booking.registration_url}
+                      className="text-sm font-semibold text-cyan-700 hover:text-cyan-900"
+                    >
+                      Open registration page
+                    </ExternalHref>
+                  ) : null}
+                  <form action={resyncBookingCatalogRacesAction}>
+                    <input type="hidden" name="bookingId" value={booking.id} />
+                    <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
+                    <PendingSubmitButton
+                      pendingLabel="Re-syncing…"
+                      className="text-sm font-semibold text-cyan-700 hover:text-cyan-900 disabled:opacity-60"
+                    >
+                      Refresh from online listing
+                    </PendingSubmitButton>
+                  </form>
+                  <UncoupleCatalogButton bookingId={booking.id} />
+                </div>
+              </div>
             ) : booking.catalog_match_dismissed_at ? (
               <div
                 id="catalog-match"
                 className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4"
               >
                 <h3 className="text-sm font-semibold text-amber-950">
-                  Marked as not a Get Run Vibes race
+                  Marked as not in the online catalog
                 </h3>
                 <p className="mt-1 text-sm text-amber-900">
-                  Undo that if it was a mistake, then search by name or location
-                  and match the listing. Event details and the logo will sync
-                  the same way as other Get Run Vibes links.
+                  Undo that if it was a mistake, then search by name, location,
+                  or a registration link and match the listing. Event details
+                  fill in from the online catalog or RunSignUp.
                 </p>
                 <form action={restoreBookingCatalogMatchAction} className="mt-3">
                   <input type="hidden" name="bookingId" value={booking.id} />
@@ -647,18 +735,18 @@ export default async function BookingDetailPage({
                     pendingLabel="Opening matcher…"
                     className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-60"
                   >
-                    Match Get Run Vibes listing
+                    Match online listing
                   </PendingSubmitButton>
                 </form>
               </div>
             ) : (
               <div id="catalog-match" className="mt-5 border-t border-slate-200 pt-5">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Match Get Run Vibes listing
+                  Match online listing
                 </h3>
                 <p className="mt-1 mb-3 text-sm text-slate-600">
-                  Search by name, location, or year, then match so event details
-                  and the logo fill in from Get Run Vibes.
+                  Search the online catalog or RunSignUp, or paste a registration
+                  link, then match so event details and distances fill in.
                 </p>
                 <CatalogMatchControls
                   bookingId={booking.id}
@@ -700,7 +788,7 @@ export default async function BookingDetailPage({
                   <dl className="mt-4 grid gap-4 sm:grid-cols-2">
                     <div><dt className="text-xs uppercase text-slate-500">Direct client</dt><dd className="font-medium">{booking.direct_client}</dd></div>
                     <div><dt className="text-xs uppercase text-slate-500">Event owner</dt><dd className="font-medium">{booking.event_owner ?? "Not set"}</dd></div>
-                    <div><dt className="text-xs uppercase text-slate-500">Primary contact</dt><dd className="font-medium">{booking.primary_contact ?? "Not set"}</dd></div>
+                    <div><dt className="text-xs uppercase text-slate-500">Primary contact</dt><dd className="font-medium">{booking.primary_contact ?? "Not set"}{booking.primary_contact_email ? <> · <MailtoLink email={booking.primary_contact_email} className="text-cyan-700 underline hover:text-cyan-900" /></> : null}</dd></div>
                     <div><dt className="text-xs uppercase text-slate-500">Assignee</dt><dd className="font-medium">{booking.assignee ?? "Unassigned"}</dd></div>
                   </dl>
                 )}
@@ -750,165 +838,286 @@ export default async function BookingDetailPage({
             title="Race-day operations"
             icon={<Clock3 className="size-5 text-cyan-700" />}
           >
-            <div className="grid gap-6 lg:grid-cols-2">
-              <form action={updateOccurrenceOperationsAction} className="grid content-start gap-4">
-                <input type="hidden" name="bookingId" value={booking.id} />
-                <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
-                <ScheduleOverrideEditor
-                  arrivalDisplay={formatDate(effectiveArrival, true)}
-                  departureDisplay={formatDate(effectiveDeparture, true)}
-                  arrivalOverridden={Boolean(booking.arrival_override_at)}
-                  departureOverridden={Boolean(booking.departure_override_at)}
-                  arrivalOverrideLocal={booking.arrival_override_local}
-                  departureOverrideLocal={booking.departure_override_local}
-                />
-                <label className="text-sm">Timer location
-                  <select name="timerLocation" defaultValue={booking.timer_location ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-                    <option value="">Not set</option>
-                    <option value="on_site">On-Site</option>
-                    <option value="remote">Remote</option>
-                  </select>
-                </label>
-                <label className="text-sm">Hardware event name<input name="hardwareEventName" defaultValue={booking.hardware_event_name ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                <label className="text-sm">Scoring/support expectations<textarea name="scoringExpectations" defaultValue={booking.scoring_expectations ?? ""} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                <label className="text-sm">Post-event expectations<textarea name="postEventExpectations" defaultValue={booking.post_event_expectations ?? ""} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                <label className="text-sm">Operations notes<textarea name="operationsNotes" defaultValue={booking.operations_notes ?? ""} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                <PendingSubmitButton className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white">Save operations</PendingSubmitButton>
-              </form>
-              <div>
-                <h3 className="flex items-center gap-2 text-sm font-bold text-slate-950">
-                  <Route className="size-4 text-cyan-700" /> Course points
-                </h3>
-                <div className="mt-3 space-y-2">
-                  {coursePoints.rows.map((point) => (
-                    <details key={point.id} className="rounded-lg bg-slate-50 p-3 text-sm">
-                      <summary className="cursor-pointer"><strong>{point.name}</strong>{point.hardware_point_name ? ` · ${point.hardware_point_name}` : ""}</summary>
-                      <form action={saveCoursePointAction} className="mt-3 space-y-2">
-                        <input type="hidden" name="bookingId" value={booking.id} />
-                        <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
-                        <input type="hidden" name="pointId" value={point.id} />
-                        <label className="block">Point name<input required name="name" defaultValue={point.name} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                        <label className="block">Hardware name<input name="hardwarePointName" defaultValue={point.hardware_point_name ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                        <label className="block">Notes<input name="notes" defaultValue={point.notes ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                        <PendingSubmitButton className="font-semibold text-cyan-700">Save course point</PendingSubmitButton>
-                      </form>
-                      <form action={deleteCoursePointAction} className="mt-2">
-                        <input type="hidden" name="bookingId" value={booking.id} />
-                        <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
-                        <input type="hidden" name="pointId" value={point.id} />
-                        <button className="font-semibold text-red-700">Remove</button>
-                      </form>
-                    </details>
-                  ))}
-                  {!coursePoints.rows.length ? <p className="text-sm text-slate-500">No course points added.</p> : null}
-                </div>
-                <form action={addCoursePointAction} className="mt-4 space-y-3 border-t pt-4">
+            <div className="space-y-4">
+              <div className="rounded-xl bg-slate-50 p-4">
+                <form action={updateOccurrenceOperationsAction} className="space-y-4">
                   <input type="hidden" name="bookingId" value={booking.id} />
                   <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
-                  <label className="block text-sm">Point name<input required name="name" placeholder="Finish" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                  <label className="block text-sm">Hardware point name<input name="hardwarePointName" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                  <label className="block text-sm">Notes<input name="notes" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                  <button className="w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white">Add course point</button>
+                  <ScheduleOverrideEditor
+                    arrivalDisplay={formatDate(effectiveArrival, true)}
+                    departureDisplay={formatDate(effectiveDeparture, true)}
+                    arrivalOverridden={Boolean(booking.arrival_override_at)}
+                    departureOverridden={Boolean(booking.departure_override_at)}
+                    arrivalOverrideLocal={booking.arrival_override_local}
+                    departureOverrideLocal={booking.departure_override_local}
+                    extra={(
+                      <label className="text-sm">
+                        <span className="text-xs uppercase text-slate-500">Timer location</span>
+                        <select
+                          name="timerLocation"
+                          defaultValue={booking.timer_location ?? ""}
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                        >
+                          <option value="">Not set</option>
+                          <option value="on_site">On-site</option>
+                          <option value="remote">Remote</option>
+                        </select>
+                      </label>
+                    )}
+                  />
+                  <PendingSubmitButton className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white">
+                    Save schedule
+                  </PendingSubmitButton>
                 </form>
-              </div>
-            </div>
-          </CollapsibleCard>
-
-          <CollapsibleCard
-            title="Races"
-            icon={<Flag className="size-5 text-cyan-700" />}
-          >
-            <div className="space-y-3">
-              {races.rows.map((race) => (
-                <details key={race.id} className="rounded-xl border border-slate-200 p-4">
-                  <summary className="cursor-pointer font-semibold">
-                    {race.name} · {race.start_time?.slice(0, 16).replace("T", " ") ?? "Start TBD"}
-                    <span className="ml-2 text-sm font-normal text-slate-500">
-                      {race.duration_override_minutes ?? race.estimated_duration_minutes ?? "?"} min
-                    </span>
-                  </summary>
-                  <form action={saveOccurrenceRaceAction} className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <input type="hidden" name="bookingId" value={booking.id} />
-                    <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
-                    <input type="hidden" name="raceId" value={race.id} />
-                    <label className="text-sm">Name<input required name="name" defaultValue={race.name} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                    <label className="text-sm">Distance label<input name="distanceLabel" defaultValue={race.distance_label ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                    <div>
-                      <span className="flex items-center justify-between gap-2 text-sm">
-                        Start time
-                        <CopyEventStartTimeButton eventStartLocal={booking.race_date_local} />
-                      </span>
-                      <input required type="datetime-local" name="startTime" defaultValue={race.start_time?.slice(0, 16) ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
-                    </div>
-                    <label className="text-sm">Duration override (minutes)<input type="number" min="1" name="durationOverrideMinutes" defaultValue={race.duration_override_minutes ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                    <label className="text-sm">Miles<input type="number" min="0" step="0.001" name="distanceMiles" defaultValue={race.distance_miles ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                    <label className="text-sm">Meters<input type="number" min="1" name="distanceMeters" defaultValue={race.distance_meters ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                    <label className="text-sm sm:col-span-2">Age groups<textarea name="ageGroups" defaultValue={race.age_groups ?? ""} rows={5} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                    <label className="text-sm sm:col-span-2">Awards<textarea name="awards" defaultValue={race.awards ?? ""} rows={5} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-                    <PendingSubmitButton className="rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white sm:col-span-2">Save race</PendingSubmitButton>
-                  </form>
-                  <form action={deleteOccurrenceRaceAction} className="mt-2">
-                    <input type="hidden" name="bookingId" value={booking.id} />
-                    <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
-                    <input type="hidden" name="raceId" value={race.id} />
-                    <button className="text-sm font-semibold text-red-700">Remove race</button>
-                  </form>
-                </details>
-              ))}
-            </div>
-            <details className="mt-4 rounded-xl bg-cyan-50 p-4">
-              <summary className="cursor-pointer font-semibold text-cyan-950">+ Add Race</summary>
-              <form action={saveOccurrenceRaceAction} className="mt-4 grid gap-3 sm:grid-cols-2">
-                <input type="hidden" name="bookingId" value={booking.id} />
-                <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
-                <label className="text-sm">Name<input required name="name" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
-                <label className="text-sm">Distance label<input name="distanceLabel" placeholder="5K" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
-                <div>
-                  <span className="flex items-center justify-between gap-2 text-sm">
-                    Start time
-                    <CopyEventStartTimeButton eventStartLocal={booking.race_date_local} />
-                  </span>
-                  <input required type="datetime-local" name="startTime" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" />
+                <div className="mt-5 border-t border-slate-200 pt-4">
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-slate-950">
+                    <Flag className="size-4 text-cyan-700" /> Races
+                  </h3>
+                  <div className="mt-3 space-y-3">
+                    {races.rows.map((race) => (
+                      <details key={race.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                        <summary className="cursor-pointer font-semibold">
+                          {race.name} · {race.start_time?.slice(0, 16).replace("T", " ") ?? "Start TBD"}
+                          <span className="ml-2 text-sm font-normal text-slate-500">
+                            {race.duration_override_minutes ?? race.estimated_duration_minutes ?? "?"} min
+                          </span>
+                        </summary>
+                        <form action={saveOccurrenceRaceAction} className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <input type="hidden" name="bookingId" value={booking.id} />
+                          <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
+                          <input type="hidden" name="raceId" value={race.id} />
+                          <label className="text-sm">Name<input required name="name" defaultValue={race.name} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                          <label className="text-sm">Distance label<input name="distanceLabel" defaultValue={race.distance_label ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                          <div>
+                            <span className="flex items-center justify-between gap-2 text-sm">
+                              Start time
+                              <CopyEventStartTimeButton eventStartLocal={booking.race_date_local} />
+                            </span>
+                            <input required type="datetime-local" name="startTime" defaultValue={race.start_time?.slice(0, 16) ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+                          </div>
+                          <label className="text-sm">Duration override (minutes)<input type="number" min="1" name="durationOverrideMinutes" defaultValue={race.duration_override_minutes ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                          <label className="text-sm">Miles<input type="number" min="0" step="0.001" name="distanceMiles" defaultValue={race.distance_miles ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                          <label className="text-sm">Meters<input type="number" min="1" name="distanceMeters" defaultValue={race.distance_meters ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                          <RaceScoringEditor
+                            scoring={race.scoring}
+                            legacyAgeGroups={race.age_groups}
+                            legacyAwards={race.awards}
+                          />
+                          <PendingSubmitButton className="rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white sm:col-span-2">Save race</PendingSubmitButton>
+                        </form>
+                        <form action={deleteOccurrenceRaceAction} className="mt-2">
+                          <input type="hidden" name="bookingId" value={booking.id} />
+                          <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
+                          <input type="hidden" name="raceId" value={race.id} />
+                          <button className="text-sm font-semibold text-red-700">Remove race</button>
+                        </form>
+                      </details>
+                    ))}
+                    {!races.rows.length ? (
+                      <p className="text-sm text-slate-500">No races added.</p>
+                    ) : null}
+                  </div>
+                  <details className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+                    <summary className="cursor-pointer font-semibold text-cyan-950">+ Add Race</summary>
+                    <form action={saveOccurrenceRaceAction} className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
+                      <label className="text-sm">Name<input required name="name" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
+                      <label className="text-sm">Distance label<input name="distanceLabel" placeholder="5K" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
+                      <div>
+                        <span className="flex items-center justify-between gap-2 text-sm">
+                          Start time
+                          <CopyEventStartTimeButton eventStartLocal={booking.race_date_local} />
+                        </span>
+                        <input required type="datetime-local" name="startTime" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" />
+                      </div>
+                      <label className="text-sm">Duration override (minutes)<input type="number" min="1" name="durationOverrideMinutes" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
+                      <label className="text-sm">Miles<input type="number" min="0" step="0.001" name="distanceMiles" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
+                      <label className="text-sm">Meters<input type="number" min="1" name="distanceMeters" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
+                      <RaceScoringEditor />
+                      <button className="rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white sm:col-span-2">Add race</button>
+                    </form>
+                  </details>
                 </div>
-                <label className="text-sm">Duration override (minutes)<input type="number" min="1" name="durationOverrideMinutes" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
-                <label className="text-sm">Miles<input type="number" min="0" step="0.001" name="distanceMiles" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
-                <label className="text-sm">Meters<input type="number" min="1" name="distanceMeters" className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
-                <label className="text-sm sm:col-span-2">Age groups<textarea name="ageGroups" rows={5} className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
-                <label className="text-sm sm:col-span-2">Awards<textarea name="awards" rows={5} className="mt-1 w-full rounded-lg border border-cyan-200 px-3 py-2" /></label>
-                <button className="rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white sm:col-span-2">Add race</button>
-              </form>
-            </details>
+              </div>
+
+              <CollapsibleCard
+                nested
+                title="Crew"
+                icon={<Users className="size-4 text-cyan-700" />}
+                meta={crew.rows.length ? `· ${crew.rows.length}` : "· None assigned"}
+              >
+                <CrewAssignmentPanel
+                  bookingId={booking.id}
+                  occurrenceId={booking.occurrence_id}
+                  clientOrganizationId={booking.direct_client_id}
+                  clientOrganizationName={booking.direct_client}
+                  assigned={crew.rows.map((member) => ({
+                    id: member.id,
+                    personId: member.person_id,
+                    name: member.crew_name,
+                    email: member.email,
+                    phone: member.phone,
+                    role: member.role,
+                    freeformName: member.freeform_name,
+                    notes: member.notes,
+                  }))}
+                  people={crewPeople.rows.map((person) => ({
+                    id: person.id,
+                    displayName: person.display_name,
+                    firstName: person.first_name,
+                    lastName: person.last_name,
+                    email: person.email,
+                    phone: person.phone,
+                  }))}
+                />
+              </CollapsibleCard>
+
+              <CollapsibleCard
+                nested
+                defaultOpen={false}
+                title="Course points"
+                icon={<Route className="size-4 text-cyan-700" />}
+                meta={
+                  booking.hardware_event_name || coursePoints.rows.length
+                    ? `· ${[booking.hardware_event_name, coursePoints.rows.length
+                      ? `${coursePoints.rows.length} ${coursePoints.rows.length === 1 ? "point" : "points"}`
+                      : null].filter(Boolean).join(" · ")}`
+                    : "· None set"
+                }
+              >
+                <div className="space-y-4">
+                  <form action={updateOccurrenceOperationsAction} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <input type="hidden" name="bookingId" value={booking.id} />
+                    <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
+                    <label className="text-sm">Hardware event name
+                      <input
+                        name="hardwareEventName"
+                        defaultValue={booking.hardware_event_name ?? ""}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                      />
+                    </label>
+                    <PendingSubmitButton className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white">
+                      Save hardware name
+                    </PendingSubmitButton>
+                  </form>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {coursePoints.rows.map((point) => (
+                      <details key={point.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+                        <summary className="cursor-pointer">
+                          <strong>{point.name}</strong>
+                          {point.hardware_point_name ? ` · ${point.hardware_point_name}` : ""}
+                        </summary>
+                        <form action={saveCoursePointAction} className="mt-3 space-y-2">
+                          <input type="hidden" name="bookingId" value={booking.id} />
+                          <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
+                          <input type="hidden" name="pointId" value={point.id} />
+                          <label className="block">Point name<input required name="name" defaultValue={point.name} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                          <label className="block">Hardware name<input name="hardwarePointName" defaultValue={point.hardware_point_name ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                          <label className="block">Notes<input name="notes" defaultValue={point.notes ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                          <PendingSubmitButton className="font-semibold text-cyan-700">Save course point</PendingSubmitButton>
+                        </form>
+                        <form action={deleteCoursePointAction} className="mt-2">
+                          <input type="hidden" name="bookingId" value={booking.id} />
+                          <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
+                          <input type="hidden" name="pointId" value={point.id} />
+                          <button className="font-semibold text-red-700">Remove</button>
+                        </form>
+                      </details>
+                    ))}
+                    {!coursePoints.rows.length ? (
+                      <p className="text-sm text-slate-500 sm:col-span-2">No course points added.</p>
+                    ) : null}
+                  </div>
+                  <form action={addCoursePointAction} className="grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3">
+                    <input type="hidden" name="bookingId" value={booking.id} />
+                    <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
+                    <label className="text-sm">Point name<input required name="name" placeholder="Finish" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                    <label className="text-sm">Hardware point name<input name="hardwarePointName" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                    <label className="text-sm">Notes<input name="notes" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                    <button className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white sm:col-span-3">Add course point</button>
+                  </form>
+                </div>
+              </CollapsibleCard>
+
+              <CollapsibleCard
+                nested
+                defaultOpen={false}
+                title="Additional expectations"
+                icon={<ListChecks className="size-4 text-cyan-700" />}
+              >
+                <form action={updateOccurrenceOperationsAction} className="grid gap-4 sm:grid-cols-2">
+                  <input type="hidden" name="bookingId" value={booking.id} />
+                  <input type="hidden" name="occurrenceId" value={booking.occurrence_id} />
+                  <label className="text-sm">Scoring/support expectations<textarea name="scoringExpectations" defaultValue={booking.scoring_expectations ?? ""} rows={4} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                  <label className="text-sm">Post-event expectations<textarea name="postEventExpectations" defaultValue={booking.post_event_expectations ?? ""} rows={4} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                  <label className="text-sm sm:col-span-2">Operations notes<textarea name="operationsNotes" defaultValue={booking.operations_notes ?? ""} rows={4} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+                  <PendingSubmitButton className="rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white sm:col-span-2">
+                    Save expectations
+                  </PendingSubmitButton>
+                </form>
+              </CollapsibleCard>
+
+              <CollapsibleCard
+                nested
+                defaultOpen={false}
+                title="Pre-event prep"
+                icon={<CheckCircle2 className="size-4 text-cyan-700" />}
+                meta={prepPendingCount ? `· ${prepPendingCount} pending` : "· Ready"}
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {prepItems.rows.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-slate-100 p-3">
+                      <form action={updatePrepItemAction}>
+                        <input type="hidden" name="bookingId" value={booking.id} />
+                        <input type="hidden" name="itemId" value={item.id} />
+                        <label className="block text-sm font-medium">
+                          {item.label}
+                          <select key={item.status} name="status" defaultValue={item.status} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                            <option value="pending">Pending</option>
+                            <option value="complete">Complete</option>
+                            <option value="not_applicable">Not Applicable</option>
+                          </select>
+                        </label>
+                        <PendingSubmitButton className="mt-2 text-sm font-semibold text-cyan-700">Save</PendingSubmitButton>
+                      </form>
+                      <details className="mt-2 text-sm">
+                        <summary className="cursor-pointer text-slate-500">Edit item details</summary>
+                        <form action={updatePrepItemDetailsAction} className="mt-2 space-y-2">
+                          <input type="hidden" name="bookingId" value={booking.id} />
+                          <input type="hidden" name="itemId" value={item.id} />
+                          <label className="block">Label<input required name="label" defaultValue={item.label} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                          <label className="block">Notes<textarea name="notes" defaultValue={item.notes ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                          <PendingSubmitButton className="font-semibold text-cyan-700">Save details</PendingSubmitButton>
+                        </form>
+                      </details>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-slate-500">
+                  Both items must be complete or not applicable before Ready.
+                </p>
+              </CollapsibleCard>
+            </div>
           </CollapsibleCard>
 
-          <CollapsibleCard
-            title="Crew"
-            icon={<Users className="size-5 text-cyan-700" />}
-          >
-            <CrewAssignmentPanel
-              bookingId={booking.id}
-              occurrenceId={booking.occurrence_id}
-              clientOrganizationId={booking.direct_client_id}
-              clientOrganizationName={booking.direct_client}
-              assigned={crew.rows.map((member) => ({
-                id: member.id,
-                personId: member.person_id,
-                name: member.crew_name,
-                email: member.email,
-                phone: member.phone,
-                role: member.role,
-                freeformName: member.freeform_name,
-                notes: member.notes,
-              }))}
-              people={crewPeople.rows.map((person) => ({
+          <ActivityComposer
+            recordKind="booking"
+            recordId={booking.id}
+            recordTitle={booking.event_name}
+            contacts={bookingEmails.map((email) => ({
+              email,
+              label: email === booking.primary_contact_email ? "Primary contact" : "Crew / related",
+              defaultSelected: true,
+            }))}
+            people={[...people.rows, ...crewPeople.rows]
+              .filter((person, index, rows) => rows.findIndex((item) => item.id === person.id) === index)
+              .map((person) => ({
                 id: person.id,
-                displayName: person.display_name,
-                firstName: person.first_name,
-                lastName: person.last_name,
+                name: person.display_name,
                 email: person.email,
-                phone: person.phone,
               }))}
-            />
-          </CollapsibleCard>
+          />
 
           <ActivityAndTasksFeed
             taskCount={tasks.rows.length}
@@ -941,52 +1150,22 @@ export default async function BookingDetailPage({
               if (!activity) return null;
               return (
                 <div key={`activity-${activity.id}`} data-feed-kind="activity">
-                  <ActivityTimelineItem activity={activity} />
+                  <ActivityTimelineItem
+                    activity={activity}
+                    actions={
+                      isMeetingActivity(activity) &&
+                      !parseMeetingMetadata(activity.metadata)?.wrapUp ? (
+                        <MeetingWrapUpButton
+                          activityId={activity.id}
+                          recordKind="booking"
+                        />
+                      ) : null
+                    }
+                  />
                 </div>
               );
             })}
           </ActivityAndTasksFeed>
-        </div>
-
-        <aside className="space-y-5">
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="flex items-center gap-2 font-bold">
-              <CheckCircle2 className="size-5 text-cyan-700" /> Pre-event prep
-            </h2>
-            <div className="mt-4 space-y-4">
-              {prepItems.rows.map((item) => (
-                <div key={item.id} className="rounded-lg border border-slate-100 p-3">
-                <form action={updatePrepItemAction}>
-                  <input type="hidden" name="bookingId" value={booking.id} />
-                  <input type="hidden" name="itemId" value={item.id} />
-                  <label className="block text-sm font-medium">
-                    {item.label}
-                    <select key={item.status} name="status" defaultValue={item.status} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-                      <option value="pending">Pending</option>
-                      <option value="complete">Complete</option>
-                      <option value="not_applicable">Not Applicable</option>
-                    </select>
-                  </label>
-                  <PendingSubmitButton className="mt-2 text-sm font-semibold text-cyan-700">Save</PendingSubmitButton>
-                </form>
-                <details className="mt-2 text-sm">
-                  <summary className="cursor-pointer text-slate-500">Edit item details</summary>
-                  <form action={updatePrepItemDetailsAction} className="mt-2 space-y-2">
-                    <input type="hidden" name="bookingId" value={booking.id} />
-                    <input type="hidden" name="itemId" value={item.id} />
-                    <label className="block">Label<input required name="label" defaultValue={item.label} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                    <label className="block">Notes<textarea name="notes" defaultValue={item.notes ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                    <PendingSubmitButton className="font-semibold text-cyan-700">Save details</PendingSubmitButton>
-                  </form>
-                </details>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-slate-500">
-              Both items must be complete or not applicable before Ready.
-            </p>
-          </section>
-        </aside>
       </div>
       <section className="rounded-xl border border-red-200 bg-red-50 p-5">
         <h2 className="font-bold text-red-950">Danger zone</h2>

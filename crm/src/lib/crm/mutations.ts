@@ -12,7 +12,8 @@ import { eventMatchKey, isGenericEventName } from "./event-matching";
 import { cancelOpenProspectTasks, PAST_EVENT_STAGE_KEY } from "./past-events";
 
 export type RecordActivityInput = {
-  prospectId: string;
+  prospectId?: string;
+  bookingId?: string;
   type: UserActivityType;
   body: string;
   disposition?: string;
@@ -32,11 +33,15 @@ export async function insertActivityAndFollowUp(
   client: PoolClient,
   input: RecordActivityInput,
 ) {
+  if (!input.prospectId && !input.bookingId) {
+    throw new Error("Activity needs a prospect or booking.");
+  }
   const activity = await client.query<{ id: string }>(
     `
       INSERT INTO crm.activities
         (
           prospect_id,
+          booking_id,
           type,
           body,
           disposition,
@@ -48,19 +53,21 @@ export async function insertActivityAndFollowUp(
         )
       VALUES (
         $1::uuid,
-        $2::crm.activity_type,
-        $3,
+        $2::uuid,
+        $3::crm.activity_type,
         $4,
-        COALESCE($5::timestamptz, now()),
-        $6::crm.actor_type,
-        $7::uuid,
-        $8,
-        $9::jsonb
+        $5,
+        COALESCE($6::timestamptz, now()),
+        $7::crm.actor_type,
+        $8::uuid,
+        $9,
+        $10::jsonb
       )
       RETURNING id::text
     `,
     [
-      input.prospectId,
+      input.prospectId ?? null,
+      input.bookingId ?? null,
       input.type,
       input.body,
       input.disposition ?? null,
@@ -77,12 +84,13 @@ export async function insertActivityAndFollowUp(
     const task = await client.query<{ id: string }>(
       `
         INSERT INTO crm.tasks
-          (prospect_id, source_activity_id, assigned_user_id, title, due_at)
-        VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
+          (prospect_id, booking_id, source_activity_id, assigned_user_id, title, due_at)
+        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6)
         RETURNING id::text
       `,
       [
-        input.prospectId,
+        input.prospectId ?? null,
+        input.bookingId ?? null,
         activity.rows[0].id,
         input.followUp.assignedUserId,
         input.followUp.title,
@@ -156,7 +164,7 @@ export async function applyTerminalDisposition(
 }
 
 export type StageChangeActor = {
-  actorType: "human" | "ai";
+  actorType: "human" | "ai" | "system";
   actorName: string;
   actorUserId?: string;
 };
@@ -344,4 +352,170 @@ export async function findOrCreateStandingEvent(
     ],
   );
   return created.rows[0].id;
+}
+
+export async function startProspectFromListing(
+  client: PoolClient,
+  input: { raceListingId: string; userId: string },
+) {
+  const result = await client.query<{ id: string }>(
+    `
+      WITH selected_edition AS (
+        SELECT id
+        FROM catalog.race_editions
+        WHERE race_listing_id = $1 AND is_future = true
+        ORDER BY starts_at ASC NULLS LAST
+        LIMIT 1
+      ),
+      legacy_stage AS (
+        SELECT COALESCE(
+          CASE
+            WHEN listing_dates.event_at IS NOT NULL
+              AND (listing_dates.event_at AT TIME ZONE 'America/New_York')::date
+                < (now() AT TIME ZONE 'America/New_York')::date
+              THEN 'past_event'
+            WHEN notes.qualification_status ILIKE 'disqualified%' THEN 'disqualified'
+            WHEN notes.qualification_status ILIKE 'unqualified%' THEN 'unqualified'
+          END,
+          'cold'
+        ) AS key
+        FROM (SELECT 1) AS dummy
+        LEFT JOIN catalog.lead_notes notes ON notes.race_listing_id = $1
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(
+            (
+              SELECT re.starts_at
+              FROM catalog.race_editions re
+              WHERE re.race_listing_id = $1 AND re.is_future = true
+              ORDER BY re.starts_at ASC NULLS LAST
+              LIMIT 1
+            ),
+            listing.next_start_at
+          ) AS event_at
+          FROM catalog.race_listings listing
+          WHERE listing.id = $1
+        ) listing_dates ON true
+      ),
+      chosen_stage AS (
+        SELECT stage.id, stage.key
+        FROM crm.pipeline_stages stage
+        JOIN legacy_stage ON stage.key = legacy_stage.key
+        WHERE stage.pipeline = 'prospect' AND stage.is_active = true
+      )
+      INSERT INTO crm.prospects
+        (race_listing_id, race_edition_id, assigned_user_id, stage_id, closed_at)
+      SELECT $1, selected_edition.id, $2::uuid, chosen_stage.id,
+        CASE WHEN chosen_stage.key IN ('disqualified', 'unqualified', 'closed_lost', 'past_event')
+          THEN now() ELSE NULL END
+      FROM chosen_stage
+      LEFT JOIN selected_edition ON true
+      ON CONFLICT (race_listing_id, (coalesce(race_edition_id, '')))
+      DO UPDATE SET updated_at = now()
+      RETURNING id::text
+    `,
+    [input.raceListingId, input.userId],
+  );
+  const prospectId = result.rows[0]?.id;
+  if (!prospectId) throw new Error("Could not start this lead.");
+
+  const linked = await client.query<{ event_id: string | null }>(
+    `SELECT event_id::text FROM crm.prospects WHERE id = $1::uuid`,
+    [prospectId],
+  );
+  if (!linked.rows[0]?.event_id) {
+    await client.query(
+      `
+        WITH source AS (
+          SELECT p.id, p.race_edition_id, listing.name,
+            COALESCE(edition.starts_at, listing.next_start_at) AS race_date,
+            COALESCE(edition.edition_year,
+              EXTRACT(YEAR FROM listing.next_start_at)::integer) AS occurrence_year,
+            COALESCE(edition.timezone, listing.timezone) AS timezone,
+            COALESCE(listing.registration_url, listing.external_race_url)
+              AS registration_url,
+            listing.street, listing.street2, listing.city, listing.state,
+            listing.zipcode
+          FROM crm.prospects p
+          JOIN catalog.race_listings listing ON listing.id = p.race_listing_id
+          LEFT JOIN catalog.race_editions edition ON edition.id = p.race_edition_id
+          WHERE p.id = $2::uuid
+        ),
+        inserted_event AS (
+          INSERT INTO crm.events
+            (name, catalog_race_listing_id, source_type, website)
+          SELECT name, $1, 'other', registration_url FROM source
+          RETURNING id
+        ),
+        inserted_occurrence AS (
+          INSERT INTO crm.event_occurrences
+            (event_id, catalog_race_edition_id, occurrence_year, race_date,
+             timezone, registration_url_override, street_override,
+             street2_override, city_override, state_override, zipcode_override)
+          SELECT event.id, source.race_edition_id, source.occurrence_year,
+            source.race_date, source.timezone, source.registration_url,
+            source.street, source.street2, source.city, source.state,
+            source.zipcode
+          FROM source CROSS JOIN inserted_event event
+          RETURNING id, event_id
+        )
+        UPDATE crm.prospects
+        SET event_id = occurrence.event_id, occurrence_id = occurrence.id,
+          updated_at = now()
+        FROM inserted_occurrence occurrence
+        WHERE prospects.id = $2::uuid
+      `,
+      [input.raceListingId, prospectId],
+    );
+  }
+
+  await client.query(
+    `
+      UPDATE crm.contact_methods
+      SET prospect_id = $2::uuid, updated_at = now()
+      WHERE race_listing_id = $1 AND prospect_id IS NULL
+    `,
+    [input.raceListingId, prospectId],
+  );
+  return prospectId;
+}
+
+export async function closeCandidateListing(
+  client: PoolClient,
+  input: {
+    raceListingId: string;
+    userId: string;
+    userName: string;
+    stageKey: "disqualified" | "unqualified";
+    reason?: string | null;
+    note?: string | null;
+    actorType?: StageChangeActor["actorType"];
+    actorName?: string;
+  },
+) {
+  const prospectId = await startProspectFromListing(client, {
+    raceListingId: input.raceListingId,
+    userId: input.userId,
+  });
+  const changed = await changeProspectStage(
+    client,
+    prospectId,
+    input.stageKey,
+    {
+      actorType: input.actorType ?? "human",
+      actorUserId: input.userId,
+      actorName: input.actorName ?? input.userName,
+    },
+    null,
+    {
+      unqualified:
+        input.stageKey === "unqualified"
+          ? { reason: input.reason, note: input.note }
+          : null,
+      disqualified:
+        input.stageKey === "disqualified"
+          ? { reason: input.reason, note: input.note }
+          : null,
+    },
+  );
+  return changed;
 }

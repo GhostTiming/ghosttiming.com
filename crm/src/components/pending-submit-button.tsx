@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -53,7 +54,16 @@ export function PendingSubmitButton({
       aria-busy={pending}
       className={className}
     >
-      {pending ? pendingLabel : saved ? savedLabel : children}
+      {pending ? (
+        <span className="inline-flex items-center gap-1.5">
+          <Loader2 aria-hidden className="size-4 animate-spin" />
+          {pendingLabel}
+        </span>
+      ) : saved ? (
+        savedLabel
+      ) : (
+        children
+      )}
     </button>
   );
 }

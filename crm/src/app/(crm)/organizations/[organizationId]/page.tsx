@@ -1,3 +1,4 @@
+import { ExternalHref, MailtoLink } from "@/components/crm-links";
 import { ArrowLeft, Building2, CalendarDays, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -16,6 +17,7 @@ import {
 } from "@/app/lifecycle-actions";
 import { getPool } from "@/db";
 import { requireOperationsAccess } from "@/lib/auth/server";
+import { parseRouteUuid } from "@/lib/crm/route-id";
 
 function yearLabel(event: {
   occurrence_count: number;
@@ -50,7 +52,7 @@ export default async function OrganizationDetailPage({
   searchParams: Promise<{ edit?: string }>;
 }) {
   const access = await requireOperationsAccess();
-  const { organizationId } = await params;
+  const organizationId = parseRouteUuid((await params).organizationId);
   const { edit } = await searchParams;
   const organizationResult = await getPool().query<{
     id: string;
@@ -232,9 +234,9 @@ export default async function OrganizationDetailPage({
           </div>
         </div>
         <div className="mt-5 flex flex-wrap gap-5 text-sm text-slate-300">
-          {organization.email ? <a href={`mailto:${organization.email}`}>{organization.email}</a> : null}
+          {organization.email ? <MailtoLink email={organization.email} className="underline decoration-cyan-400/70 hover:text-white">{organization.email}</MailtoLink> : null}
           {organization.phone ? <a href={`tel:${organization.phone}`}>{organization.phone}</a> : null}
-          {organization.website ? <a className="underline" href={organization.website}>Website</a> : null}
+          {organization.website ? <ExternalHref className="underline" href={organization.website}>Website</ExternalHref> : null}
           {organization.address ? <span>{organization.address}</span> : null}
         </div>
       </header>
@@ -266,9 +268,9 @@ export default async function OrganizationDetailPage({
           </form>
         ) : (
           <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
-            <div><dt className="text-slate-500">Email</dt><dd>{organization.email ?? "Not set"}</dd></div>
+            <div><dt className="text-slate-500">Email</dt><dd>{organization.email ? <MailtoLink email={organization.email} className="text-cyan-700 underline hover:text-cyan-900" /> : "Not set"}</dd></div>
             <div><dt className="text-slate-500">Phone</dt><dd>{organization.phone ?? "Not set"}</dd></div>
-            <div><dt className="text-slate-500">Website</dt><dd>{organization.website ?? "Not set"}</dd></div>
+            <div><dt className="text-slate-500">Website</dt><dd>{organization.website ? <ExternalHref className="text-cyan-700 underline" href={organization.website}>{organization.website}</ExternalHref> : "Not set"}</dd></div>
             <div><dt className="text-slate-500">Address</dt><dd>{organization.address || "Not set"}</dd></div>
             <div className="sm:col-span-2"><dt className="text-slate-500">Notes</dt><dd className="whitespace-pre-wrap">{organization.notes ?? "None"}</dd></div>
           </dl>
@@ -285,7 +287,15 @@ export default async function OrganizationDetailPage({
                   <Link href={`/contacts/${person.id}`} className="font-semibold text-cyan-700 hover:text-cyan-900">
                     {person.display_name}
                   </Link>
-                  <span className="ml-2 text-sm text-slate-500">{[person.title, person.email, person.phone].filter(Boolean).join(" · ")}</span>
+                  <span className="ml-2 text-sm text-slate-500">
+                    {[person.title, person.phone].filter(Boolean).join(" · ")}
+                    {person.email ? (
+                      <>
+                        {person.title || person.phone ? " · " : null}
+                        <MailtoLink email={person.email} className="text-cyan-700 underline hover:text-cyan-900" />
+                      </>
+                    ) : null}
+                  </span>
                 </summary>
                 <form action={updateOrganizationPersonAction} className="mt-3 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">
                   <input type="hidden" name="organizationId" value={organization.id} />

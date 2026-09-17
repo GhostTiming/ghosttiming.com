@@ -22,7 +22,7 @@ const updateSchema = z
     circle_back_on: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     unqualified_reason: z.enum(["event_too_soon", "other"]).optional(),
     unqualified_note: z.string().trim().max(5_000).optional(),
-    disqualified_reason: z.enum(["is_a_timing_company", "other"]).optional(),
+    disqualified_reason: z.enum(["is_a_timing_company", "blacklisted_email", "other"]).optional(),
     disqualified_note: z.string().trim().max(5_000).optional(),
   })
   .refine(

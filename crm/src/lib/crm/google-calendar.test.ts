@@ -4,6 +4,7 @@ import {
   buildGoogleCalendarUrl,
   formatCalendarMultilineField,
   formatCalendarRaceClock,
+  formatCalendarRaceHeading,
   googleCalendarEventDescription,
 } from "./google-calendar";
 
@@ -48,14 +49,16 @@ describe("Google Calendar booking links", () => {
       "123 Main St, Concord, NH",
     );
     expect(parsed.searchParams.get("details")).toContain(
-      "Crew: Seth Doe (Lead) · 555-0100, Chris Batista",
+      "Crew:\nMichelle Splitstone-Laloggia · (407) 687-2570\nSeth Doe (Lead) · 555-0100\nChris Batista",
     );
     expect(parsed.searchParams.get("details")).not.toContain("seth@example.com");
-    expect(parsed.searchParams.get("details")).toContain("Start: 8 AM");
-    expect(parsed.searchParams.get("details")).toContain("Start: 8 AM\n\nAge Groups:");
-    expect(parsed.searchParams.get("details")).toContain("Age Groups:\n  Overall");
+    expect(parsed.searchParams.get("details")).toContain("5K @ 8:00AM Start");
     expect(parsed.searchParams.get("details")).toContain(
-      "Age Groups:\n  Overall\n  0-9\n  10-14\n\nAwards:",
+      "5K @ 8:00AM Start\n\nAge Groups:",
+    );
+    expect(parsed.searchParams.get("details")).toContain("Age Groups:\nOverall");
+    expect(parsed.searchParams.get("details")).toContain(
+      "Age Groups:\nOverall\n0-9\n10-14\n\nAwards:",
     );
     expect(parsed.searchParams.get("add")).toBe("seth@example.com");
   });
@@ -105,7 +108,7 @@ describe("Google Calendar booking links", () => {
 
   it("puts crew phone numbers in the description without repeating emails", () => {
     expect(googleCalendarEventDescription(baseBooking)).toContain(
-      "Crew: Seth Doe (Lead) · 555-0100, Chris Batista",
+      "Crew:\nMichelle Splitstone-Laloggia · (407) 687-2570\nSeth Doe (Lead) · 555-0100\nChris Batista",
     );
     expect(googleCalendarEventDescription(baseBooking)).not.toContain(
       "seth@example.com",
@@ -115,30 +118,100 @@ describe("Google Calendar booking links", () => {
 
 describe("calendar race copy", () => {
   it("prints start time without the date", () => {
-    expect(formatCalendarRaceClock("2026-09-19 08:00:00")).toBe("8 AM");
-    expect(formatCalendarRaceClock("2026-09-19T08:30:00")).toBe("8:30 AM");
-    expect(formatCalendarRaceClock("17:40:00")).toBe("5:40 PM");
+    expect(formatCalendarRaceClock("2026-09-19 08:00:00")).toBe("8:00AM");
+    expect(formatCalendarRaceClock("2026-09-19T08:30:00")).toBe("8:30AM");
+    expect(formatCalendarRaceClock("17:40:00")).toBe("5:40PM");
   });
 
-  it("keeps pasted age groups and awards as a list", () => {
+  it("puts the race name, distance, and start on one line", () => {
+    expect(
+      formatCalendarRaceHeading({
+        name: "Miles To Go 5K Run/Walk",
+        distanceLabel: "3.1 Miles",
+        startTime: "2026-09-19 08:00:00",
+      }),
+    ).toBe("Miles To Go 5K Run/Walk (3.1 Miles) @ 8:00AM Start");
+  });
+
+  it("keeps pasted age groups and awards as a list under the label", () => {
     expect(formatCalendarMultilineField("Age Groups", "Overall\n0-9")).toBe(
-      "Age Groups:\n  Overall\n  0-9",
+      "Age Groups:\nOverall\n0-9",
     );
     expect(formatCalendarMultilineField("Awards", "Overall M/F")).toBe(
-      "Awards: Overall M/F",
+      "Awards:\nOverall M/F",
     );
+  });
+
+  it("omits blank age groups, awards, and notes", () => {
+    expect(
+      googleCalendarEventDescription({
+        ...baseBooking,
+        races: [
+          {
+            name: "5K",
+            distanceLabel: "5K",
+            startTime: "2027-04-03 08:00:00",
+          },
+        ],
+      }),
+    ).toBe(
+      [
+        "Race Registration:\nhttps://example.com/register",
+        "Crew:\nMichelle Splitstone-Laloggia · (407) 687-2570\nSeth Doe (Lead) · 555-0100\nChris Batista",
+        "Race(s):\n5K @ 8:00AM Start",
+      ].join("\n\n"),
+    );
+  });
+
+  it("prints notes only when they have content", () => {
+    expect(
+      googleCalendarEventDescription({
+        ...baseBooking,
+        races: [
+          {
+            name: "5K",
+            startTime: "08:00:00",
+            notes: "Chip start; no day-of registration",
+          },
+        ],
+      }),
+    ).toContain("Notes:\nChip start; no day-of registration");
   });
 
   it("puts a blank line between calendar description fields", () => {
     expect(googleCalendarEventDescription(baseBooking)).toBe(
       [
-        "Race Registration: https://example.com/register",
-        "Crew: Seth Doe (Lead) · 555-0100, Chris Batista",
-        "Races:",
-        "5K",
-        "Start: 8 AM",
-        "Age Groups:\n  Overall\n  0-9\n  10-14",
-        "Awards: Overall M/F",
+        "Race Registration:\nhttps://example.com/register",
+        "Crew:\nMichelle Splitstone-Laloggia · (407) 687-2570\nSeth Doe (Lead) · 555-0100\nChris Batista",
+        "Race(s):\n5K @ 8:00AM Start",
+        "Age Groups:\nOverall\n0-9\n10-14",
+        "Awards:\nOverall M/F",
+      ].join("\n\n"),
+    );
+  });
+
+  it("adds Michelle to crew by default and does not duplicate her", () => {
+    expect(googleCalendarEventDescription({ ...baseBooking, crew: [] })).toContain(
+      "Crew:\nMichelle Splitstone-Laloggia · (407) 687-2570",
+    );
+    expect(
+      googleCalendarEventDescription({
+        ...baseBooking,
+        crew: [
+          {
+            name: "Michelle Splitstone-Laloggia",
+            phone: "(407) 687-2570",
+            role: "Owner",
+          },
+        ],
+      }),
+    ).toBe(
+      [
+        "Race Registration:\nhttps://example.com/register",
+        "Crew:\nMichelle Splitstone-Laloggia (Owner) · (407) 687-2570",
+        "Race(s):\n5K @ 8:00AM Start",
+        "Age Groups:\nOverall\n0-9\n10-14",
+        "Awards:\nOverall M/F",
       ].join("\n\n"),
     );
   });

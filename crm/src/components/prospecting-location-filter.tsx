@@ -3,6 +3,7 @@
 import { ListFilter } from "lucide-react";
 import Link from "next/link";
 import { useId, useRef, useSyncExternalStore } from "react";
+import { prospectPerkFilters } from "@/lib/crm/catalog-display";
 import { US_STATES } from "@/lib/crm/geo";
 import { buildSearchHref } from "@/lib/crm/search-params";
 
@@ -10,7 +11,16 @@ type ProspectingLocationFilterProps = {
   params: Record<string, string | undefined>;
 };
 
-const FILTER_KEYS = ["state", "city", "zip", "miles"] as const;
+const FILTER_KEYS = [
+  "state",
+  "city",
+  "zip",
+  "miles",
+  "eventFrom",
+  "eventTo",
+  "hasPerk",
+  "missingPerk",
+] as const;
 const emptySubscribe = () => () => {};
 
 function useIsClient() {
@@ -34,6 +44,17 @@ function preservedParams(params: Record<string, string | undefined>) {
   });
 }
 
+function perkValue(
+  params: Record<string, string | undefined>,
+  key: string,
+) {
+  const has = new Set((params.hasPerk ?? "").split(",").filter(Boolean));
+  const missing = new Set((params.missingPerk ?? "").split(",").filter(Boolean));
+  if (has.has(key)) return "has";
+  if (missing.has(key)) return "missing";
+  return "";
+}
+
 export function ProspectingLocationFilter({
   params,
 }: ProspectingLocationFilterProps) {
@@ -54,9 +75,9 @@ export function ProspectingLocationFilter({
     const popover = popoverRef.current;
     if (!button || !popover) return;
     const rect = button.getBoundingClientRect();
-    const width = 280;
+    const width = 320;
     popover.style.top = `${rect.bottom + 6}px`;
-    popover.style.left = `${Math.max(8, rect.left)}px`;
+    popover.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
     popover.style.width = `${width}px`;
   }
 
@@ -81,18 +102,38 @@ export function ProspectingLocationFilter({
           id={popoverId}
           popover="auto"
           role="dialog"
-          aria-label="Filter by location"
+          aria-label="Filter prospects"
           onToggle={(event) => {
             if (event.newState === "open") positionPopover();
           }}
-          className="m-0 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg"
+          className="m-0 max-h-[min(80vh,36rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg"
         >
           <form
             action="/prospecting"
             method="get"
             className="grid gap-2"
             onSubmit={(event) => {
-              for (const element of Array.from(event.currentTarget.elements)) {
+              const form = event.currentTarget;
+              const has: string[] = [];
+              const missing: string[] = [];
+              for (const perk of prospectPerkFilters) {
+                const field = form.elements.namedItem(`perk_${perk.key}`);
+                if (!(field instanceof HTMLSelectElement)) continue;
+                if (field.value === "has") has.push(perk.key);
+                if (field.value === "missing") missing.push(perk.key);
+                field.disabled = true;
+              }
+              const hasInput = form.elements.namedItem("hasPerk");
+              const missingInput = form.elements.namedItem("missingPerk");
+              if (hasInput instanceof HTMLInputElement) {
+                hasInput.value = has.join(",");
+                if (!has.length) hasInput.disabled = true;
+              }
+              if (missingInput instanceof HTMLInputElement) {
+                missingInput.value = missing.join(",");
+                if (!missing.length) missingInput.disabled = true;
+              }
+              for (const element of Array.from(form.elements)) {
                 if (
                   !(element instanceof HTMLInputElement) &&
                   !(element instanceof HTMLSelectElement)
@@ -107,7 +148,44 @@ export function ProspectingLocationFilter({
             {preservedParams(params).map(([key, value]) => (
               <input key={key} type="hidden" name={key} value={value} />
             ))}
+            <input type="hidden" name="hasPerk" defaultValue={params.hasPerk ?? ""} />
+            <input type="hidden" name="missingPerk" defaultValue={params.missingPerk ?? ""} />
             <label className="text-xs font-medium text-slate-600">
+              Event from
+              <input
+                type="date"
+                name="eventFrom"
+                defaultValue={params.eventFrom ?? ""}
+                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+              />
+            </label>
+            <label className="text-xs font-medium text-slate-600">
+              Event to
+              <input
+                type="date"
+                name="eventTo"
+                defaultValue={params.eventTo ?? ""}
+                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+              />
+            </label>
+            <p className="pt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              What’s included
+            </p>
+            {prospectPerkFilters.map((perk) => (
+              <label key={perk.key} className="text-xs font-medium text-slate-600">
+                {perk.label}
+                <select
+                  name={`perk_${perk.key}`}
+                  defaultValue={perkValue(params, perk.key)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+                >
+                  <option value="">Any</option>
+                  <option value="has">Has it</option>
+                  <option value="missing">Missing it</option>
+                </select>
+              </label>
+            ))}
+            <label className="pt-1 text-xs font-medium text-slate-600">
               State
               <select
                 name="state"

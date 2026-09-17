@@ -6,6 +6,7 @@ import {
   setContactArchivedAction,
   updateContactAction,
 } from "@/app/contact-actions";
+import { MailtoLink } from "@/components/crm-links";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { getPool } from "@/db";
 import { requireOperationsAccess } from "@/lib/auth/server";
@@ -14,6 +15,7 @@ import {
   loadContactOrgScope,
 } from "@/lib/crm/contact-queries";
 import { personInContactScopeSql } from "@/lib/crm/contacts";
+import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
 
 const field = "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2";
@@ -29,7 +31,7 @@ export default async function ContactDetailPage({
   params: Promise<{ personId: string }>;
   searchParams: Promise<ContactDetailParams>;
 }) {
-  const { personId } = await params;
+  const personId = parseRouteUuid((await params).personId);
   const access = await requireOperationsAccess();
   const scope = await loadContactOrgScope(access);
   const edit = firstParam((await searchParams).edit) === "details";
@@ -116,7 +118,7 @@ export default async function ContactDetailPage({
           </div>
         </div>
         <div className="mt-5 flex flex-wrap gap-5 text-sm text-slate-300">
-          {contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : null}
+          {contact.email ? <MailtoLink email={contact.email} className="underline decoration-cyan-400/70 hover:text-white">{contact.email}</MailtoLink> : null}
           {contact.phone ? <a href={`tel:${contact.phone}`}>{contact.phone}</a> : null}
         </div>
         {contact.organization_names.length ? (
@@ -228,7 +230,7 @@ export default async function ContactDetailPage({
           <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-slate-500">Email</dt>
-              <dd>{contact.email ?? "Not set"}</dd>
+              <dd>{contact.email ? <MailtoLink email={contact.email} className="text-cyan-700 underline hover:text-cyan-900" /> : "Not set"}</dd>
             </div>
             <div>
               <dt className="text-slate-500">Phone</dt>

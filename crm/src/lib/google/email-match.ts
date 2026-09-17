@@ -23,7 +23,7 @@ export function parseAddressList(value: string | null | undefined): ParsedAddres
 }
 
 export function uniqueNormalizedEmails(
-  ...groups: Array<string | null | undefined | string[]>
+  ...groups: Array<string | null | undefined | Array<string | null | undefined>>
 ) {
   const emails = new Set<string>();
   for (const group of groups) {
@@ -101,7 +101,8 @@ export function emailsForGmailSearch(index: Record<string, EmailMatchTargets>) {
       ([, targets]) =>
         targets.prospectIds.length > 0 ||
         targets.bookingIds.length > 0 ||
-        targets.personIds.length > 0,
+        targets.personIds.length > 0 ||
+        targets.organizationIds.length > 0,
     )
     .map(([email]) => email);
 }
