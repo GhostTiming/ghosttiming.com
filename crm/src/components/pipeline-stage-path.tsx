@@ -11,6 +11,7 @@ import {
   prospectStageTone,
   type PipelineStageTone,
 } from "@/lib/crm/domain";
+import { rethrowIfNextControlFlow } from "@/lib/next-control-flow";
 
 export type PipelineStageOption = {
   key: string;
@@ -61,6 +62,7 @@ export function PipelineStagePath({
     try {
       await action(formData);
     } catch (cause) {
+      rethrowIfNextControlFlow(cause);
       setSaveFailed(true);
       setError(cause instanceof Error ? cause.message : "Could not save stage.");
     }

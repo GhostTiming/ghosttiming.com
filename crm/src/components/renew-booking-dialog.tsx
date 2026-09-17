@@ -11,6 +11,7 @@ import {
   defaultRenewalYear,
   shiftLocalDateTimeByYears,
 } from "@/lib/crm/booking-renewal";
+import { rethrowIfNextControlFlow } from "@/lib/next-control-flow";
 
 export function RenewBookingDialog({
   bookingId,
@@ -73,6 +74,7 @@ export function RenewBookingDialog({
       setOpen(false);
       router.push(`/bookings/${result.bookingId}`);
     } catch (cause) {
+      rethrowIfNextControlFlow(cause);
       setSaveFailed(true);
       setError(
         cause instanceof Error ? cause.message : "Could not renew this booking.",

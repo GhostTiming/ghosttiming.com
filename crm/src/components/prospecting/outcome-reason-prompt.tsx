@@ -7,6 +7,7 @@ import {
   FormSaveFailedContext,
   PendingSubmitButton,
 } from "@/components/pending-submit-button";
+import { rethrowIfNextControlFlow } from "@/lib/next-control-flow";
 
 export function OutcomeReasonPrompt({
   prospectId,
@@ -41,6 +42,7 @@ export function OutcomeReasonPrompt({
       onCancel();
       router.refresh();
     } catch (cause) {
+      rethrowIfNextControlFlow(cause);
       setSaveFailed(true);
       setError(cause instanceof Error ? cause.message : "Could not save.");
     }

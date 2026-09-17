@@ -12,6 +12,7 @@ import {
   unqualifiedReasonLabels,
   unqualifiedReasons,
 } from "@/lib/crm/domain";
+import { rethrowIfNextControlFlow } from "@/lib/next-control-flow";
 
 function bubbleClass(active: boolean) {
   return `rounded-md px-2 py-1 text-xs font-semibold leading-tight ring-1 ${
@@ -66,6 +67,7 @@ export function ProspectListStageBubbles({
     try {
       await updateProspectStageAction(formData);
     } catch (cause) {
+      rethrowIfNextControlFlow(cause);
       setError(cause instanceof Error ? cause.message : "Could not save stage.");
     }
   }

@@ -25,7 +25,7 @@ export function BookingBulkBar({
           label: "Refresh from catalog",
           pendingLabel: "Refreshing…",
           confirm:
-            "Refresh catalog data for {n} selected bookings? This can take a while.",
+            "Refresh catalog data for {n} selected bookings? Past and paid bookings are skipped. This can take a while.",
           action: (ids) => refreshSelectedBookingsFromCatalogAction({ ids }),
         },
       ]}

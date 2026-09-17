@@ -11,7 +11,7 @@ export function RefreshAllGrvButton() {
   async function run() {
     if (
       !window.confirm(
-        "Refresh every booking linked to a catalog listing? This can take a while.",
+        "Refresh upcoming catalog-linked bookings? Past and paid bookings are left alone. This can take a while.",
       )
     ) {
       return;

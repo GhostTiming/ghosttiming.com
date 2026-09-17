@@ -11,6 +11,7 @@ import {
   closedLostReasonLabels,
   closedLostReasons,
 } from "@/lib/crm/domain";
+import { rethrowIfNextControlFlow } from "@/lib/next-control-flow";
 
 export function ClosedLostPrompt({
   prospectId,
@@ -35,6 +36,7 @@ export function ClosedLostPrompt({
       onCancel();
       router.refresh();
     } catch (cause) {
+      rethrowIfNextControlFlow(cause);
       setSaveFailed(true);
       setError(
         cause instanceof Error ? cause.message : "Could not close as lost.",
