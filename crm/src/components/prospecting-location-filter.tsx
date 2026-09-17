@@ -87,7 +87,7 @@ export function ProspectingLocationFilter({
         ref={buttonRef}
         type="button"
         popoverTarget={popoverId}
-        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ring-1 ${
+        className={`inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-3 text-sm font-semibold ring-1 md:w-auto md:rounded-full md:justify-start md:py-1.5 md:font-normal ${
           active
             ? "bg-cyan-700 text-white ring-cyan-700"
             : "bg-white ring-slate-200 hover:bg-slate-50"

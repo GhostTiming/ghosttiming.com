@@ -49,6 +49,7 @@ import { ActivityTimelineItem } from "@/components/activity-timeline-item";
 import { CrewAssignmentPanel } from "@/components/crew-assignment-panel";
 import { RaceScoringEditor } from "@/components/race-scoring-editor";
 import { BookingCalendarCard } from "@/components/google/booking-calendar-card";
+import { TaskCalendarSyncControl } from "@/components/google/task-calendar-sync-control";
 import { ResyncGmailButton } from "@/components/google/resync-gmail-button";
 import { ActivityComposer } from "@/components/outreach/activity-composer";
 import { MeetingWrapUpButton } from "@/components/outreach/meeting-wrap-up-button";
@@ -315,10 +316,14 @@ export default async function BookingDetailPage({
       notes: string | null;
       due_at: string;
       status: "open" | "complete" | "canceled";
+      calendar_sync_status: string | null;
     }>(
       `
-        SELECT t.id::text, t.title, t.notes, t.due_at::text, t.status::text
+        SELECT t.id::text, t.title, t.notes, t.due_at::text, t.status::text,
+               calendar_link.sync_status::text AS calendar_sync_status
         FROM crm.tasks t
+        LEFT JOIN crm.google_task_calendar_links calendar_link
+          ON calendar_link.task_id = t.id
         WHERE t.booking_id = $1::uuid
         ORDER BY CASE WHEN t.status = 'open' THEN 0 ELSE 1 END, t.due_at ASC
       `,
@@ -1144,6 +1149,10 @@ export default async function BookingDetailPage({
                     <p className="flex flex-wrap items-center gap-2 font-semibold">
                       <CalendarClock aria-hidden className="size-4 text-cyan-700" />
                       Task · {formatTaskHeadline(task.title, task.notes)}
+                      <TaskCalendarSyncControl
+                        taskId={task.id}
+                        syncStatus={task.calendar_sync_status}
+                      />
                     </p>
                     <p className="mt-1 text-slate-500">
                       {formatDate(task.due_at, true)} · {task.status}

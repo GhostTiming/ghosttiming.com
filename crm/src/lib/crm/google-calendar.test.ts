@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildGoogleCalendarEventResource,
   buildGoogleCalendarUrl,
+  buildGoogleCalendarTaskEventResource,
   formatCalendarMultilineField,
   formatCalendarRaceClock,
   formatCalendarRaceHeading,
@@ -234,5 +235,36 @@ describe("calendar race copy", () => {
         "Start / Split / Finish Locations and Point Name to Program:\nStart/Finish • Point name: MAIN",
       ].join("\n\n"),
     );
+  });
+});
+
+describe("Google Calendar task events", () => {
+  it("creates a 30-minute event from the due time", () => {
+    const event = buildGoogleCalendarTaskEventResource({
+      taskId: "11111111-1111-4111-8111-111111111111",
+      title: "call_out",
+      notes: "Call Jane about next year's 5K",
+      dueAt: "2026-09-18T14:00:00.000Z",
+      raceName: "Miles to Go 5K",
+    });
+    expect(event).not.toBeNull();
+    expect(event?.summary).toBe("Call Out: Call Jane about next year's 5K");
+    expect(event?.start.dateTime).toBe("2026-09-18T14:00:00.000Z");
+    expect(event?.end.dateTime).toBe("2026-09-18T14:30:00.000Z");
+    expect(event?.description).toContain("Related: Miles to Go 5K");
+    expect(event?.description).toContain("Call Jane about next year's 5K");
+    expect(event?.extendedProperties.private.crmTaskId).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
+  });
+
+  it("returns null for an invalid due time", () => {
+    expect(
+      buildGoogleCalendarTaskEventResource({
+        taskId: "11111111-1111-4111-8111-111111111111",
+        title: "callback",
+        dueAt: "not-a-date",
+      }),
+    ).toBeNull();
   });
 });

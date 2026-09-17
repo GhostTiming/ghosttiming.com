@@ -1,12 +1,8 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { bulkUpdateContactsAction } from "@/app/bulk-actions";
-import {
-  DatasetBulkBar,
-  DatasetBulkRoot,
-  DatasetCheckbox,
-  DatasetHeaderCheckbox,
-} from "@/components/dataset-bulk";
+import { DatasetBulkBar, DatasetBulkRoot, DatasetCheckbox, DatasetHeaderCheckbox } from "@/components/dataset-bulk";
+import { FilterChipNav } from "@/components/filter-chip-nav";
 import { MailtoLink } from "@/components/crm-links";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
@@ -27,7 +23,7 @@ import {
   contactBulkPersonId,
   type ContactListView,
 } from "@/lib/crm/contacts";
-import { CHIP_ROW } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Contacts" };
@@ -150,12 +146,6 @@ export default async function ContactsPage({
       filters={filters}
     />
   );
-  const chipClass = (active: boolean) =>
-    `rounded-full px-3 py-1.5 text-sm ring-1 ${
-      active
-        ? "bg-slate-900 text-white ring-slate-900"
-        : "bg-white ring-slate-200"
-    }`;
   const viewHref = (nextView: ContactListView) =>
     buildSearchHref("/contacts", current, {
       view: nextView,
@@ -207,32 +197,30 @@ export default async function ContactsPage({
           <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
             Relationships
           </p>
-          <h1 className="text-3xl font-bold text-slate-950">Contacts</h1>
+          <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Contacts</h1>
           <p className="mt-1 text-slate-600">{viewCopy[view]}</p>
         </div>
         {view !== "prospects" && access.canAccessOperations ? (
           <Link
             href="/contacts/new"
-            className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white"
+            className="w-full rounded-lg bg-cyan-700 px-4 py-2 text-center text-sm font-semibold text-white sm:w-auto"
           >
             <Plus className="mr-1 inline size-4" /> Add contact
           </Link>
         ) : null}
       </header>
 
-      <nav className={CHIP_ROW} aria-label="Contact list views">
-        {viewTabs
+      <FilterChipNav
+        ariaLabel="Contact list views"
+        value={view}
+        options={viewTabs
           .filter((tab) => tab.show)
-          .map((tab) => (
-            <Link
-              key={tab.key}
-              href={viewHref(tab.key)}
-              className={chipClass(view === tab.key)}
-            >
-              {tab.label}
-            </Link>
-          ))}
-      </nav>
+          .map((tab) => ({
+            value: tab.key,
+            label: tab.label,
+            href: viewHref(tab.key),
+          }))}
+      />
 
       <DatasetBulkRoot>
       <div className="space-y-3">
@@ -243,37 +231,100 @@ export default async function ContactsPage({
           updateAction={bulkUpdateContactsAction}
         />
       ) : null}
-      <nav className={CHIP_ROW} aria-label="Contact status">
-        <Link
-          href={buildSearchHref("/contacts", current, {
-            archived: null,
-            inactive: null,
-          })}
-          className={chipClass(status === "active")}
-        >
-          Active
-        </Link>
-        <Link
-          href={buildSearchHref("/contacts", current, {
-            archived: null,
-            inactive: "1",
-          })}
-          className={chipClass(status === "inactive")}
-        >
-          Inactive
-        </Link>
-        <Link
-          href={buildSearchHref("/contacts", current, {
-            archived: "1",
-            inactive: null,
-          })}
-          className={chipClass(status === "archived")}
-        >
-          Archived
-        </Link>
-      </nav>
+      <FilterChipNav
+        ariaLabel="Contact status"
+        value={status}
+        options={[
+          {
+            value: "active",
+            label: "Active",
+            href: buildSearchHref("/contacts", current, {
+              archived: null,
+              inactive: null,
+            }),
+          },
+          {
+            value: "inactive",
+            label: "Inactive",
+            href: buildSearchHref("/contacts", current, {
+              archived: null,
+              inactive: "1",
+            }),
+          },
+          {
+            value: "archived",
+            label: "Archived",
+            href: buildSearchHref("/contacts", current, {
+              archived: "1",
+              inactive: null,
+            }),
+          },
+        ]}
+      />
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className={MOBILE_CARDS}>
+        {access.canAccessOperations ? (
+          <label className="flex items-center gap-2 px-1 text-sm text-slate-600">
+            <DatasetHeaderCheckbox ids={selectableIds} />
+            Select all
+          </label>
+        ) : null}
+        {directClientContacts?.rows.map((contact) => (
+          <PersonCard
+            key={contact.id}
+            href={`/contacts/${contact.id}`}
+            name={contact.display_name}
+            email={contact.email}
+            phone={contact.phone}
+            organizationNames={contact.organization_names}
+            checkboxId={access.canAccessOperations ? contact.id : null}
+          />
+        ))}
+        {eventClientContacts?.rows.map((contact) => (
+          <PersonCard
+            key={contact.id}
+            href={`/contacts/${contact.id}`}
+            name={contact.display_name}
+            email={contact.email}
+            phone={contact.phone}
+            organizationNames={contact.organization_names}
+            eventNames={contact.event_names}
+            checkboxId={access.canAccessOperations ? contact.id : null}
+          />
+        ))}
+        {crewContacts?.rows.map((contact) => (
+          <PersonCard
+            key={contact.id}
+            href={`/contacts/${contact.id}`}
+            name={contact.display_name}
+            email={contact.email}
+            phone={contact.phone}
+            organizationNames={contact.organization_names}
+            eventNames={contact.event_names}
+            checkboxId={access.canAccessOperations ? contact.id : null}
+          />
+        ))}
+        {prospectContacts?.rows.map((contact) => (
+          <PersonCard
+            key={contact.id}
+            href={contact.href}
+            name={contact.display_name}
+            email={contact.email}
+            phone={contact.phone}
+            raceName={contact.race_name}
+            checkboxId={
+              access.canAccessOperations ? contactBulkPersonId(contact.id) : null
+            }
+          />
+        ))}
+        {!rowCount ? (
+          <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
+            No contacts match this view and its filters.
+          </p>
+        ) : null}
+      </div>
+
+      <section className={DESKTOP_TABLE}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -459,6 +510,65 @@ export default async function ContactsPage({
       </div>
       </DatasetBulkRoot>
     </div>
+  );
+}
+
+function PersonCard({
+  href,
+  name,
+  email,
+  phone,
+  organizationNames,
+  eventNames,
+  raceName,
+  checkboxId,
+}: {
+  href?: string | null;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  organizationNames?: string[];
+  eventNames?: string[];
+  raceName?: string | null;
+  checkboxId?: string | null;
+}) {
+  const title = href ? (
+    <ListRowLink href={href} className="font-semibold text-cyan-700 hover:text-cyan-900">
+      {name}
+    </ListRowLink>
+  ) : (
+    <p className="font-semibold text-slate-900">{name}</p>
+  );
+  return (
+    <article className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        {checkboxId ? <DatasetCheckbox id={checkboxId} /> : null}
+        <div className="min-w-0 flex-1 space-y-1">
+          {title}
+          <p className="text-sm text-slate-600">
+            {email ? (
+              <MailtoLink email={email} className="text-cyan-700 underline hover:text-cyan-900" />
+            ) : (
+              "No email"
+            )}
+            {phone ? ` · ${phone}` : ""}
+          </p>
+          {organizationNames ? (
+            <div className="text-xs text-slate-500">
+              <OrganizationChips names={organizationNames} />
+            </div>
+          ) : null}
+          {eventNames ? (
+            <p className="text-xs text-slate-500">
+              {formatContactEventNames(eventNames) ?? "No events"}
+            </p>
+          ) : null}
+          {raceName !== undefined ? (
+            <p className="text-xs text-slate-500">{raceName ?? "—"}</p>
+          ) : null}
+        </div>
+      </div>
+    </article>
   );
 }
 

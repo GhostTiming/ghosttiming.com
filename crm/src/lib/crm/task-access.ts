@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
-import { requireBookingOperator } from "@/lib/auth/server";
+import { z } from "zod";
+import { getPool } from "@/db";
+import { requireBookingOperator, requireTasksAccess } from "@/lib/auth/server";
 import type { AccessContext } from "@/lib/auth/access";
 
 export async function requireTaskRecordAccess(
@@ -42,4 +44,28 @@ export async function requireTaskMutationAccess(
     bookingId: task.booking_id,
     organizationId: task.organization_id,
   });
+}
+
+export async function requireTaskOperator(taskId: string) {
+  const access = await requireTasksAccess();
+  const parsedTaskId = z.string().uuid().parse(taskId);
+  const result = await getPool().query<{
+    id: string;
+    assigned_user_id: string | null;
+    prospect_id: string | null;
+    booking_id: string | null;
+    organization_id: string | null;
+  }>(
+    `
+      SELECT id::text, assigned_user_id::text, prospect_id::text,
+             booking_id::text, organization_id::text
+      FROM crm.tasks
+      WHERE id = $1::uuid
+    `,
+    [parsedTaskId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("Task not found.");
+  await requireTaskMutationAccess(access, row);
+  return { access, user: access.user, task: row };
 }

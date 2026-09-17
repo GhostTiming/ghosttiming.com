@@ -1,8 +1,10 @@
 import { getPool } from "@/db";
 import {
   buildGoogleCalendarEventResource,
+  buildGoogleCalendarTaskEventResource,
   type GoogleCalendarBooking,
   type GoogleCalendarEventResource,
+  type GoogleCalendarTaskEventResource,
 } from "@/lib/crm/google-calendar";
 import { parseRaceScoring } from "@/lib/crm/race-scoring";
 import type { EmailMatchTargets } from "@/lib/google/email-match";
@@ -330,3 +332,69 @@ export async function loadCalendarLink(bookingId: string) {
   );
   return result.rows[0] ?? null;
 }
+
+export async function loadTaskCalendarPayload(
+  taskId: string,
+  fallbackCalendarId: string | null,
+) {
+  const result = await getPool().query<{
+    task_id: string;
+    title: string;
+    notes: string | null;
+    due_at: string;
+    race_name: string | null;
+    calendar_id: string | null;
+    google_event_id: string | null;
+    html_link: string | null;
+    sync_status: string | null;
+    last_error: string | null;
+  }>(
+    `
+      SELECT
+        t.id::text AS task_id,
+        t.title,
+        t.notes,
+        t.due_at::text,
+        COALESCE(rl.name, prospect_event.name, booking_event.name, organization.name)
+          AS race_name,
+        COALESCE(task_link.google_calendar_id, $2) AS calendar_id,
+        task_link.google_event_id,
+        task_link.html_link,
+        task_link.sync_status::text,
+        task_link.last_error
+      FROM crm.tasks t
+      LEFT JOIN crm.prospects p ON p.id = t.prospect_id
+      LEFT JOIN catalog.race_listings rl ON rl.id = p.race_listing_id
+      LEFT JOIN crm.events prospect_event ON prospect_event.id = p.event_id
+      LEFT JOIN crm.bookings booking ON booking.id = t.booking_id
+      LEFT JOIN crm.event_occurrences occurrence
+        ON occurrence.id = booking.occurrence_id
+      LEFT JOIN crm.events booking_event ON booking_event.id = occurrence.event_id
+      LEFT JOIN crm.organizations organization ON organization.id = t.organization_id
+      LEFT JOIN crm.google_task_calendar_links task_link ON task_link.task_id = t.id
+      WHERE t.id = $1::uuid
+    `,
+    [taskId, fallbackCalendarId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  const event: GoogleCalendarTaskEventResource | null =
+    buildGoogleCalendarTaskEventResource({
+      taskId: row.task_id,
+      title: row.title,
+      notes: row.notes,
+      dueAt: row.due_at,
+      raceName: row.race_name,
+    });
+  return {
+    taskId: row.task_id,
+    calendarId: row.calendar_id,
+    eventId: row.google_event_id,
+    htmlLink: row.html_link,
+    status: row.sync_status ?? "not_linked",
+    lastError: row.last_error,
+    event,
+  };
+}
+
+export { markTaskCalendarNeedsSync } from "./task-calendar-sync";

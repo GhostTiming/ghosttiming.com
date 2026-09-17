@@ -25,6 +25,7 @@ import { ExternalHref } from "@/components/crm-links";
 import { EventLogo } from "@/components/event-logo";
 import { EventTypeSelect } from "@/components/event-type-select";
 import { LeadEmailCard } from "@/components/google/lead-email-card";
+import { TaskCalendarSyncControl } from "@/components/google/task-calendar-sync-control";
 import { ActivityComposer } from "@/components/outreach/activity-composer";
 import { MeetingWrapUpButton } from "@/components/outreach/meeting-wrap-up-button";
 import { ResyncGmailButton } from "@/components/google/resync-gmail-button";
@@ -496,9 +497,13 @@ export default async function ProspectDetailPage({
                   <div key={`task-${task.id}`} data-feed-kind="task">
                     <details className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
                       <summary className="cursor-pointer">
-                        <span className="inline-flex items-center gap-2 font-semibold">
+                        <span className="inline-flex flex-wrap items-center gap-2 font-semibold">
                           <CalendarClock aria-hidden className="size-4 text-cyan-700" />
                           Task · {formatTaskHeadline(task.title, task.notes)}
+                          <TaskCalendarSyncControl
+                            taskId={task.id}
+                            syncStatus={task.calendar_sync_status ?? null}
+                          />
                         </span>
                         <span className="ml-2 text-slate-500">{formatDateTime(task.due_at)} · {task.status}</span>
                       </summary>

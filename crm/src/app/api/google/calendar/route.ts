@@ -8,19 +8,7 @@ import {
   loadCalendarPayload,
   loadPendingCalendarPayloads,
 } from "@/lib/crm/google-queries";
-
-function rethrowNextControlFlow(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "digest" in error &&
-    typeof error.digest === "string" &&
-    (error.digest.startsWith("NEXT_REDIRECT") ||
-      error.digest.startsWith("NEXT_NOT_FOUND"))
-  ) {
-    throw error;
-  }
-}
+import { rethrowNextControlFlow } from "@/lib/next-control-flow";
 
 function jsonError(error: unknown, fallback: string, status = 500) {
   rethrowNextControlFlow(error);

@@ -8,6 +8,7 @@ import { listRowClassName } from "@/components/list-row-class";
 import { TableColumnHeader } from "@/components/table-column-header";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { getEventDetail, type EventOccurrenceRow } from "@/lib/crm/event-queries";
+import { MOBILE_CARDS } from "@/lib/crm/layout";
 import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
 
@@ -203,6 +204,33 @@ export default async function EventDetailPage({
             Use the funnel on a column heading to filter.
           </p>
         </div>
+        <div className={`${MOBILE_CARDS} p-3`}>
+          {occurrences.map((row) => {
+            const href = recordHref(row, access.canAccessProspecting);
+            return (
+              <article
+                key={row.id}
+                className="relative rounded-xl border border-slate-200 bg-slate-50 p-3"
+              >
+                {href ? (
+                  <ListRowLink href={href} className="font-semibold">
+                    {row.occurrence_year ?? "—"}
+                  </ListRowLink>
+                ) : (
+                  <p className="font-semibold">{row.occurrence_year ?? "—"}</p>
+                )}
+                <p className="mt-1 text-sm text-slate-600">{formatDate(row.race_date)}</p>
+                <p className="text-sm text-slate-500">{row.location || "—"}</p>
+                <p className="text-sm text-slate-500">{row.client_name ?? "—"}</p>
+                <p className="mt-1 text-sm font-medium">{statusOf(row)}</p>
+              </article>
+            );
+          })}
+          {occurrences.length === 0 ? (
+            <p className="p-6 text-center text-slate-500">No years match these filters.</p>
+          ) : null}
+        </div>
+        <div className="hidden md:block">
         <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600">
@@ -286,8 +314,9 @@ export default async function EventDetailPage({
           </tbody>
         </table>
         </div>
+        </div>
         {occurrences.length === 0 ? (
-          <p className="p-10 text-center text-slate-500">No years match these filters.</p>
+          <p className="hidden p-10 text-center text-slate-500 md:block">No years match these filters.</p>
         ) : null}
       </section>
     </div>

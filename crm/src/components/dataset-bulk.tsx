@@ -136,13 +136,13 @@ function FieldControl({
           value={current}
           placeholder={field.placeholder ?? field.label}
           onChange={(event) => onChange(field.key, event.target.value, nestedKeys)}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm sm:w-auto"
         />
       ) : (
         <select
           value={current}
           onChange={(event) => onChange(field.key, event.target.value, nestedKeys)}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm sm:w-auto"
         >
           <option value="">
             {field.options?.some((option) => option.value === "")
@@ -295,7 +295,7 @@ export function DatasetBulkBar({
               setFieldKey(event.target.value);
               setValues({});
             }}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2"
+              className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 sm:w-auto"
           >
             {fields.map((item) => (
               <option key={item.key} value={item.key}>

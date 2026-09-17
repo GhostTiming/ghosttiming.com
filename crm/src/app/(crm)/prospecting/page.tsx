@@ -8,6 +8,7 @@ import {
 import { ProspectBulkBar } from "@/components/prospect-bulk-bar";
 import { MailtoLink } from "@/components/crm-links";
 import { EventLogo } from "@/components/event-logo";
+import { FilterChipNav } from "@/components/filter-chip-nav";
 import { ListRowActions, ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
 import { ContactExtractionButton } from "@/components/prospecting/contact-extraction-button";
@@ -18,7 +19,7 @@ import { getPool } from "@/db";
 import { requireProspectingUser } from "@/lib/auth/server";
 import { formatNextStep } from "@/lib/crm/domain";
 import { filePastProspectsWithPool, listProspects } from "@/lib/crm/queries";
-import { CHIP_ROW, MOBILE_CARDS } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Prospecting" };
@@ -174,37 +175,32 @@ export default async function ProspectingPage({
             dates, medals/awards/swag, city, state, or ZIP radius.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <Link
             href="/prospecting/blacklist"
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50"
           >
             <Ban className="mr-1 inline size-4" /> Email blacklist
           </Link>
           <Link href="/prospecting/new"
-            className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white">
+            className="rounded-lg bg-cyan-700 px-4 py-2 text-center text-sm font-semibold text-white">
             <Plus className="mr-1 inline size-4" /> Add lead
           </Link>
           <ContactExtractionButton />
         </div>
       </div>
 
-      <nav className={CHIP_ROW} aria-label="Prospect stage filters">
-        {viewOptions.map(({ key, label }) => (
-          <Link
-            key={key}
-            href={buildSearchHref("/prospecting", current, { view: key, page: null })}
-            className={`rounded-full px-3 py-1.5 text-sm ring-1 ${
-              current.view === key
-                ? "bg-slate-900 text-white ring-slate-900"
-                : "bg-white ring-slate-200"
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
+      <FilterChipNav
+        ariaLabel="Prospect stage filters"
+        value={current.view}
+        options={viewOptions.map(({ key, label }) => ({
+          value: key,
+          label,
+          href: buildSearchHref("/prospecting", current, { view: key, page: null }),
+        }))}
+      >
         <ProspectingLocationFilter params={current} />
-      </nav>
+      </FilterChipNav>
 
       <DatasetBulkRoot>
       <div className="space-y-3">
@@ -289,7 +285,8 @@ export default async function ProspectingPage({
             );
           })}
         </div>
-        <div className="hidden overflow-x-auto md:block">
+        <div className={DESKTOP_TABLE}>
+        <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -448,6 +445,7 @@ export default async function ProspectingPage({
               })}
             </tbody>
           </table>
+        </div>
         </div>
         {result.rows.length === 0 ? (
           <p className="p-10 text-center text-slate-500">

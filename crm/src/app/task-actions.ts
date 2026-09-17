@@ -7,6 +7,7 @@ import { getPool } from "@/db";
 import { requireTasksAccess } from "@/lib/auth/server";
 import { appendAuditActivity, upsertTaskTimelineActivity } from "@/lib/crm/audit";
 import { timelineEventTypes } from "@/lib/crm/domain";
+import { markTaskCalendarNeedsSync } from "@/lib/crm/task-calendar-sync";
 import {
   requireTaskMutationAccess,
   requireTaskRecordAccess,
@@ -126,6 +127,7 @@ export async function saveTaskAction(formData: FormData) {
           input.eventType, notes, input.dueAt, input.status],
       );
       if (!changed.rowCount) throw new Error("Task not found.");
+      await markTaskCalendarNeedsSync(client, taskId);
     } else {
       const created = await client.query<{ id: string }>(
         `INSERT INTO crm.tasks

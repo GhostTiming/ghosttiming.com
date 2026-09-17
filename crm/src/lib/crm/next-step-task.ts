@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { upsertTaskTimelineActivity } from "./audit";
 import { parseTaskEventType } from "./domain";
+import { markTaskCalendarNeedsSync } from "./task-calendar-sync";
 
 export type NextStepTaskPlan =
   | { action: "upsert"; dueOn: string; title: string }
@@ -110,6 +111,7 @@ export async function syncProspectNextStepTask(
        WHERE id = $1::uuid AND status = 'open'`,
       [taskId, plan.title, plan.dueOn],
     );
+    await markTaskCalendarNeedsSync(client, taskId);
   } else {
     const created = await client.query<{ id: string }>(
       `INSERT INTO crm.tasks

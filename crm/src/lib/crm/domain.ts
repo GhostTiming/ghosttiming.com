@@ -393,6 +393,17 @@ export function formatTaskHeadline(
   return title;
 }
 
+export function taskRecordHref(task: {
+  booking_id?: string | null;
+  prospect_id?: string | null;
+  organization_id?: string | null;
+}) {
+  if (task.booking_id) return `/bookings/${task.booking_id}`;
+  if (task.prospect_id) return `/prospecting/${task.prospect_id}`;
+  if (task.organization_id) return `/organizations/${task.organization_id}`;
+  return "/tasks";
+}
+
 export function formatNextStep(nextStep: string | null | undefined): string | null {
   if (!nextStep) return null;
   return isTimelineEventType(nextStep) ? eventTypeLabel(nextStep) : nextStep;

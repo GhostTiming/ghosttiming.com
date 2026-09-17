@@ -30,12 +30,12 @@ export function RefreshAllGrvButton() {
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex w-full flex-col items-stretch gap-1 sm:w-auto sm:items-end">
       <button
         type="button"
         disabled={pending}
         onClick={() => void run()}
-        className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60"
+        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-60 sm:w-auto"
       >
         {pending ? "Refreshing…" : "Refresh all from online listings"}
       </button>

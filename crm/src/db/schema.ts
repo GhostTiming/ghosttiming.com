@@ -1051,6 +1051,36 @@ export const googleCalendarLinks = crm.table(
   ],
 );
 
+export const googleTaskCalendarLinks = crm.table(
+  "google_task_calendar_links",
+  {
+    taskId: uuid("task_id")
+      .primaryKey()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    googleSub: text("google_sub").notNull(),
+    googleEmail: text("google_email").notNull(),
+    googleCalendarId: text("google_calendar_id").notNull(),
+    googleEventId: text("google_event_id").notNull(),
+    htmlLink: text("html_link"),
+    syncStatus: googleCalendarSyncStatus("sync_status").notNull().default("synced"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    linkedAt: timestamp("linked_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("google_task_calendar_links_event_uidx").on(
+      table.googleCalendarId,
+      table.googleEventId,
+    ),
+    index("google_task_calendar_links_status_idx").on(table.syncStatus),
+  ],
+);
+
 export type CrmUser = typeof users.$inferSelect;
 export type UserOrganizationMembership =
   typeof userOrganizationMemberships.$inferSelect;

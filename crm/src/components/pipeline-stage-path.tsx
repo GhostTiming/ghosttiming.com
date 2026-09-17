@@ -102,15 +102,17 @@ export function PipelineStagePath({
         </p>
       ) : null}
       <div
-        className="mt-4 flex overflow-x-auto rounded-xl border border-slate-200"
+        className="mt-4 grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 sm:flex sm:overflow-x-auto"
         role="radiogroup"
         aria-label={ariaLabel}
       >
         {stages.map((stage, index) => (
           <label
             key={stage.key}
-            className={`relative flex min-w-[4.75rem] flex-1 cursor-pointer hover:bg-slate-50 ${
-              index > 0 ? "border-l border-slate-200" : ""
+            className={`relative flex min-h-12 min-w-0 cursor-pointer hover:bg-slate-50 sm:min-w-[4.75rem] sm:flex-1 ${
+              index % 2 === 1 ? "border-l border-slate-200" : ""
+            } ${index >= 2 ? "border-t border-slate-200" : ""} ${
+              index > 0 ? "sm:border-l sm:border-t-0" : "sm:border-l-0 sm:border-t-0"
             }`}
           >
             <input

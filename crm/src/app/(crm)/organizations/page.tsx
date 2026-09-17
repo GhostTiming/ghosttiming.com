@@ -2,12 +2,8 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import { bulkUpdateOrganizationsAction } from "@/app/bulk-actions";
 import { createOrganizationAction } from "@/app/organization-actions";
-import {
-  DatasetBulkBar,
-  DatasetBulkRoot,
-  DatasetCheckbox,
-  DatasetHeaderCheckbox,
-} from "@/components/dataset-bulk";
+import { DatasetBulkBar, DatasetBulkRoot, DatasetCheckbox, DatasetHeaderCheckbox } from "@/components/dataset-bulk";
+import { FilterChipNav } from "@/components/filter-chip-nav";
 import { MailtoLink } from "@/components/crm-links";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
@@ -16,7 +12,7 @@ import { getPool } from "@/db";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { organizationBulkFields } from "@/lib/crm/bulk-fields";
-import { CHIP_ROW } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 const roleFilters = [
@@ -157,12 +153,7 @@ export default async function OrganizationsPage({
       align={align}
     />
   );
-  const chipClass = (active: boolean) =>
-    `rounded-full px-3 py-1.5 text-sm ring-1 ${
-      active
-        ? "bg-slate-900 text-white ring-slate-900"
-        : "bg-white ring-slate-200"
-    }`;
+  const filterValue = showArchived ? "archived" : current.role || "all";
 
   return (
     <div className="space-y-6">
@@ -171,51 +162,49 @@ export default async function OrganizationsPage({
           <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
             Relationships
           </p>
-          <h1 className="text-3xl font-bold text-slate-950">Organizations</h1>
+          <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Organizations</h1>
           <p className="mt-1 text-slate-600">
             Clients, event owners, timing companies, and their people.
           </p>
         </div>
         {access.isSuperAdmin ? (
         <Link href="/organizations/new"
-          className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white">
+          className="w-full rounded-lg bg-cyan-700 px-4 py-2 text-center text-sm font-semibold text-white sm:w-auto">
           <Plus className="mr-1 inline size-4" /> Add organization
         </Link>
         ) : null}
       </header>
 
-      <nav className={CHIP_ROW}>
-        <Link
-          href={buildSearchHref("/organizations", current, {
-            role: null,
-            archived: null,
-          })}
-          className={chipClass(!current.role && !showArchived)}
-        >
-          All
-        </Link>
-        {roleFilters.map(([key, label]) => (
-          <Link
-            key={key}
-            href={buildSearchHref("/organizations", current, {
+      <FilterChipNav
+        ariaLabel="Organization filters"
+        value={filterValue}
+        options={[
+          {
+            value: "all",
+            label: "All",
+            href: buildSearchHref("/organizations", current, {
+              role: null,
+              archived: null,
+            }),
+          },
+          ...roleFilters.map(([key, label]) => ({
+            value: key,
+            label,
+            href: buildSearchHref("/organizations", current, {
               role: key,
               archived: null,
-            })}
-            className={chipClass(current.role === key && !showArchived)}
-          >
-            {label}
-          </Link>
-        ))}
-        <Link
-          href={buildSearchHref("/organizations", current, {
-            archived: "1",
-            role: null,
-          })}
-          className={chipClass(showArchived)}
-        >
-          Archived
-        </Link>
-      </nav>
+            }),
+          })),
+          {
+            value: "archived",
+            label: "Archived",
+            href: buildSearchHref("/organizations", current, {
+              archived: "1",
+              role: null,
+            }),
+          },
+        ]}
+      />
 
       <div className={`grid gap-6 ${access.isSuperAdmin ? "lg:grid-cols-[1fr_23rem]" : ""}`}>
         <DatasetBulkRoot>
@@ -227,7 +216,55 @@ export default async function OrganizationsPage({
             updateAction={bulkUpdateOrganizationsAction}
           />
         ) : null}
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className={MOBILE_CARDS}>
+          {access.isSuperAdmin ? (
+            <label className="flex items-center gap-2 px-1 text-sm text-slate-600">
+              <DatasetHeaderCheckbox ids={organizations.rows.map((organization) => organization.id)} />
+              Select all
+            </label>
+          ) : null}
+          {organizations.rows.map((organization) => (
+            <article
+              key={organization.id}
+              className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+            >
+              <div className="flex items-start gap-3">
+                {access.isSuperAdmin ? <DatasetCheckbox id={organization.id} /> : null}
+                <div className="min-w-0 flex-1 space-y-1">
+                  <ListRowLink
+                    href={`/organizations/${organization.id}`}
+                    className="font-semibold text-cyan-700 hover:text-cyan-900"
+                  >
+                    {organization.name}
+                  </ListRowLink>
+                  <p className="text-xs text-slate-500">
+                    {organization.roles.map((item) => item.replaceAll("_", " ")).join(" · ") || "No roles"}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    {organization.email ? (
+                      <MailtoLink
+                        email={organization.email}
+                        className="text-cyan-700 underline hover:text-cyan-900"
+                      />
+                    ) : (
+                      "No email"
+                    )}
+                    {organization.phone ? ` · ${organization.phone}` : ""}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {organization.contact_count} contacts · {organization.booking_count} bookings
+                  </p>
+                </div>
+              </div>
+            </article>
+          ))}
+          {!organizations.rows.length ? (
+            <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
+              No organizations match this view and its filters.
+            </p>
+          ) : null}
+        </div>
+        <section className={DESKTOP_TABLE}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">

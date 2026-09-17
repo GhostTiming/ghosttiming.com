@@ -526,6 +526,7 @@ export type TaskRow = {
   assignee_name: string;
   assigned_user_id?: string;
   due_local?: string;
+  calendar_sync_status?: string | null;
 };
 
 export type StageRow = { id: string; key: string; name: string };
@@ -651,9 +652,12 @@ export async function getProspectDetail(prospectId: string) {
         SELECT t.id::text, t.title, t.notes, t.due_at::text, t.status::text,
                u.name AS assignee_name, t.assigned_user_id::text,
                to_char(t.due_at AT TIME ZONE 'America/New_York',
-                 'YYYY-MM-DD"T"HH24:MI') AS due_local
+                 'YYYY-MM-DD"T"HH24:MI') AS due_local,
+               calendar_link.sync_status::text AS calendar_sync_status
         FROM crm.tasks t
         JOIN crm.users u ON u.id = t.assigned_user_id
+        LEFT JOIN crm.google_task_calendar_links calendar_link
+          ON calendar_link.task_id = t.id
         WHERE t.prospect_id = $1::uuid
         ORDER BY CASE WHEN t.status = 'open' THEN 0 ELSE 1 END, t.due_at ASC
       `,
@@ -766,6 +770,8 @@ export type TaskListRow = TaskRow & {
   race_name: string;
   prospect_id: string | null;
   booking_id: string | null;
+  organization_id: string | null;
+  calendar_sync_status: string | null;
 };
 
 export type CatalogOverviewListing = {
@@ -928,7 +934,9 @@ export async function listTasks(options: {
         COALESCE(rl.name, prospect_event.name, booking_event.name, organization.name)
           AS race_name,
         p.id::text AS prospect_id,
-        booking.id::text AS booking_id
+        booking.id::text AS booking_id,
+        t.organization_id::text AS organization_id,
+        calendar_link.sync_status::text AS calendar_sync_status
       FROM crm.tasks t
       JOIN crm.users u ON u.id = t.assigned_user_id
       LEFT JOIN crm.prospects p ON p.id = t.prospect_id
@@ -939,6 +947,8 @@ export async function listTasks(options: {
         ON occurrence.id = booking.occurrence_id
       LEFT JOIN crm.events booking_event ON booking_event.id = occurrence.event_id
       LEFT JOIN crm.organizations organization ON organization.id = t.organization_id
+      LEFT JOIN crm.google_task_calendar_links calendar_link
+        ON calendar_link.task_id = t.id
       WHERE (
         $2::boolean
         OR t.assigned_user_id = $1::uuid

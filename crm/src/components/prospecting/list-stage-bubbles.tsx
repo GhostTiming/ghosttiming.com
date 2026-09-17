@@ -78,7 +78,7 @@ export function ProspectListStageBubbles({
         action={submit}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
-        className="relative z-10 flex flex-wrap justify-end gap-1"
+        className="relative z-10 flex flex-wrap justify-start gap-1 sm:justify-end"
         aria-label="Mark prospect outcome"
       >
         <input type="hidden" name="prospectId" value={prospectId} />

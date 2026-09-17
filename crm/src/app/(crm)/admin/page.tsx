@@ -12,6 +12,7 @@ import { getPool } from "@/db";
 import { canImpersonateUser } from "@/lib/auth/access";
 import { requireAdminConsole } from "@/lib/auth/server";
 import type { CrmRole } from "@/lib/auth/roles";
+import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
 
 export const metadata = { title: "Admin" };
 
@@ -96,8 +97,8 @@ export default async function AdminPage() {
         <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
           Access control
         </p>
-        <h1 className="flex items-center gap-2 text-3xl font-bold text-slate-950">
-          <Shield aria-hidden className="size-8" />
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950 sm:text-3xl">
+          <Shield aria-hidden className="size-7 sm:size-8" />
           Admin
         </h1>
         <p className="mt-1 text-slate-600">
@@ -159,7 +160,25 @@ export default async function AdminPage() {
         </form>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className={MOBILE_CARDS}>
+        {users.map((crmUser) => (
+          <AdminUserCard
+            key={crmUser.id}
+            crmUser={crmUser}
+            organizations={organizations.rows}
+            accessUserId={access.user.id}
+            viewingAsId={access.viewingAs?.id}
+            actor={access.user}
+          />
+        ))}
+        {!users.length ? (
+          <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
+            No CRM users yet.
+          </p>
+        ) : null}
+      </div>
+
+      <section className={DESKTOP_TABLE}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -331,5 +350,134 @@ export default async function AdminPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function AdminUserCard({
+  crmUser,
+  organizations,
+  accessUserId,
+  viewingAsId,
+  actor,
+}: {
+  crmUser: AdminUserRow;
+  organizations: { id: string; name: string }[];
+  accessUserId: string;
+  viewingAsId?: string;
+  actor: { id: string; role: CrmRole };
+}) {
+  const assignedIds = new Set(
+    crmUser.memberships.map((item) => item.organizationId),
+  );
+  const availableOrgs = organizations.filter((org) => !assignedIds.has(org.id));
+  return (
+    <article className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div>
+        <p className="font-semibold text-slate-950">{crmUser.name}</p>
+        <p className="text-xs text-slate-500">{crmUser.email}</p>
+        <p className="mt-1 text-sm text-slate-600">{roleLabel(crmUser.role)}</p>
+        {crmUser.pending_sign_in ? (
+          <p className="mt-1 text-xs font-medium text-amber-700">Pending Google sign-in</p>
+        ) : null}
+      </div>
+      <form action={setUserActiveAction} className="flex flex-wrap items-center gap-2">
+        <input type="hidden" name="userId" value={crmUser.id} />
+        <input type="hidden" name="isActive" value={crmUser.is_active ? "false" : "true"} />
+        <span className="text-sm">{crmUser.is_active ? "Active" : "Inactive"}</span>
+        {crmUser.id === accessUserId ? (
+          <span className="text-xs text-slate-400">You</span>
+        ) : (
+          <PendingSubmitButton className="text-sm font-semibold text-cyan-700" pendingLabel="Saving…">
+            {crmUser.is_active ? "Deactivate" : "Activate"}
+          </PendingSubmitButton>
+        )}
+      </form>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Organizations</p>
+        {crmUser.memberships.length ? (
+          <ul className="mt-2 space-y-2">
+            {crmUser.memberships.map((membership) => (
+              <li key={membership.organizationId} className="rounded-lg bg-slate-50 p-2">
+                <p className="text-sm font-medium">{membership.organizationName}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <form action={upsertOrgMembershipAction} className="flex min-w-0 flex-1 items-center gap-2">
+                    <input type="hidden" name="userId" value={crmUser.id} />
+                    <input type="hidden" name="organizationId" value={membership.organizationId} />
+                    <select
+                      name="orgRole"
+                      defaultValue={membership.orgRole}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                    >
+                      <option value="org_admin">Org admin</option>
+                      <option value="org_user">Org user</option>
+                    </select>
+                    <PendingSubmitButton className="text-xs font-semibold text-cyan-700">
+                      Save
+                    </PendingSubmitButton>
+                  </form>
+                  <form action={removeOrgMembershipAction}>
+                    <input type="hidden" name="userId" value={crmUser.id} />
+                    <input type="hidden" name="organizationId" value={membership.organizationId} />
+                    <PendingSubmitButton className="text-xs font-semibold text-slate-500">
+                      Remove
+                    </PendingSubmitButton>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-sm text-slate-400">None</p>
+        )}
+      </div>
+      {availableOrgs.length ? (
+        <form action={upsertOrgMembershipAction} className="grid gap-2">
+          <input type="hidden" name="userId" value={crmUser.id} />
+          <select required name="organizationId" className={field}>
+            <option value="">Assign organization</option>
+            {availableOrgs.map((org) => (
+              <option key={org.id} value={org.id}>{org.name}</option>
+            ))}
+          </select>
+          <select name="orgRole" defaultValue="org_user" className={field}>
+            <option value="org_admin">Org admin</option>
+            <option value="org_user">Org user</option>
+          </select>
+          <PendingSubmitButton className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
+            Assign
+          </PendingSubmitButton>
+        </form>
+      ) : (
+        <p className="text-xs text-slate-400">All organizations assigned</p>
+      )}
+      {viewingAsId === crmUser.id ? (
+        <form action={stopViewAsUserAction}>
+          <PendingSubmitButton className="text-sm font-semibold text-amber-800" pendingLabel="Exiting…">
+            Exit view
+          </PendingSubmitButton>
+        </form>
+      ) : canImpersonateUser(actor, {
+          id: crmUser.id,
+          role: crmUser.role as CrmRole,
+          isActive: crmUser.is_active,
+        }) ? (
+        <form action={startViewAsUserAction}>
+          <input type="hidden" name="userId" value={crmUser.id} />
+          <PendingSubmitButton
+            className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-700"
+            pendingLabel="Starting…"
+          >
+            <Eye aria-hidden className="size-3.5" />
+            View as
+          </PendingSubmitButton>
+        </form>
+      ) : crmUser.id === accessUserId ? (
+        <span className="text-xs text-slate-400">You</span>
+      ) : crmUser.role === "admin" ? (
+        <span className="text-xs text-slate-400">Super admin</span>
+      ) : (
+        <span className="text-xs text-slate-400">Unavailable</span>
+      )}
+    </article>
   );
 }

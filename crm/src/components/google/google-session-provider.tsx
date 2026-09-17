@@ -85,6 +85,9 @@ type GoogleSessionValue = {
   createBookingEvent: (bookingId: string) => Promise<void>;
   updateBookingEvent: (bookingId: string) => Promise<void>;
   unlinkBookingEvent: (bookingId: string) => Promise<void>;
+  createTaskEvent: (taskId: string) => Promise<void>;
+  updateTaskEvent: (taskId: string) => Promise<void>;
+  unlinkTaskEvent: (taskId: string) => Promise<void>;
   createOutreachCalendarEvent: (event: GoogleCalendarEventWrite) => Promise<{
     id: string;
     calendarId: string;
@@ -1026,6 +1029,135 @@ export function GoogleSessionProvider({
     [calendarConnection, persistCalendarResult],
   );
 
+  const persistTaskCalendarResult = useCallback(
+    async (input: {
+      taskId: string;
+      googleCalendarId: string;
+      googleEventId: string;
+      htmlLink?: string | null;
+      syncStatus: "synced" | "needs_sync" | "error" | "deleted";
+      lastError?: string | null;
+      unlink?: boolean;
+    }) => {
+      if (!calendarConnection) throw new Error("Connect Google first.");
+      await readJson(
+        await fetch("/api/google/calendar/tasks", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...input,
+            googleSub: calendarConnection.google_sub,
+            googleEmail: calendarConnection.google_email,
+          }),
+        }),
+      );
+    },
+    [calendarConnection],
+  );
+
+  const createTaskEvent = useCallback(
+    async (taskId: string) => {
+      if (!calendarConnection) throw new Error("Connect Google first.");
+      await withGoogle(async (token) => {
+        const payload = await readJson<{
+          calendarId: string | null;
+          eventId: string | null;
+          event: Parameters<typeof createGoogleCalendarEvent>[2] | null;
+        }>(await fetch(`/api/google/calendar/tasks?taskId=${encodeURIComponent(taskId)}`));
+        if (payload.eventId) return;
+        if (!payload.event) {
+          throw new Error("This task needs a due date before creating a Calendar event.");
+        }
+        const calendarId = payload.calendarId || calendarConnection.calendar_id || "primary";
+        const created = await createGoogleCalendarEvent(token, calendarId, payload.event);
+        if (!created.id) throw new Error("Google Calendar did not return an event ID.");
+        await persistTaskCalendarResult({
+          taskId,
+          googleCalendarId: calendarId,
+          googleEventId: created.id,
+          htmlLink: created.htmlLink,
+          syncStatus: "synced",
+          lastError: null,
+        });
+      }, calendarConnection.google_sub);
+    },
+    [calendarConnection, persistTaskCalendarResult, withGoogle],
+  );
+
+  const updateTaskEvent = useCallback(
+    async (taskId: string) => {
+      if (!calendarConnection) throw new Error("Connect Google first.");
+      await withGoogle(async (token) => {
+        const payload = await readJson<{
+          calendarId: string | null;
+          eventId: string | null;
+          event: Parameters<typeof updateGoogleCalendarEvent>[3] | null;
+        }>(await fetch(`/api/google/calendar/tasks?taskId=${encodeURIComponent(taskId)}`));
+        if (!payload.eventId || !payload.calendarId) {
+          throw new Error("This task is not linked to a Google Calendar event.");
+        }
+        if (!payload.event) {
+          throw new Error("This task is missing a due date needed for Google Calendar.");
+        }
+        try {
+          const updated = await updateGoogleCalendarEvent(
+            token,
+            payload.calendarId,
+            payload.eventId,
+            payload.event,
+          );
+          await persistTaskCalendarResult({
+            taskId,
+            googleCalendarId: payload.calendarId,
+            googleEventId: updated.id ?? payload.eventId,
+            htmlLink: updated.htmlLink,
+            syncStatus: "synced",
+            lastError: null,
+          });
+        } catch (caught) {
+          if (caught instanceof GoogleAuthError && caught.status === 404) {
+            await persistTaskCalendarResult({
+              taskId,
+              googleCalendarId: payload.calendarId,
+              googleEventId: payload.eventId,
+              syncStatus: "deleted",
+              lastError: "The Google Calendar event was deleted.",
+            });
+            return;
+          }
+          const message = caught instanceof Error ? caught.message : "Calendar update failed.";
+          await persistTaskCalendarResult({
+            taskId,
+            googleCalendarId: payload.calendarId,
+            googleEventId: payload.eventId,
+            syncStatus: "error",
+            lastError: message,
+          });
+          throw caught;
+        }
+      }, calendarConnection.google_sub);
+    },
+    [calendarConnection, persistTaskCalendarResult, withGoogle],
+  );
+
+  const unlinkTaskEvent = useCallback(
+    async (taskId: string) => {
+      if (!calendarConnection) return;
+      const payload = await readJson<{
+        eventId: string | null;
+        calendarId: string | null;
+      }>(await fetch(`/api/google/calendar/tasks?taskId=${encodeURIComponent(taskId)}`));
+      await persistTaskCalendarResult({
+        taskId,
+        googleCalendarId: payload.calendarId ?? calendarConnection.calendar_id ?? "primary",
+        googleEventId: payload.eventId ?? "unlinked",
+        syncStatus: "synced",
+        unlink: true,
+      });
+    },
+    [calendarConnection, persistTaskCalendarResult],
+  );
+
   const createOutreachCalendarEvent = useCallback(
     async (event: GoogleCalendarEventWrite) => {
       if (!calendarConnection) throw new Error("Connect Google first.");
@@ -1070,6 +1202,9 @@ export function GoogleSessionProvider({
       createBookingEvent,
       updateBookingEvent,
       unlinkBookingEvent,
+      createTaskEvent,
+      updateTaskEvent,
+      unlinkTaskEvent,
       createOutreachCalendarEvent,
       refreshPendingCalendarCount,
     }),
@@ -1084,6 +1219,7 @@ export function GoogleSessionProvider({
       connections,
       createBookingEvent,
       createOutreachCalendarEvent,
+      createTaskEvent,
       disconnect,
       ensureGmailSendAccess,
       error,
@@ -1099,7 +1235,9 @@ export function GoogleSessionProvider({
       syncGmailForEmails,
       tokenScope,
       unlinkBookingEvent,
+      unlinkTaskEvent,
       updateBookingEvent,
+      updateTaskEvent,
     ],
   );
 

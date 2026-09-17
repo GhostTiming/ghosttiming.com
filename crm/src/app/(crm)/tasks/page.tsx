@@ -3,16 +3,13 @@ import Link from "next/link";
 import { updateTaskStatusAction } from "@/app/actions";
 import { bulkUpdateTasksAction } from "@/app/bulk-actions";
 import { removeTaskAction } from "@/app/task-actions";
-import {
-  DatasetBulkBar,
-  DatasetBulkRoot,
-  DatasetCheckbox,
-  DatasetHeaderCheckbox,
-} from "@/components/dataset-bulk";
+import { DatasetBulkBar, DatasetBulkRoot, DatasetCheckbox, DatasetHeaderCheckbox } from "@/components/dataset-bulk";
+import { TaskCalendarSyncControl } from "@/components/google/task-calendar-sync-control";
 import { effectiveAccessUserId } from "@/lib/auth/access";
 import { requireTasksAccess } from "@/lib/auth/server";
 import { taskBulkFields } from "@/lib/crm/bulk-fields";
-import { formatTaskHeadline } from "@/lib/crm/domain";
+import { formatTaskHeadline, taskRecordHref } from "@/lib/crm/domain";
+import { PAGINATION_ROW } from "@/lib/crm/layout";
 import { filePastProspectsWithPool, listTasks, type TaskListRow } from "@/lib/crm/queries";
 
 export const metadata = { title: "Tasks" };
@@ -95,16 +92,18 @@ function TaskSection({
           >
             <DatasetCheckbox id={task.id} />
             <div>
-              <Link
-                href={
-                  task.booking_id
-                    ? `/bookings/${task.booking_id}`
-                    : `/prospecting/${task.prospect_id}`
-                }
-                className="font-semibold hover:text-cyan-700"
-              >
-                {formatTaskHeadline(task.title, task.notes)}
-              </Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={taskRecordHref(task)}
+                  className="font-semibold hover:text-cyan-700"
+                >
+                  {formatTaskHeadline(task.title, task.notes)}
+                </Link>
+                <TaskCalendarSyncControl
+                  taskId={task.id}
+                  syncStatus={task.calendar_sync_status}
+                />
+              </div>
               <p className="mt-1 text-sm text-slate-500">
                 {task.race_name} · {formatDue(task.due_at)} · {task.assignee_name}
               </p>
@@ -113,7 +112,7 @@ function TaskSection({
               ) : null}
             </div>
             {task.status === "open" ? (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <form action={updateTaskStatusAction}>
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="status" value="complete" />
@@ -144,7 +143,7 @@ function TaskSection({
         ) : null}
       </div>
       {tasks.length > PAGE_SIZE ? (
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3 text-sm">
+        <div className={PAGINATION_ROW}>
           <p className="text-slate-500">
             Showing {start + 1}–{end} of {tasks.length}
           </p>
@@ -152,7 +151,7 @@ function TaskSection({
             <Link
               href={sectionHref(pages, module, page - 1)}
               aria-disabled={page <= 1}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 font-medium aria-disabled:pointer-events-none aria-disabled:opacity-40"
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 py-2 font-medium aria-disabled:pointer-events-none aria-disabled:opacity-40 sm:flex-none"
             >
               <ArrowLeft aria-hidden className="size-4" />
               Previous 10
@@ -160,7 +159,7 @@ function TaskSection({
             <Link
               href={sectionHref(pages, module, page + 1)}
               aria-disabled={page >= lastPage}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 font-medium aria-disabled:pointer-events-none aria-disabled:opacity-40"
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 py-2 font-medium aria-disabled:pointer-events-none aria-disabled:opacity-40 sm:flex-none"
             >
               Next 10
               <ArrowRight aria-hidden className="size-4" />
@@ -236,7 +235,7 @@ export default async function TasksPage({
               ? "Assigned and in-scope work"
               : "My assigned work"}
         </p>
-        <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight sm:text-3xl">
           <Clock3 aria-hidden className="size-7" />
           Tasks
         </h1>

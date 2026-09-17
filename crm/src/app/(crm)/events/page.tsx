@@ -1,13 +1,9 @@
 import { ArrowLeft, ArrowRight, CalendarDays } from "lucide-react";
 import Link from "next/link";
 import { bulkUpdateEventsAction } from "@/app/bulk-actions";
-import {
-  DatasetBulkBar,
-  DatasetBulkRoot,
-  DatasetCheckbox,
-  DatasetHeaderCheckbox,
-} from "@/components/dataset-bulk";
+import { DatasetBulkBar, DatasetBulkRoot, DatasetCheckbox, DatasetHeaderCheckbox } from "@/components/dataset-bulk";
 import { EventLogo } from "@/components/event-logo";
+import { FilterChipNav } from "@/components/filter-chip-nav";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
 import { TableColumnHeader } from "@/components/table-column-header";
@@ -16,7 +12,7 @@ import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { eventBulkFields } from "@/lib/crm/bulk-fields";
 import { listEvents } from "@/lib/crm/event-queries";
-import { CHIP_ROW } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS, PAGINATION_ROW } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Events" };
@@ -118,8 +114,8 @@ export default async function EventsPage({
           <p className="text-sm font-semibold uppercase tracking-wider text-cyan-700">
             Race history
           </p>
-          <h1 className="flex items-center gap-2 text-3xl font-bold text-slate-950">
-            <CalendarDays aria-hidden className="size-8" />
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950 sm:text-3xl">
+            <CalendarDays aria-hidden className="size-7 sm:size-8" />
             Events
           </h1>
           <p className="mt-1 text-slate-600">
@@ -132,28 +128,22 @@ export default async function EventsPage({
       </header>
 
       {access.isSuperAdmin ? (
-      <nav className={CHIP_ROW} aria-label="Event list scope">
-        <Link
-          href={buildSearchHref("/events", current, { scope: "client", page: null })}
-          className={`rounded-full px-3 py-1.5 text-sm ring-1 ${
-            current.scope === "client"
-              ? "bg-slate-900 text-white ring-slate-900"
-              : "bg-white ring-slate-200"
-          }`}
-        >
-          Client events
-        </Link>
-        <Link
-          href={buildSearchHref("/events", current, { scope: "prospect", page: null })}
-          className={`rounded-full px-3 py-1.5 text-sm ring-1 ${
-            current.scope === "prospect"
-              ? "bg-slate-900 text-white ring-slate-900"
-              : "bg-white ring-slate-200"
-          }`}
-        >
-          Prospect events
-        </Link>
-      </nav>
+      <FilterChipNav
+        ariaLabel="Event list scope"
+        value={current.scope}
+        options={[
+          {
+            value: "client",
+            label: "Client events",
+            href: buildSearchHref("/events", current, { scope: "client", page: null }),
+          },
+          {
+            value: "prospect",
+            label: "Prospect events",
+            href: buildSearchHref("/events", current, { scope: "prospect", page: null }),
+          },
+        ]}
+      />
       ) : null}
 
       <DatasetBulkRoot>
@@ -163,7 +153,41 @@ export default async function EventsPage({
         fields={eventBulkFields(owners.rows)}
         updateAction={bulkUpdateEventsAction}
       />
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className={MOBILE_CARDS}>
+        <label className="flex items-center gap-2 px-1 text-sm text-slate-600">
+          <DatasetHeaderCheckbox ids={result.rows.map((event) => event.id)} />
+          Select all
+        </label>
+        {result.rows.map((event) => (
+          <article
+            key={event.id}
+            className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+          >
+            <div className="flex items-start gap-3">
+              <DatasetCheckbox id={event.id} />
+              <div className="min-w-0 flex-1 space-y-1">
+                <ListRowLink href={`/events/${event.id}`} className="font-semibold hover:text-cyan-700">
+                  <EventLogo url={event.logo_url} name={event.name} size="list" />
+                  {event.name}
+                </ListRowLink>
+                <p className="text-sm text-slate-600">{event.owner_name ?? "No owner"}</p>
+                <p className="text-xs text-slate-500">
+                  {event.occurrence_count}{" "}
+                  {event.occurrence_count === 1 ? "year" : "years"} ·{" "}
+                  {event.first_year ?? "—"}–{event.last_year ?? "—"}
+                </p>
+                <p className="text-sm text-slate-600">Next: {formatDate(event.next_date)}</p>
+              </div>
+            </div>
+          </article>
+        ))}
+        {result.rows.length === 0 ? (
+          <p className="rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-500">
+            No events match this search.
+          </p>
+        ) : null}
+      </div>
+      <section className={DESKTOP_TABLE}>
         <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600">
@@ -260,7 +284,9 @@ export default async function EventsPage({
         {result.rows.length === 0 ? (
           <p className="p-10 text-center text-slate-500">No events match this search.</p>
         ) : null}
-        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm">
+      </section>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className={PAGINATION_ROW}>
           <p className="text-slate-500">
             Page {result.page} of {lastPage} · {result.total.toLocaleString()} events
           </p>
@@ -270,7 +296,7 @@ export default async function EventsPage({
                 page: String(Math.max(1, result.page - 1)),
               })}
               aria-disabled={result.page <= 1}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 font-medium aria-disabled:pointer-events-none aria-disabled:opacity-40"
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 py-2 font-medium aria-disabled:pointer-events-none aria-disabled:opacity-40 sm:flex-none"
             >
               <ArrowLeft aria-hidden className="size-4" />
               Previous
@@ -280,14 +306,14 @@ export default async function EventsPage({
                 page: String(Math.min(lastPage, result.page + 1)),
               })}
               aria-disabled={result.page >= lastPage}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 font-medium aria-disabled:pointer-events-none aria-disabled:opacity-40"
+              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 py-2 font-medium aria-disabled:pointer-events-none aria-disabled:opacity-40 sm:flex-none"
             >
               Next
               <ArrowRight aria-hidden className="size-4" />
             </Link>
           </div>
         </div>
-      </section>
+      </div>
       </div>
       </DatasetBulkRoot>
     </div>

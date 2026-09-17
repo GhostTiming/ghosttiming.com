@@ -1,4 +1,5 @@
 import { normalizeEmail } from "../contact-extraction/extract";
+import { formatTaskHeadline, taskDescription } from "./domain";
 
 export type CalendarRace = {
   name: string;
@@ -250,4 +251,50 @@ export function buildGoogleCalendarUrl(input: GoogleCalendarBooking) {
     params.append("add", attendee.email);
   }
   return `https://calendar.google.com/calendar/render?${params}`;
+}
+
+export const TASK_CALENDAR_DURATION_MS = 30 * 60 * 1000;
+
+export type GoogleCalendarTask = {
+  taskId: string;
+  title: string;
+  notes?: string | null;
+  dueAt: string;
+  raceName?: string | null;
+};
+
+export type GoogleCalendarTaskEventResource = {
+  summary: string;
+  description: string;
+  start: { dateTime: string };
+  end: { dateTime: string };
+  extendedProperties: {
+    private: { crmTaskId: string };
+  };
+};
+
+export function googleCalendarTaskTimesAreValid(dueAt: string) {
+  const start = new Date(dueAt);
+  return !Number.isNaN(start.valueOf());
+}
+
+export function buildGoogleCalendarTaskEventResource(
+  input: GoogleCalendarTask,
+): GoogleCalendarTaskEventResource | null {
+  if (!googleCalendarTaskTimesAreValid(input.dueAt)) return null;
+  const start = new Date(input.dueAt);
+  const headline = formatTaskHeadline(input.title, input.notes);
+  const lines = [
+    input.raceName?.trim() ? `Related: ${input.raceName.trim()}` : null,
+    taskDescription(input.title, input.notes).trim() || null,
+  ].filter((line): line is string => Boolean(line));
+  return {
+    summary: headline,
+    description: lines.join("\n\n"),
+    start: { dateTime: start.toISOString() },
+    end: { dateTime: new Date(start.getTime() + TASK_CALENDAR_DURATION_MS).toISOString() },
+    extendedProperties: {
+      private: { crmTaskId: input.taskId },
+    },
+  };
 }

@@ -9,6 +9,7 @@ import {
   DatasetHeaderCheckbox,
 } from "@/components/dataset-bulk";
 import { EventLogo } from "@/components/event-logo";
+import { FilterChipNav } from "@/components/filter-chip-nav";
 import { ListRowActions, ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
 import { RefreshAllGrvButton } from "@/components/refresh-all-grv-button";
@@ -22,7 +23,7 @@ import {
   loadCatalogListingCandidates,
   suggestCatalogMatches,
 } from "@/lib/crm/catalog-link";
-import { CHIP_ROW, DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam } from "@/lib/crm/search-params";
 
 export const maxDuration = 120;
@@ -210,12 +211,6 @@ export default async function BookingsPage({
       access.canViewFinancials(booking.direct_client_id),
     ),
   );
-  const filterClass = (active: boolean) =>
-    `rounded-full px-3 py-1.5 text-sm ring-1 ${
-      active
-        ? "bg-slate-900 text-white ring-slate-900"
-        : "bg-white ring-slate-200"
-    }`;
   const stageOptions = [
     { key: "active", label: "Active" },
     { key: "awaiting_decision", label: "1 Awaiting decision" },
@@ -261,22 +256,22 @@ export default async function BookingsPage({
             queue.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <RefreshAllGrvButton />
           <Link href="/bookings/new"
-            className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white">
+            className="rounded-lg bg-cyan-700 px-4 py-2 text-center text-sm font-semibold text-white">
             Add booking
           </Link>
           <div className="flex rounded-lg border border-slate-300 bg-white p-1">
           <Link
             href={buildSearchHref("/bookings", current, { view: "list" })}
-            className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${view === "list" ? "bg-slate-900 text-white" : "text-slate-600"}`}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm ${view === "list" ? "bg-slate-900 text-white" : "text-slate-600"}`}
           >
             <List className="size-4" /> List
           </Link>
           <Link
             href={buildSearchHref("/bookings", current, { view: "kanban" })}
-            className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${view === "kanban" ? "bg-slate-900 text-white" : "text-slate-600"}`}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm ${view === "kanban" ? "bg-slate-900 text-white" : "text-slate-600"}`}
           >
             <Columns3 className="size-4" /> Kanban
           </Link>
@@ -284,17 +279,15 @@ export default async function BookingsPage({
         </div>
       </header>
 
-      <nav className={CHIP_ROW} aria-label="Booking stage filters">
-        {stageOptions.map(({ key, label }) => (
-          <Link
-            key={key}
-            href={buildSearchHref("/bookings", current, { stage: key })}
-            className={filterClass(stageFilter === key)}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
+      <FilterChipNav
+        ariaLabel="Booking stage filters"
+        value={stageFilter}
+        options={stageOptions.map(({ key, label }) => ({
+          value: key,
+          label,
+          href: buildSearchHref("/bookings", current, { stage: key }),
+        }))}
+      />
 
       <DatasetBulkRoot>
       <div className="space-y-3">

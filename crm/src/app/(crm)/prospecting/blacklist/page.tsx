@@ -10,6 +10,7 @@ import {
   formatBlacklistPattern,
   listEmailBlacklist,
 } from "@/lib/crm/email-blacklist";
+import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
 
 export const metadata = { title: "Email blacklist" };
 
@@ -56,12 +57,44 @@ export default async function EmailBlacklistPage() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section>
         {entries.length === 0 ? (
-          <p className="p-10 text-center text-slate-500">
+          <p className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
             No blacklisted emails yet.
           </p>
         ) : (
+          <>
+          <div className={MOBILE_CARDS}>
+            {entries.map((entry) => (
+              <article
+                key={entry.id}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <p className="font-medium text-slate-950">{formatBlacklistPattern(entry)}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {entry.matchKind === "domain" ? "Any email at this domain" : "Exact email"}
+                </p>
+                <p className="mt-2 text-sm text-slate-600">
+                  {disqualifiedReasonLabels[entry.reason as DisqualifiedReason] ?? entry.reason}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">{entry.note || "No notes"}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Added {formatDate(entry.createdAt)}
+                  {entry.createdByName ? ` · ${entry.createdByName}` : ""}
+                </p>
+                <form action={deleteEmailBlacklistAction} className="mt-3">
+                  <input type="hidden" name="id" value={entry.id} />
+                  <PendingSubmitButton
+                    className="rounded-lg px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+                    pendingLabel="Removing…"
+                  >
+                    Remove
+                  </PendingSubmitButton>
+                </form>
+              </article>
+            ))}
+          </div>
+          <section className={DESKTOP_TABLE}>
           <div className="overflow-x-auto">
           <table className="w-full min-w-[40rem] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -109,6 +142,8 @@ export default async function EmailBlacklistPage() {
             </tbody>
           </table>
           </div>
+          </section>
+          </>
         )}
       </section>
     </div>
