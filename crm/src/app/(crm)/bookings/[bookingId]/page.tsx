@@ -547,6 +547,11 @@ export default async function BookingDetailPage({
               ? "Remote"
               : booking.location || "Location TBD",
           registrationUrl: booking.registration_url,
+          hardwareEventName: booking.hardware_event_name,
+          coursePoints: coursePoints.rows.map((point) => ({
+            name: point.name,
+            hardwarePointName: point.hardware_point_name,
+          })),
           crew: crew.rows.map((member) => ({
             name: member.crew_name,
             email: member.email,

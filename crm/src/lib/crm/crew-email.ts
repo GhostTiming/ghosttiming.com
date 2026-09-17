@@ -1,6 +1,7 @@
 import { displayUserName } from "./user-profile";
 import {
   formatCalendarRaceHeading,
+  formatHardwarePointLine,
   type CalendarRace,
 } from "./google-calendar";
 import {
@@ -287,17 +288,7 @@ export function formatCrewNotesLabel(timerLocation?: string | null) {
 
 export function formatCrewCoursePoints(points: CrewEmailCoursePoint[]) {
   if (!points.length) return unset;
-  return points
-    .map((point) => {
-      const location = point.name.trim();
-      const hardware = point.hardwarePointName?.trim() || "";
-      const lines: string[] = [];
-      if (location) lines.push(location);
-      if (hardware) lines.push(`Point name: ${hardware}`);
-      return lines.join("\n");
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  return points.map((point) => formatHardwarePointLine(point)).filter(Boolean).join("\n");
 }
 
 export function formatCrewDistances(races: CrewEmailRace[]) {
@@ -330,30 +321,15 @@ export function formatCrewAwardsAndAgeGroups(races: CrewEmailRace[]) {
   return blocks.join("\n\n");
 }
 
-export function formatCrewEventNameToProgram(input: {
-  hardwareEventName?: string | null;
-  coursePoints?: CrewEmailCoursePoint[];
-}) {
-  const eventName = input.hardwareEventName?.trim();
-  if (eventName) return eventName;
-  const unique: string[] = [];
-  const seen = new Set<string>();
-  for (const point of input.coursePoints ?? []) {
-    const hardware = point.hardwarePointName?.trim();
-    if (!hardware) continue;
-    const key = hardware.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(hardware);
-  }
-  return unique.length === 1 ? unique[0] : "";
+export function formatCrewEventNameToProgram(hardwareEventName?: string | null) {
+  return hardwareEventName?.trim() || "";
 }
 
 export function formatCrewHardwareNames(input: {
   hardwareEventName?: string | null;
   coursePoints: CrewEmailCoursePoint[];
 }) {
-  return formatCrewEventNameToProgram(input);
+  return formatCrewEventNameToProgram(input.hardwareEventName);
 }
 
 export function formatCrewAdditionalExpectations(input: {
@@ -433,14 +409,8 @@ export function buildCrewEmailValues(
     course_points: formatCrewCoursePoints(booking.coursePoints),
     distances_and_start_times: formatCrewDistances(booking.races),
     awards_and_age_groups: formatCrewAwardsAndAgeGroups(booking.races),
-    event_name_to_program: formatCrewEventNameToProgram({
-      hardwareEventName: booking.hardwareEventName,
-      coursePoints: booking.coursePoints,
-    }),
-    hardware_names: formatCrewEventNameToProgram({
-      hardwareEventName: booking.hardwareEventName,
-      coursePoints: booking.coursePoints,
-    }),
+    event_name_to_program: formatCrewEventNameToProgram(booking.hardwareEventName),
+    hardware_names: formatCrewEventNameToProgram(booking.hardwareEventName),
     additional_expectations: formatCrewAdditionalExpectations(booking),
     timer_name: orUnset(timer.name),
     timer_phone: orUnset(phone),

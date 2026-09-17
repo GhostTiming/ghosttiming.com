@@ -16,6 +16,11 @@ export type CalendarCrewMember = {
   role?: string | null;
 };
 
+export type CalendarCoursePoint = {
+  name: string;
+  hardwarePointName?: string | null;
+};
+
 export type GoogleCalendarBooking = {
   year: number | null;
   eventName: string;
@@ -23,6 +28,8 @@ export type GoogleCalendarBooking = {
   endAt: string;
   location: string;
   registrationUrl?: string | null;
+  hardwareEventName?: string | null;
+  coursePoints?: CalendarCoursePoint[];
   crew: CalendarCrewMember[];
   races: CalendarRace[];
 };
@@ -124,6 +131,33 @@ export function formatCalendarRaceHeading(race: CalendarRace) {
   return `${title} @ ${formatCalendarRaceClock(race.startTime)} Start`;
 }
 
+export function formatHardwarePointLine(point: CalendarCoursePoint) {
+  const location = point.name.trim();
+  const hardware = point.hardwarePointName?.trim() || "";
+  if (location && hardware) return `${location} • Point name: ${hardware}`;
+  if (hardware) return `Point name: ${hardware}`;
+  return location;
+}
+
+export function formatCalendarHardwareFields(input: {
+  hardwareEventName?: string | null;
+  coursePoints?: CalendarCoursePoint[];
+}) {
+  const eventName = input.hardwareEventName?.trim();
+  const points = (input.coursePoints ?? [])
+    .map((point) => formatHardwarePointLine(point))
+    .filter(Boolean);
+  return [
+    eventName ? formatCalendarLabeledField("Event Name to Program", [eventName]) : null,
+    points.length
+      ? formatCalendarLabeledField(
+          "Start / Split / Finish Locations and Point Name to Program",
+          points,
+        )
+      : null,
+  ].filter((block): block is string => Boolean(block));
+}
+
 function raceDescription(race: CalendarRace) {
   return [
     formatCalendarRaceHeading(race),
@@ -159,6 +193,7 @@ export function googleCalendarEventDescription(input: GoogleCalendarBooking) {
         ? [input.races.map(raceDescription).join("\n\n")]
         : ["No races entered"],
     ),
+    ...formatCalendarHardwareFields(input),
   ].join("\n\n");
 }
 

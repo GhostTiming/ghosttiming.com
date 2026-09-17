@@ -157,7 +157,8 @@ const calendarBookingSql = `
     COALESCE(
       occurrence.registration_url_override, event.website,
       listing.registration_url, listing.external_race_url
-    ) AS registration_url
+    ) AS registration_url,
+    occurrence.hardware_event_name
   FROM crm.bookings booking
   JOIN crm.event_occurrences occurrence ON occurrence.id = booking.occurrence_id
   JOIN crm.events event ON event.id = occurrence.event_id
@@ -181,6 +182,7 @@ type CalendarBookingRow = {
   end_at: string | null;
   location: string | null;
   registration_url: string | null;
+  hardware_event_name: string | null;
 };
 
 async function attachCalendarDetails(row: CalendarBookingRow): Promise<{
@@ -193,7 +195,7 @@ async function attachCalendarDetails(row: CalendarBookingRow): Promise<{
   event: GoogleCalendarEventResource | null;
   booking: GoogleCalendarBooking;
 }> {
-  const [crew, races] = await Promise.all([
+  const [crew, races, points] = await Promise.all([
     getPool().query<{
       crew_name: string;
       email: string | null;
@@ -229,6 +231,16 @@ async function attachCalendarDetails(row: CalendarBookingRow): Promise<{
       `,
       [row.booking_id],
     ),
+    getPool().query<{ name: string; hardware_point_name: string | null }>(
+      `
+        SELECT point.name, point.hardware_point_name
+        FROM crm.course_points point
+        JOIN crm.bookings booking ON booking.occurrence_id = point.occurrence_id
+        WHERE booking.id = $1::uuid
+        ORDER BY point.sort_order
+      `,
+      [row.booking_id],
+    ),
   ]);
   const booking: GoogleCalendarBooking = {
     year: row.occurrence_year,
@@ -237,6 +249,11 @@ async function attachCalendarDetails(row: CalendarBookingRow): Promise<{
     endAt: row.end_at ?? "",
     location: row.location || "Location TBD",
     registrationUrl: row.registration_url,
+    hardwareEventName: row.hardware_event_name,
+    coursePoints: points.rows.map((point) => ({
+      name: point.name,
+      hardwarePointName: point.hardware_point_name,
+    })),
     crew: crew.rows
       .filter((member) => member.crew_name)
       .map((member) => ({

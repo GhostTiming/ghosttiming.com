@@ -51,19 +51,11 @@ describe("crew email field formatters", () => {
       formatCrewCoursePoints([
         { name: "Start/Finish", hardwarePointName: "MAIN", notes: "Parking lot" },
       ]),
-    ).toBe("Start/Finish\nPoint name: MAIN");
+    ).toBe("Start/Finish • Point name: MAIN");
+    expect(formatCrewEventNameToProgram("HOLIDAY3K")).toBe("HOLIDAY3K");
     expect(
-      formatCrewEventNameToProgram({
-        hardwareEventName: "HOLIDAY3K",
-        coursePoints: [{ name: "Finish", hardwarePointName: "FINISH" }],
-      }),
-    ).toBe("HOLIDAY3K");
-    expect(
-      formatCrewEventNameToProgram({
-        hardwareEventName: null,
-        coursePoints: [{ name: "Start/Finish", hardwarePointName: "MAIN" }],
-      }),
-    ).toBe("MAIN");
+      formatCrewEventNameToProgram(null),
+    ).toBe("");
     expect(formatCrewAdditionalExpectations({})).toBe("");
     expect(
       formatCrewAwardsAndAgeGroups([
@@ -119,7 +111,7 @@ describe("crew email field formatters", () => {
     );
     expect(DEFAULT_CREW_EMAIL_HTML).not.toContain("Event and Point Name to Program");
     expect(rendered.html).toContain("HOLIDAY3K");
-    expect(rendered.html).toContain("Point name: FINISH");
+    expect(rendered.html).toContain("Finish • Point name: FINISH");
     expect(rendered.html).toContain("Live results");
     expect(rendered.html).not.toContain("Not set");
     expect(rendered.html).not.toContain("bigin.zoho.com");
@@ -150,6 +142,7 @@ describe("crew email field formatters", () => {
   it("leaves additional expectations blank when nothing is entered", () => {
     const booking = {
       eventName: "Miles to Go 5K",
+      hardwareEventName: "MTG5K",
       races: [{ name: "5K", startTime: "2026-09-19 08:00:00" }],
       coursePoints: [{ name: "Start/Finish", hardwarePointName: "MAIN" }],
     };
@@ -160,12 +153,11 @@ describe("crew email field formatters", () => {
       booking,
       timer,
     );
-    expect(values.event_name_to_program).toBe("MAIN");
-    expect(values.course_points).toBe("Start/Finish\nPoint name: MAIN");
+    expect(values.event_name_to_program).toBe("MTG5K");
+    expect(values.course_points).toBe("Start/Finish • Point name: MAIN");
     expect(values.additional_expectations).toBe("");
-    expect(htmlToPlainText(rendered.html)).toContain("MAIN");
-    expect(htmlToPlainText(rendered.html)).toContain("Start/Finish");
-    expect(htmlToPlainText(rendered.html)).toContain("Point name: MAIN");
+    expect(htmlToPlainText(rendered.html)).toContain("MTG5K");
+    expect(htmlToPlainText(rendered.html)).toContain("Start/Finish • Point name: MAIN");
     expect(htmlToPlainText(rendered.html)).not.toMatch(/Additional Expectations\s+Not set/i);
   });
 });

@@ -215,4 +215,24 @@ describe("calendar race copy", () => {
       ].join("\n\n"),
     );
   });
+
+  it("adds hardware event and point names at the bottom of the invite", () => {
+    expect(
+      googleCalendarEventDescription({
+        ...baseBooking,
+        hardwareEventName: "MTG5K",
+        coursePoints: [{ name: "Start/Finish", hardwarePointName: "MAIN" }],
+      }),
+    ).toBe(
+      [
+        "Race Registration:\nhttps://example.com/register",
+        "Crew:\nMichelle Splitstone-Laloggia · (407) 687-2570\nSeth Doe (Lead) · 555-0100\nChris Batista",
+        "Race(s):\n5K @ 8:00AM Start",
+        "Age Groups:\nOverall\n0-9\n10-14",
+        "Awards:\nOverall M/F",
+        "Event Name to Program:\nMTG5K",
+        "Start / Split / Finish Locations and Point Name to Program:\nStart/Finish • Point name: MAIN",
+      ].join("\n\n"),
+    );
+  });
 });
