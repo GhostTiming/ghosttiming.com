@@ -7,6 +7,7 @@ import {
   FormSaveFailedContext,
   PendingSubmitButton,
 } from "@/components/pending-submit-button";
+import { rethrowNextControlFlow } from "@/lib/next-control-flow";
 
 export type ConvertBookingOrganization = {
   id: string;
@@ -40,14 +41,7 @@ export function ConvertToBookingPrompt({
       onCancel();
       router.refresh();
     } catch (cause) {
-      if (
-        typeof cause === "object" &&
-        cause !== null &&
-        "digest" in cause &&
-        String(cause.digest).startsWith("NEXT_REDIRECT")
-      ) {
-        throw cause;
-      }
+      rethrowNextControlFlow(cause);
       setSaveFailed(true);
       setError(
         cause instanceof Error ? cause.message : "Could not convert to a booking.",

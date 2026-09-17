@@ -1,9 +1,12 @@
+import { htmlToPlainText } from "../crm/email-placeholders";
+
 export type GmailComposeInput = {
   from: string;
   to: string[];
   cc?: string[];
   subject: string;
   body: string;
+  html?: string;
   inReplyTo?: string | null;
   references?: string | null;
 };
@@ -50,10 +53,30 @@ export function buildGmailMime(input: GmailComposeInput) {
     lines.push(`References: ${references}`);
   }
   lines.push("MIME-Version: 1.0");
+  const html = input.html?.trim();
+  const plain = (input.body || (html ? htmlToPlainText(html) : "")).replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+  if (html) {
+    const boundary = `crm_alt_${crypto.randomUUID().replaceAll("-", "")}`;
+    const htmlBody = html.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+    lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    lines.push("");
+    lines.push(`--${boundary}`);
+    lines.push('Content-Type: text/plain; charset="UTF-8"');
+    lines.push("Content-Transfer-Encoding: 8bit");
+    lines.push("");
+    lines.push(plain);
+    lines.push(`--${boundary}`);
+    lines.push('Content-Type: text/html; charset="UTF-8"');
+    lines.push("Content-Transfer-Encoding: 8bit");
+    lines.push("");
+    lines.push(htmlBody);
+    lines.push(`--${boundary}--`);
+    return lines.join("\r\n");
+  }
   lines.push('Content-Type: text/plain; charset="UTF-8"');
   lines.push("Content-Transfer-Encoding: 8bit");
   lines.push("");
-  lines.push(input.body.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n"));
+  lines.push(plain);
   return lines.join("\r\n");
 }
 

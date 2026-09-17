@@ -75,6 +75,7 @@ import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
 import { uniqueNormalizedEmails } from "@/lib/google/email-match";
 import { parseRaceScoring } from "@/lib/crm/race-scoring";
+import { asTemplateSummaries, listUserEmailTemplates } from "@/lib/crm/email-templates";
 
 type BookingDetail = {
   id: string;
@@ -281,7 +282,7 @@ export default async function BookingDetailPage({
         )
       : Promise.resolve(null);
   const [stages, activities, tasks, races, coursePoints, crew, prepItems, people,
-    crewPeople, organizations, users, catalogOverview, catalogContext, calendarLink] =
+    crewPeople, organizations, users, catalogOverview, catalogContext, calendarLink, emailTemplates] =
     await Promise.all([
     getPool().query<{ key: string; name: string }>(
       `
@@ -476,6 +477,7 @@ export default async function BookingDetailPage({
       `,
       [bookingId],
     ),
+    listUserEmailTemplates(access.user.id),
   ]);
   const sourceEmails = booking.source_prospect_id
     ? await getPool().query<{ email: string }>(
@@ -962,6 +964,7 @@ export default async function BookingDetailPage({
                     freeformName: member.freeform_name,
                     notes: member.notes,
                   }))}
+                  emailTemplates={asTemplateSummaries(emailTemplates)}
                   people={crewPeople.rows.map((person) => ({
                     id: person.id,
                     displayName: person.display_name,

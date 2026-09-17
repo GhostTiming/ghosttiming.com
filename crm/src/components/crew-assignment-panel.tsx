@@ -10,7 +10,10 @@ import {
 } from "@/app/operations-actions";
 import { MailtoLink } from "@/components/crm-links";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
+import { CrewEmailPanel } from "@/components/crew-email-panel";
 import { filterCrewSearchResults } from "@/lib/crm/crew";
+import { formatRecipientField } from "@/lib/crm/email-compose";
+import type { EmailTemplateSummary } from "@/lib/crm/email-templates";
 
 export type CrewPersonOption = {
   id: string;
@@ -66,6 +69,7 @@ export function CrewAssignmentPanel({
   people,
   clientOrganizationId,
   clientOrganizationName,
+  emailTemplates,
 }: {
   bookingId: string;
   occurrenceId: string;
@@ -73,6 +77,7 @@ export function CrewAssignmentPanel({
   people: CrewPersonOption[];
   clientOrganizationId: string;
   clientOrganizationName: string;
+  emailTemplates: EmailTemplateSummary[];
 }) {
   const [query, setQuery] = useState("");
   const [addingMember, setAddingMember] = useState(false);
@@ -100,6 +105,13 @@ export function CrewAssignmentPanel({
 
   return (
     <div className="space-y-4">
+      <CrewEmailPanel
+        bookingId={bookingId}
+        templates={emailTemplates}
+        defaultTo={formatRecipientField(
+          assigned.flatMap((member) => (member.email ? [member.email] : [])),
+        )}
+      />
       <p className="text-sm text-slate-500">
         Search crew tagged to {clientOrganizationName}. Known contacts with an
         email are invited when this booking syncs to Google Calendar. Inactive

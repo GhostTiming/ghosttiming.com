@@ -38,4 +38,18 @@ describe("Gmail MIME", () => {
   it("does not double the Re: prefix", () => {
     expect(replySubject("Re: Timing quote")).toBe("Re: Timing quote");
   });
+
+  it("builds a multipart HTML message with a plain-text fallback", () => {
+    const mime = buildGmailMime({
+      from: "michelle@run4acause.org",
+      to: ["crew@example.org"],
+      subject: "Holiday 3k — race-day crew notes",
+      body: "Hi team",
+      html: "<p>Hi team</p><p>Holiday 3k</p>",
+    });
+    expect(mime).toContain("Content-Type: multipart/alternative;");
+    expect(mime).toContain('Content-Type: text/html; charset="UTF-8"');
+    expect(mime).toContain("<p>Holiday 3k</p>");
+    expect(mime).toContain("Hi team");
+  });
 });

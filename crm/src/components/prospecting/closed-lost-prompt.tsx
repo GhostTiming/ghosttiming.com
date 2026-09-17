@@ -7,6 +7,7 @@ import {
   FormSaveFailedContext,
   PendingSubmitButton,
 } from "@/components/pending-submit-button";
+import { rethrowNextControlFlow } from "@/lib/next-control-flow";
 import {
   closedLostReasonLabels,
   closedLostReasons,
@@ -35,6 +36,7 @@ export function ClosedLostPrompt({
       onCancel();
       router.refresh();
     } catch (cause) {
+      rethrowNextControlFlow(cause);
       setSaveFailed(true);
       setError(
         cause instanceof Error ? cause.message : "Could not close as lost.",

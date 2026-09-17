@@ -6,6 +6,7 @@ import {
   FormSaveFailedContext,
   PendingSubmitButton,
 } from "@/components/pending-submit-button";
+import { rethrowNextControlFlow } from "@/lib/next-control-flow";
 import {
   bookingStageTone,
   prospectStageTone,
@@ -63,6 +64,7 @@ export function PipelineStagePath({
     try {
       await action(formData);
     } catch (cause) {
+      rethrowNextControlFlow(cause);
       setSaveFailed(true);
       setError(cause instanceof Error ? cause.message : "Could not save stage.");
     }

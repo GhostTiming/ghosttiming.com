@@ -4,10 +4,12 @@ import {
   updateGoogleAccountDefaultsAction,
   updateUserProfileAction,
 } from "@/app/settings-actions";
+import { EmailTemplateManager } from "@/components/email-template-manager";
 import { GoogleConnectionControl } from "@/components/google/google-connection-control";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { getPool } from "@/db";
 import { getAccessContext } from "@/lib/auth/server";
+import { listUserEmailTemplates } from "@/lib/crm/email-templates";
 import {
   GOOGLE_PUBLIC_CONNECTION_SELECT,
   type GoogleConnectionRow,
@@ -38,6 +40,7 @@ export default async function SettingsPage() {
     linked.find((row) => row.google_sub === access.user.defaultCalendarGoogleSub)?.google_sub ??
     linked[0]?.google_sub ??
     "";
+  const emailTemplates = await listUserEmailTemplates(access.user.id);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -51,7 +54,8 @@ export default async function SettingsPage() {
         </h1>
         <p className="mt-1 text-slate-600">
           Your name and phone are used across the CRM. Linked Google accounts can
-          have separate defaults for sending email and for Calendar.
+          have separate defaults for sending email and for Calendar. Crew email
+          templates live on this page too.
         </p>
       </header>
 
@@ -97,6 +101,8 @@ export default async function SettingsPage() {
           </PendingSubmitButton>
         </div>
       </form>
+
+      <EmailTemplateManager templates={emailTemplates} />
 
       {access.canAccessGoogle ? (
         <section id="google" className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

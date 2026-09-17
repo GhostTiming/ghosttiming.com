@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getPool } from "@/db";
 import { requireCrmUser } from "@/lib/auth/server";
+import {
+  deleteUserEmailTemplate,
+  restoreDefaultCrewEmailTemplate,
+  saveUserEmailTemplate,
+} from "@/lib/crm/email-templates";
 import { displayUserName } from "@/lib/crm/user-profile";
 import { ensureUserGoogleDefaults } from "@/lib/google/google-tokens";
 
@@ -12,6 +17,15 @@ const optionalText = (maximum: number) => z.string().trim().max(maximum);
 function refreshSettings() {
   revalidatePath("/", "layout");
   revalidatePath("/settings");
+}
+
+function isUniqueViolation(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "23505",
+  );
 }
 
 export async function updateUserProfileAction(formData: FormData) {
@@ -40,6 +54,47 @@ export async function updateUserProfileAction(formData: FormData) {
     [user.id, firstName, lastName, phone, name],
   );
   refreshSettings();
+}
+
+export async function saveEmailTemplateAction(input: {
+  id?: string;
+  name: string;
+  subject: string;
+  bodyHtml: string;
+}) {
+  const user = await requireCrmUser();
+  const parsed = z
+    .object({
+      id: z.string().uuid().optional(),
+      name: z.string().trim().min(1).max(120),
+      subject: z.string().max(500),
+      bodyHtml: z.string().max(200_000),
+    })
+    .parse(input);
+  try {
+    const template = await saveUserEmailTemplate(user.id, parsed);
+    refreshSettings();
+    return { template };
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new Error("You already have a template with that name.");
+    }
+    throw error;
+  }
+}
+
+export async function deleteEmailTemplateAction(templateId: string) {
+  const user = await requireCrmUser();
+  const id = z.string().uuid().parse(templateId);
+  await deleteUserEmailTemplate(user.id, id);
+  refreshSettings();
+}
+
+export async function restoreDefaultCrewEmailTemplateAction() {
+  const user = await requireCrmUser();
+  const template = await restoreDefaultCrewEmailTemplate(user.id);
+  refreshSettings();
+  return { template };
 }
 
 export async function updateGoogleAccountDefaultsAction(formData: FormData) {

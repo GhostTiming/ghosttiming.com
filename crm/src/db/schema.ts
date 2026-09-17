@@ -780,6 +780,26 @@ export const emailDrafts = crm.table(
   ],
 );
 
+export const emailTemplates = crm.table(
+  "email_templates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    subject: text("subject").notNull().default(""),
+    bodyHtml: text("body_html").notNull().default(""),
+    kind: text("kind").notNull().default("crew"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("email_templates_user_name_uidx").on(table.userId, table.name),
+    index("email_templates_user_idx").on(table.userId),
+  ],
+);
+
 export const activities = crm.table(
   "activities",
   {

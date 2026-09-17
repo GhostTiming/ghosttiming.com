@@ -6,6 +6,7 @@ import {
   FormSaveFailedContext,
   PendingSubmitButton,
 } from "@/components/pending-submit-button";
+import { rethrowNextControlFlow } from "@/lib/next-control-flow";
 
 function formatLastStepDate(value: string | null) {
   if (!value) return null;
@@ -44,6 +45,7 @@ export function ProspectGlance({
     try {
       await updateProspectGlanceAction(formData);
     } catch (cause) {
+      rethrowNextControlFlow(cause);
       setSaveFailed(true);
       setError(cause instanceof Error ? cause.message : "Could not save steps.");
     }

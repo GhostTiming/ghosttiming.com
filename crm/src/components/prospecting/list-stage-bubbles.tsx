@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { updateProspectStageAction } from "@/app/prospect-actions";
 import { ClosedLostPrompt } from "@/components/prospecting/closed-lost-prompt";
 import { OutcomeReasonPrompt } from "@/components/prospecting/outcome-reason-prompt";
+import { rethrowNextControlFlow } from "@/lib/next-control-flow";
 import {
   disqualifiedReasonLabels,
   disqualifiedReasons,
@@ -66,6 +67,7 @@ export function ProspectListStageBubbles({
     try {
       await updateProspectStageAction(formData);
     } catch (cause) {
+      rethrowNextControlFlow(cause);
       setError(cause instanceof Error ? cause.message : "Could not save stage.");
     }
   }
