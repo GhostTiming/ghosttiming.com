@@ -1,6 +1,5 @@
 "use client";
 
-import Script from "next/script";
 import {
   createContext,
   useCallback,
@@ -41,23 +40,13 @@ import {
   getGoogleUserInfo,
   setGoogleQuotaWaitHandler,
 } from "@/lib/google/google-fetch";
-import { requestGoogleAccessToken, revokeGoogleAccessToken, waitForGis, type GoogleTokenResponse } from "@/lib/google/gis";
-import {
-  canHydrateStoredGoogleToken,
-  clearStoredGoogleToken,
-  readStoredGoogleToken,
-  restorableGoogleConnections,
-  shouldClearStoredGoogleTokenOnRestore,
-  storedTokenFromResponse,
-  writeStoredGoogleToken,
-} from "@/lib/google/token-store";
+import { clearStoredGoogleToken, restorableGoogleConnections, storedTokenFromResponse, writeStoredGoogleToken } from "@/lib/google/token-store";
 import { hasGmailSendScope } from "@/lib/google/gmail-scopes";
 import {
   CALENDAR_EVENTS_SCOPE,
   GMAIL_INGEST_BATCH_SIZE,
   GMAIL_SCOPE,
   GMAIL_SEARCH_BATCH_SIZE,
-  GOOGLE_SCOPE_STRING,
 } from "@/lib/google/scopes";
 
 export type GoogleProgress = {
@@ -106,6 +95,46 @@ type GoogleSessionValue = {
 };
 
 const GoogleSessionContext = createContext<GoogleSessionValue | null>(null);
+
+type GoogleOAuthSessionPayload = {
+  accessToken: string;
+  expiresAt: number;
+  googleSub: string;
+  googleEmail: string;
+  scope: string | null;
+  error?: string;
+  needsReauth?: boolean;
+};
+
+class GoogleReauthNeededError extends Error {
+  needsReauth = true as const;
+}
+
+async function fetchGoogleOAuthSession(googleSub?: string | null) {
+  const url = googleSub
+    ? `/api/google/oauth/session?googleSub=${encodeURIComponent(googleSub)}`
+    : "/api/google/oauth/session";
+  const response = await fetch(url, { credentials: "same-origin" });
+  const payload = (await response.json().catch(() => null)) as GoogleOAuthSessionPayload | null;
+  if (response.status === 409 || payload?.needsReauth) {
+    throw new GoogleReauthNeededError(
+      payload?.error || "Connect Google once more so the CRM can stay signed in.",
+    );
+  }
+  if (!response.ok || !payload?.accessToken) {
+    throw new Error(payload?.error || "Google session is not available.");
+  }
+  return payload;
+}
+
+function startGoogleOAuth(options?: { addAccount?: boolean; loginHint?: string | null }) {
+  const params = new URLSearchParams({
+    returnTo: `${window.location.pathname}${window.location.search}`,
+  });
+  if (options?.addAccount) params.set("addAccount", "1");
+  else if (options?.loginHint) params.set("loginHint", options.loginHint);
+  window.location.assign(`/api/google/oauth/start?${params}`);
+}
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -170,7 +199,7 @@ export function GoogleSessionProvider({
   const restoreAttempted = useRef(false);
 
   const rememberToken = useCallback(
-    (googleSub: string, tokenResponse: Pick<GoogleTokenResponse, "access_token" | "expires_in" | "scope">) => {
+    (googleSub: string, tokenResponse: { access_token?: string; expires_in?: number; scope?: string }) => {
       const token = tokenResponse.access_token;
       if (!token) return;
       const scope = tokenResponse.scope ?? tokenScopeRef.current ?? undefined;
@@ -209,22 +238,31 @@ export function GoogleSessionProvider({
     [],
   );
 
-  const requestSilentToken = useCallback(async (loginHint?: string | null) => {
-    if (!clientId) return null;
-    await waitForGis();
-    const tokenResponse = await requestGoogleAccessToken({
-      clientId,
-      scope: GOOGLE_SCOPE_STRING,
-      prompt: "",
-      loginHint: loginHint ?? undefined,
-    });
-    const token = tokenResponse.access_token;
-    if (!token) return null;
-    const userInfo = await getGoogleUserInfo(token);
-    rememberToken(userInfo.sub, tokenResponse);
-    await hydrateToken(token, userInfo.sub);
-    return tokenResponse;
-  }, [clientId, hydrateToken, rememberToken]);
+  const applyServerSession = useCallback(
+    async (session: GoogleOAuthSessionPayload) => {
+      const expiresIn = Math.max(60, Math.floor((session.expiresAt - Date.now()) / 1000));
+      rememberToken(session.googleSub, {
+        access_token: session.accessToken,
+        expires_in: expiresIn,
+        scope: session.scope ?? undefined,
+      });
+      tokenRef.current = session.accessToken;
+      setAccessToken(session.accessToken);
+      setExpired(false);
+      setActiveGoogleSub(session.googleSub);
+      await hydrateToken(session.accessToken, session.googleSub);
+      return session;
+    },
+    [hydrateToken, rememberToken],
+  );
+
+  const requestSilentToken = useCallback(async () => {
+    try {
+      return await applyServerSession(await fetchGoogleOAuthSession(connection?.google_sub));
+    } catch {
+      return null;
+    }
+  }, [applyServerSession, connection?.google_sub]);
 
   const persistConnection = useCallback(async (patch: Record<string, unknown>) => {
     await readJson(await fetch("/api/google/connection", {
@@ -250,8 +288,10 @@ export function GoogleSessionProvider({
 
   const requireToken = useCallback(async () => {
     if (tokenRef.current) return tokenRef.current;
-    throw new Error("Google authorization is required.");
-  }, []);
+    const session = await fetchGoogleOAuthSession(connection?.google_sub);
+    await applyServerSession(session);
+    return session.accessToken;
+  }, [applyServerSession, connection?.google_sub]);
 
   const markExpired = useCallback(async (message: string) => {
     tokenRef.current = null;
@@ -290,15 +330,10 @@ export function GoogleSessionProvider({
           throw caught;
         }
         if (caught instanceof GoogleAuthError && caught.status === 401) {
-          let refreshed: GoogleTokenResponse | null = null;
-          try {
-            refreshed = await requestSilentToken(connection?.google_email);
-          } catch {
-            refreshed = null;
-          }
-          if (refreshed?.access_token) {
+          const refreshed = await requestSilentToken();
+          if (refreshed?.accessToken) {
             try {
-              return await work(refreshed.access_token);
+              return await work(refreshed.accessToken);
             } catch (retryCaught) {
               if (
                 retryCaught instanceof GoogleAuthError &&
@@ -454,71 +489,19 @@ export function GoogleSessionProvider({
       return Promise.reject(new Error("NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured."));
     }
     setError(null);
-    let tokenPromise: Promise<GoogleTokenResponse>;
-    try {
-      tokenPromise = requestGoogleAccessToken({
-        clientId,
-        scope: GOOGLE_SCOPE_STRING,
-        prompt: options?.addAccount || !connection ? "select_account" : "",
-        loginHint: options?.addAccount ? undefined : connection?.google_email,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Google authorization failed.";
-      setError(message);
-      return Promise.reject(error);
-    }
-    return tokenPromise.then(async (tokenResponse) => {
-      const token = tokenResponse.access_token;
-      if (!token) throw new Error("Google did not return an access token.");
-      const grantedGmail = tokenResponse.scope?.includes("gmail") ?? true;
-      const grantedCalendar = tokenResponse.scope?.includes("calendar") ?? true;
-      if (!grantedGmail && !grantedCalendar) {
-        throw new Error("Gmail and Calendar permissions were not granted.");
-      }
-      const userInfo = await getGoogleUserInfo(token);
-      rememberToken(userInfo.sub, tokenResponse);
-      tokenRef.current = token;
-      setAccessToken(token);
-      setExpired(false);
-      setActiveGoogleSub(userInfo.sub);
-      const calendarList = grantedCalendar ? await listGoogleCalendars(token) : [];
-      setCalendars(calendarList);
-      const existing = connections.find((item) => item.google_sub === userInfo.sub);
-      const selected =
-        existing?.calendar_id && calendarList.some((item) => item.id === existing.calendar_id)
-          ? calendarList.find((item) => item.id === existing.calendar_id)
-          : calendarList.find((item) => item.primary) ?? calendarList[0];
-      await persistConnection({
-        googleSub: userInfo.sub,
-        googleEmail: userInfo.email,
-        gmailStatus: grantedGmail ? "connected" : "error",
-        calendarStatus: grantedCalendar ? "connected" : "error",
-        calendarId: selected?.id ?? null,
-        calendarSummary: selected?.summary ?? null,
-        gmailLastError: grantedGmail ? null : "Gmail permission was not granted.",
-        calendarLastError: grantedCalendar ? null : "Calendar permission was not granted.",
-      });
-      try {
-        const pending = await readJson<{ items: unknown[] }>(
-          await fetch("/api/google/calendar?pending=1"),
-        );
-        setPendingCalendarCount(pending.items.length);
-      } catch {
-        setPendingCalendarCount(0);
-      }
-    }).catch((error) => {
-      const message = error instanceof Error ? error.message : "Google authorization failed.";
-      setError(message);
-      throw error;
+    startGoogleOAuth({
+      addAccount: options?.addAccount,
+      loginHint: options?.addAccount ? null : connection?.google_email,
     });
-  }, [clientId, connection, connections, persistConnection, rememberToken]);
+    return Promise.resolve();
+  }, [clientId, connection?.google_email]);
 
   const disconnect = useCallback(async (googleSub?: string) => {
-    if (tokenRef.current) revokeGoogleAccessToken(tokenRef.current);
     tokenRef.current = null;
     tokenScopeRef.current = null;
     setAccessToken(null);
     setTokenScope(null);
+    setExpired(false);
     clearStoredGoogleToken(userId);
     await persistConnection({
       googleSub: googleSub ?? connection?.google_sub,
@@ -530,58 +513,76 @@ export function GoogleSessionProvider({
     if (!clientId) {
       throw new Error("NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.");
     }
-    if (hasGmailSendScope(tokenScopeRef.current) && tokenRef.current) {
-      if (!connection?.google_email) throw new Error("Connect Google before sending.");
+    if (hasGmailSendScope(tokenScopeRef.current) && tokenRef.current && connection) {
       return {
         token: tokenRef.current,
         email: connection.google_email,
         googleSub: connection.google_sub,
       };
     }
-    await waitForGis();
-    const tokenResponse = await requestGoogleAccessToken({
-      clientId,
-      scope: GOOGLE_SCOPE_STRING,
-      prompt: "consent",
-      loginHint: connection?.google_email,
-    });
-    const token = tokenResponse.access_token;
-    if (!token) throw new Error("Google did not return an access token.");
-    if (!hasGmailSendScope(tokenResponse.scope)) {
-      throw new Error("Gmail send permission was not granted.");
+    try {
+      const session = await applyServerSession(await fetchGoogleOAuthSession(connection?.google_sub));
+      if (!hasGmailSendScope(session.scope)) {
+        startGoogleOAuth({ loginHint: session.googleEmail });
+        throw new Error("Redirecting to Google to grant Gmail send.");
+      }
+      return {
+        token: session.accessToken,
+        email: session.googleEmail,
+        googleSub: session.googleSub,
+      };
+    } catch (error) {
+      if (error instanceof GoogleReauthNeededError) {
+        startGoogleOAuth({ loginHint: connection?.google_email });
+      }
+      throw error;
     }
-    const userInfo = await getGoogleUserInfo(token);
-    rememberToken(userInfo.sub, tokenResponse);
-    tokenRef.current = token;
-    setAccessToken(token);
-    setExpired(false);
-    setActiveGoogleSub(userInfo.sub);
-    return { token, email: userInfo.email, googleSub: userInfo.sub };
-  }, [clientId, connection, rememberToken]);
+  }, [applyServerSession, clientId, connection]);
 
   useEffect(() => {
     if (restoreAttempted.current) return;
     restoreAttempted.current = true;
     void (async () => {
-      const stored = readStoredGoogleToken(userId);
-      if (canHydrateStoredGoogleToken(stored, initialConnections) && stored) {
-        try {
-          tokenScopeRef.current = stored.scope ?? null;
-          setTokenScope(stored.scope ?? null);
-          await hydrateToken(stored.accessToken, stored.googleSub);
-          setRestoring(false);
-          return;
-        } catch {
-          // Access token was rejected; keep the identity and try silent GIS.
+      const params = new URLSearchParams(window.location.search);
+      const oauthError =
+        params.get("google_oauth") === "error"
+          ? params.get("google_oauth_error") || "Google sign-in failed."
+          : null;
+      if (oauthError) setError(oauthError);
+      if (params.has("google_oauth")) {
+        params.delete("google_oauth");
+        params.delete("google_oauth_error");
+        const clean = `${window.location.pathname}${params.size ? `?${params}` : ""}${window.location.hash}`;
+        window.history.replaceState(null, "", clean);
+      }
+      const restorable = restorableGoogleConnections(initialConnections);
+      const preferred =
+        restorable.find((row) => row.has_offline_grant) ?? restorable[0];
+      if (!preferred) {
+        if (
+          !oauthError &&
+          initialConnections.some((row) =>
+            row.gmail_status !== "disconnected" || row.calendar_status !== "disconnected"
+          )
+        ) {
+          setExpired(true);
+          setError("Connect Google once more so the CRM can stay signed in.");
         }
+        setRestoring(false);
+        return;
       }
-
-      if (shouldClearStoredGoogleTokenOnRestore(stored, initialConnections)) {
-        clearStoredGoogleToken(userId);
+      try {
+        await applyServerSession(await fetchGoogleOAuthSession(preferred.google_sub));
+      } catch (error) {
+        if (error instanceof GoogleReauthNeededError) {
+          setExpired(true);
+          setError(error.message);
+        }
+      } finally {
+        setRestoring(false);
       }
-      setRestoring(false);
     })();
-  }, [hydrateToken, initialConnections, userId]);
+  }, [applyServerSession, initialConnections]);
 
   const backfillGmail = useCallback(async () => {
     setError(null);
@@ -1023,7 +1024,6 @@ export function GoogleSessionProvider({
 
   return (
     <GoogleSessionContext.Provider value={value}>
-      <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
       {children}
     </GoogleSessionContext.Provider>
   );

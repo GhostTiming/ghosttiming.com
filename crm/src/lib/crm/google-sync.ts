@@ -25,7 +25,18 @@ export type GoogleConnectionRow = {
   calendar_status: string;
   calendar_last_error: string | null;
   calendar_last_synced_at: string | null;
+  has_offline_grant: boolean;
 };
+
+export const GOOGLE_PUBLIC_CONNECTION_SELECT = `
+  SELECT id::text, user_id::text, google_sub, google_email, gmail_history_id,
+         gmail_last_synced_at::text, gmail_backfill_completed_at::text,
+         gmail_status::text, gmail_last_error, calendar_id, calendar_summary,
+         calendar_status::text, calendar_last_error,
+         calendar_last_synced_at::text,
+         (google_refresh_token_ciphertext IS NOT NULL) AS has_offline_grant
+  FROM crm.google_connections
+`;
 
 export type IngestGmailMessage = Omit<CanonicalGmailMessage, "involvedEmails"> &
   EmailMatchTargets;

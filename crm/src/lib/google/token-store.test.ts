@@ -96,6 +96,11 @@ describe("Google token store", () => {
         { ...micheConnection, google_sub: "someone-else" },
       ]),
     ).toBe(true);
+    expect(
+      shouldClearStoredGoogleTokenOnRestore(stored, [
+        { ...micheConnection, has_offline_grant: false },
+      ]),
+    ).toBe(true);
   });
 
   it("uses the stored Google account email as the silent login hint", () => {

@@ -1,18 +1,11 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/db";
 import { requireCrmUser } from "@/lib/auth/server";
-import type { GoogleConnectionRow } from "@/lib/crm/google-sync";
-
-const CONNECTION_SELECT = `
-  SELECT id::text, user_id::text, google_sub, google_email, gmail_history_id,
-         gmail_last_synced_at::text, gmail_backfill_completed_at::text,
-         gmail_status::text, gmail_last_error, calendar_id, calendar_summary,
-         calendar_status::text, calendar_last_error,
-         calendar_last_synced_at::text
-  FROM crm.google_connections
-  WHERE user_id = $1::uuid
-  ORDER BY connected_at ASC
-`;
+import {
+  GOOGLE_PUBLIC_CONNECTION_SELECT,
+  type GoogleConnectionRow,
+} from "@/lib/crm/google-sync";
+import { disconnectGoogleOfflineGrant } from "@/lib/google/google-tokens";
 
 function rethrowNextControlFlow(error: unknown) {
   if (
@@ -36,7 +29,12 @@ function jsonError(error: unknown, fallback: string) {
 export async function GET() {
   try {
     const user = await requireCrmUser();
-    const result = await getPool().query<GoogleConnectionRow>(CONNECTION_SELECT, [user.id]);
+    const result = await getPool().query<GoogleConnectionRow>(
+      `${GOOGLE_PUBLIC_CONNECTION_SELECT}
+       WHERE user_id = $1::uuid
+       ORDER BY connected_at ASC`,
+      [user.id],
+    );
     return NextResponse.json({
       clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "",
       connections: result.rows,
@@ -66,19 +64,7 @@ export async function PUT(request: Request) {
       disconnect?: boolean;
     };
     if (body.disconnect) {
-      await getPool().query(
-        `
-          UPDATE crm.google_connections
-          SET gmail_status = 'disconnected',
-              calendar_status = 'disconnected',
-              gmail_last_error = NULL,
-              calendar_last_error = NULL,
-              updated_at = now()
-          WHERE user_id = $1::uuid
-            AND ($2::text IS NULL OR google_sub = $2)
-        `,
-        [user.id, body.googleSub ?? null],
-      );
+      await disconnectGoogleOfflineGrant(user.id, body.googleSub ?? null);
       return NextResponse.json({ ok: true });
     }
     if (!body.googleSub || !body.googleEmail) {

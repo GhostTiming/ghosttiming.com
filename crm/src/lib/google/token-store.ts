@@ -12,6 +12,7 @@ export type GoogleConnectionHint = {
   google_email: string;
   gmail_status: string;
   calendar_status: string;
+  has_offline_grant?: boolean;
 };
 
 function storageKey(userId: string) {
@@ -69,6 +70,7 @@ export function storedTokenFromResponse(
 }
 
 export function isRestorableGoogleConnection(connection: GoogleConnectionHint) {
+  if (connection.has_offline_grant === false) return false;
   return (
     connection.gmail_status !== "disconnected" ||
     connection.calendar_status !== "disconnected"

@@ -894,6 +894,12 @@ export const googleConnections = crm.table("google_connections", {
   calendarLastSyncedAt: timestamp("calendar_last_synced_at", {
     withTimezone: true,
   }),
+  googleRefreshTokenCiphertext: text("google_refresh_token_ciphertext"),
+  googleAccessTokenCiphertext: text("google_access_token_ciphertext"),
+  googleAccessTokenExpiresAt: timestamp("google_access_token_expires_at", {
+    withTimezone: true,
+  }),
+  googleGrantedScopes: text("google_granted_scopes"),
   connectedAt: timestamp("connected_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

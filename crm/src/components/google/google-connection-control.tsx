@@ -43,16 +43,19 @@ export function GoogleConnectionControl({
     work().then(() => router.refresh()).catch(() => undefined).finally(() => setBusy(null));
   }
 
-  const connected = Boolean(google.connection && google.accessToken);
+  const connected = Boolean(google.connection?.has_offline_grant && google.accessToken);
+  const needsOfflineLink = Boolean(google.connection && !google.connection.has_offline_grant);
   const label = google.progress?.label
     ? google.progress.label
     : google.restoring
       ? "Reconnecting Google…"
       : connected
         ? `Google · ${statusLabel(google.connection?.gmail_status, google.expired)}`
-        : google.connection
-          ? "Authorize Google"
-          : "Connect Google";
+        : needsOfflineLink || google.expired
+          ? "Finish Google link"
+          : google.connection
+            ? "Authorize Google"
+            : "Connect Google";
 
   const panel = (
         <section className={variant === "inline"
@@ -130,7 +133,7 @@ export function GoogleConnectionControl({
                   onClick={() => run("connect", () => google.connect())}
                   className="rounded-lg bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white"
                 >
-                  {connected ? "Reauthorize" : google.connection ? "Authorize this session" : "Connect Google"}
+                  {connected ? "Reconnect" : needsOfflineLink ? "Finish Google link" : google.connection ? "Authorize this session" : "Connect Google"}
                 </button>
                 <button
                   type="button"
@@ -176,8 +179,9 @@ export function GoogleConnectionControl({
                 ) : null}
               </div>
               <p className="text-[11px] leading-snug text-slate-500">
-                Google opens a small popup. If nothing happens, allow popups for this site, or open the CRM in Chrome.
-                Add each Gmail account, then backfill while that account is authorized.
+                Connect Google once. The CRM stores an encrypted lasting key in Neon and
+                refreshes access in the background, so you should not have to sign in every hour.
+                Google will ask you to accept Gmail and Calendar permissions on that first connect.
               </p>
             </div>
           )}
