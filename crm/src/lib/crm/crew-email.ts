@@ -312,8 +312,8 @@ export function formatCrewAwardsAndAgeGroups(races: CrewEmailRace[]) {
     const ageGroups = formatAgeGroupsField(scoring.ageGroups);
     const awards = formatAwardsField(scoring.awards);
     const lines = [heading];
-    if (ageGroups) lines.push(`Age groups:\n${ageGroups}`);
     if (awards) lines.push(`Awards:\n${awards}`);
+    if (ageGroups) lines.push(`Age groups:\n${ageGroups}`);
     if (scoring.notes?.trim()) lines.push(scoring.notes.trim());
     if (lines.length === 1) lines.push("No age groups or awards entered.");
     return lines.join("\n");

@@ -69,7 +69,7 @@ describe("crew email field formatters", () => {
           },
         },
       ]),
-    ).toMatch(/Age groups:[\s\S]*Female[\s\S]*Awards:[\s\S]*Overall/);
+    ).toMatch(/Awards:[\s\S]*Overall[\s\S]*Age groups:[\s\S]*Female/);
     expect(formatCrewNotesLabel("remote")).toBe("Remote crew notes");
     expect(formatTimerPhone("4076872570")).toBe("(407) 687-2570");
     expect(timerPhoneHref("4076872570")).toBe("+14076872570");
