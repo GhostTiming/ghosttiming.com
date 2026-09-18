@@ -3,6 +3,7 @@
 import { Loader2 } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { formSubmitLeavesCurrentPage } from "@/lib/crm/navigation-overlay";
 
 function isInternalNavigationClick(event: MouseEvent) {
   if (event.defaultPrevented) return false;
@@ -46,12 +47,24 @@ function NavigationProgressInner() {
     function onSubmit(event: SubmitEvent) {
       const form = event.target;
       if (!(form instanceof HTMLFormElement)) return;
-      if (form.method.toLowerCase() === "dialog") return;
-      const action = form.getAttribute("action") ?? window.location.pathname;
-      if (action.startsWith("http") && !action.startsWith(window.location.origin)) {
-        return;
+      const submitter = event.submitter;
+      const submitterAction =
+        submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement
+          ? submitter.getAttribute("formaction")
+          : null;
+      if (
+        formSubmitLeavesCurrentPage(
+          form,
+          {
+            origin: window.location.origin,
+            pathname: window.location.pathname,
+            search: window.location.search,
+          },
+          submitterAction,
+        )
+      ) {
+        setPending(true);
       }
-      setPending(true);
     }
     function onNavigate() {
       setPending(true);
@@ -68,7 +81,7 @@ function NavigationProgressInner() {
 
   useEffect(() => {
     if (!pending) return;
-    const timeout = window.setTimeout(() => setPending(false), 15_000);
+    const timeout = window.setTimeout(() => setPending(false), 8_000);
     return () => window.clearTimeout(timeout);
   }, [pending]);
 

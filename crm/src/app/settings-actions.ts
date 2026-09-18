@@ -9,6 +9,10 @@ import {
   restoreDefaultCrewEmailTemplate,
   saveUserEmailTemplate,
 } from "@/lib/crm/email-templates";
+import {
+  deleteUserEmailSignature,
+  saveUserEmailSignature,
+} from "@/lib/crm/email-signatures";
 import { displayUserName } from "@/lib/crm/user-profile";
 import { ensureUserGoogleDefaults } from "@/lib/google/google-tokens";
 
@@ -95,6 +99,40 @@ export async function restoreDefaultCrewEmailTemplateAction() {
   const template = await restoreDefaultCrewEmailTemplate(user.id);
   refreshSettings();
   return { template };
+}
+
+export async function saveEmailSignatureAction(input: {
+  id?: string;
+  name: string;
+  bodyHtml: string;
+  isDefault: boolean;
+}) {
+  const user = await requireCrmUser();
+  const parsed = z
+    .object({
+      id: z.string().uuid().optional(),
+      name: z.string().trim().min(1).max(120),
+      bodyHtml: z.string().max(200_000),
+      isDefault: z.boolean(),
+    })
+    .parse(input);
+  try {
+    const signature = await saveUserEmailSignature(user.id, parsed);
+    refreshSettings();
+    return { signature };
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new Error("You already have a signature with that name.");
+    }
+    throw error;
+  }
+}
+
+export async function deleteEmailSignatureAction(signatureId: string) {
+  const user = await requireCrmUser();
+  const id = z.string().uuid().parse(signatureId);
+  await deleteUserEmailSignature(user.id, id);
+  refreshSettings();
 }
 
 export async function updateGoogleAccountDefaultsAction(formData: FormData) {

@@ -28,6 +28,7 @@ import {
 import { parseGmailMessage } from "@/lib/google/gmail-parse";
 import {
   createGoogleCalendarEvent,
+  createGoogleCalendarEventWithFallback,
   listGoogleCalendars,
   updateGoogleCalendarEvent,
   type GoogleCalendarEventWrite,
@@ -934,19 +935,23 @@ export function GoogleSessionProvider({
           calendarId: string | null;
           eventId: string | null;
           event: Parameters<typeof createGoogleCalendarEvent>[2] | null;
-        }>(await fetch(`/api/google/calendar?bookingId=${bookingId}`));
+        }>(await fetch(`/api/google/calendar?bookingId=${encodeURIComponent(bookingId)}`));
         if (payload.eventId) return;
         if (!payload.event) {
           throw new Error("Add arrival and departure times before creating a Calendar event.");
         }
         const calendarId = payload.calendarId || calendarConnection.calendar_id || "primary";
-        const created = await createGoogleCalendarEvent(token, calendarId, payload.event);
-        if (!created.id) throw new Error("Google Calendar did not return an event ID.");
+        const created = await createGoogleCalendarEventWithFallback(
+          token,
+          calendarId,
+          payload.event,
+        );
+        if (!created.event.id) throw new Error("Google Calendar did not return an event ID.");
         await persistCalendarResult({
           bookingId,
-          googleCalendarId: calendarId,
-          googleEventId: created.id,
-          htmlLink: created.htmlLink,
+          googleCalendarId: created.calendarId,
+          googleEventId: created.event.id,
+          htmlLink: created.event.htmlLink,
           syncStatus: "synced",
           lastError: null,
         });

@@ -800,6 +800,28 @@ export const emailTemplates = crm.table(
   ],
 );
 
+export const emailSignatures = crm.table(
+  "email_signatures",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    bodyHtml: text("body_html").notNull().default(""),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("email_signatures_user_name_uidx").on(table.userId, table.name),
+    uniqueIndex("email_signatures_user_default_uidx")
+      .on(table.userId)
+      .where(sql`${table.isDefault}`),
+    index("email_signatures_user_idx").on(table.userId),
+  ],
+);
+
 export const activities = crm.table(
   "activities",
   {

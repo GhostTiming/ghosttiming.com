@@ -76,6 +76,10 @@ import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
 import { uniqueNormalizedEmails } from "@/lib/google/email-match";
 import { parseRaceScoring } from "@/lib/crm/race-scoring";
+import {
+  asSignatureSummaries,
+  listUserEmailSignatures,
+} from "@/lib/crm/email-signatures";
 import { asTemplateSummaries, listUserEmailTemplates } from "@/lib/crm/email-templates";
 
 type BookingDetail = {
@@ -268,7 +272,10 @@ export default async function BookingDetailPage({
   const canViewFinancials = access.canViewFinancials(bookingRow.direct_client_id);
   const booking = redactBookingFinancials(bookingRow, canViewFinancials);
   const catalogOverviewPromise = booking.catalog_race_listing_id
-    ? getCatalogOverview(booking.catalog_race_listing_id, booking.race_date)
+    ? getCatalogOverview(
+        booking.catalog_race_listing_id,
+        booking.race_date_local ?? booking.race_date,
+      )
     : Promise.resolve(null);
   const catalogContextPromise =
     !booking.catalog_race_listing_id
@@ -283,7 +290,7 @@ export default async function BookingDetailPage({
         )
       : Promise.resolve(null);
   const [stages, activities, tasks, races, coursePoints, crew, prepItems, people,
-    crewPeople, organizations, users, catalogOverview, catalogContext, calendarLink, emailTemplates] =
+    crewPeople, organizations, users, catalogOverview, catalogContext, calendarLink, emailTemplates, emailSignatures] =
     await Promise.all([
     getPool().query<{ key: string; name: string }>(
       `
@@ -483,6 +490,7 @@ export default async function BookingDetailPage({
       [bookingId],
     ),
     listUserEmailTemplates(access.user.id),
+    listUserEmailSignatures(access.user.id),
   ]);
   const sourceEmails = booking.source_prospect_id
     ? await getPool().query<{ email: string }>(
@@ -634,6 +642,7 @@ export default async function BookingDetailPage({
           link={calendarLink.rows[0] ?? null}
           canCreate={Boolean(calendarUrl)}
           templateUrl={calendarUrl}
+          dateMismatch={catalogOverview?.dateMismatch}
         />
       </header>
 
@@ -690,6 +699,7 @@ export default async function BookingDetailPage({
                 }}
                 tags={catalogOverview.tags}
                 offerings={catalogOverview.offerings}
+                dateMismatch={catalogOverview.dateMismatch}
                 variant="embedded"
                 resync={{
                   bookingId: booking.id,
@@ -975,6 +985,7 @@ export default async function BookingDetailPage({
                     notes: member.notes,
                   }))}
                   emailTemplates={asTemplateSummaries(emailTemplates)}
+                  emailSignatures={asSignatureSummaries(emailSignatures)}
                   people={crewPeople.rows.map((person) => ({
                     id: person.id,
                     displayName: person.display_name,

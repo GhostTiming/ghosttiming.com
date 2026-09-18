@@ -12,6 +12,7 @@ import { MailtoLink } from "@/components/crm-links";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { CrewEmailPanel } from "@/components/crew-email-panel";
 import { filterCrewSearchResults } from "@/lib/crm/crew";
+import type { EmailSignatureSummary } from "@/lib/crm/email-signatures";
 import { formatRecipientField } from "@/lib/crm/email-compose";
 import type { EmailTemplateSummary } from "@/lib/crm/email-templates";
 
@@ -70,6 +71,7 @@ export function CrewAssignmentPanel({
   clientOrganizationId,
   clientOrganizationName,
   emailTemplates,
+  emailSignatures = [],
 }: {
   bookingId: string;
   occurrenceId: string;
@@ -78,6 +80,7 @@ export function CrewAssignmentPanel({
   clientOrganizationId: string;
   clientOrganizationName: string;
   emailTemplates: EmailTemplateSummary[];
+  emailSignatures: EmailSignatureSummary[];
 }) {
   const [query, setQuery] = useState("");
   const [addingMember, setAddingMember] = useState(false);
@@ -108,6 +111,7 @@ export function CrewAssignmentPanel({
       <CrewEmailPanel
         bookingId={bookingId}
         templates={emailTemplates}
+        signatures={emailSignatures}
         defaultTo={formatRecipientField(
           assigned.flatMap((member) => (member.email ? [member.email] : [])),
         )}

@@ -10,6 +10,7 @@ import {
   saveProspectEmailDraftAction,
 } from "@/app/email-actions";
 import { useGoogleSession } from "@/components/google/google-session-provider";
+import { EmailSignaturePicker } from "@/components/email-signature-picker";
 import {
   composeWarningForDraft,
   formatRecipientField,
@@ -17,6 +18,11 @@ import {
   type EmailDraftRow,
   type ProspectEmailThread,
 } from "@/lib/crm/email-compose";
+import {
+  appendEmailSignature,
+  defaultSignatureId,
+} from "@/lib/crm/email-signature-html";
+import type { EmailSignatureSummary } from "@/lib/crm/email-signatures";
 import { sendGmailMessage, getGmailMessage } from "@/lib/google/gmail-api";
 import { buildGmailMime, encodeGmailRaw, replySubject } from "@/lib/google/gmail-mime";
 import { parseGmailMessage } from "@/lib/google/gmail-parse";
@@ -46,6 +52,7 @@ export function LeadEmailCard({
   initialDraftId,
   variant = "module",
   collapsible = false,
+  signatures = [],
 }: {
   prospectId: string;
   raceName: string;
@@ -57,6 +64,7 @@ export function LeadEmailCard({
   initialDraftId?: string | null;
   variant?: "module" | "workspace";
   collapsible?: boolean;
+  signatures?: EmailSignatureSummary[];
 }) {
   const google = useGoogleSession();
   const router = useRouter();
@@ -78,6 +86,7 @@ export function LeadEmailCard({
   const [busy, setBusy] = useState<"save" | "send" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [signatureId, setSignatureId] = useState(() => defaultSignatureId(signatures));
   const skipAutosave = useRef(true);
   const openedInitial = useRef(false);
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -260,12 +269,17 @@ export function LeadEmailCard({
         await google.connect();
       }
       const { token, email: from, googleSub } = await google.ensureGmailSendAccess();
+      const composed = appendEmailSignature({
+        bodyText: prepared.bodyText,
+        signatureHtml: signatures.find((item) => item.id === signatureId)?.body_html,
+      });
       const mime = buildGmailMime({
         from,
         to: prepared.toAddresses,
         cc: prepared.ccAddresses,
         subject: prepared.subject,
-        body: prepared.bodyText,
+        body: composed.text,
+        html: composed.html,
         inReplyTo: prepared.inReplyToRfcMessageId,
         references: prepared.inReplyToRfcMessageId,
       });
@@ -400,6 +414,11 @@ export function LeadEmailCard({
               className={field}
             />
           </label>
+          <EmailSignaturePicker
+            signatures={signatures}
+            value={signatureId}
+            onChange={setSignatureId}
+          />
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
           {status ? <p className="text-sm text-emerald-800">{status}</p> : null}
           <div className="flex flex-wrap gap-2">

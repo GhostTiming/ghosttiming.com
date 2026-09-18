@@ -324,6 +324,59 @@ export function offeringsMatchingOccurrenceDate<T extends CatalogOfferingStartLi
   return dated.length ? [] : visible;
 }
 
+export type CatalogRaceDateMismatch = {
+  bookingDate: string;
+  listingDates: string[];
+};
+
+export function formatCatalogDayLabel(isoDay: string) {
+  const match = isoDay.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return isoDay;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+}
+
+export function joinCatalogDayLabels(dates: string[]) {
+  if (dates.length <= 1) return dates[0] ?? "";
+  if (dates.length === 2) return `${dates[0]} and ${dates[1]}`;
+  return `${dates.slice(0, -1).join(", ")}, and ${dates[dates.length - 1]}`;
+}
+
+export function catalogOfferingDay(offering: CatalogOfferingStartLike) {
+  return (
+    catalogDatePart(offering.start_time_raw ?? offering.startTimeRaw) ??
+    catalogDatePart(offering.starts_at ?? offering.startsAt)
+  );
+}
+
+export function catalogRaceDateMismatch(
+  offerings: readonly CatalogOfferingStartLike[],
+  raceDate?: string | Date | null,
+): CatalogRaceDateMismatch | null {
+  if (offeringsMatchingOccurrenceDate(offerings, raceDate).length) return null;
+  const bookingDay = catalogDatePart(raceDate);
+  if (!bookingDay) return null;
+  const listingDays = [
+    ...new Set(
+      excludeVirtualCatalogOfferings(offerings)
+        .map(catalogOfferingDay)
+        .filter((day): day is string => Boolean(day)),
+    ),
+  ];
+  if (!listingDays.length) return null;
+  return {
+    bookingDate: formatCatalogDayLabel(bookingDay),
+    listingDates: listingDays.map(formatCatalogDayLabel),
+  };
+}
+
+export function catalogRaceDateMismatchMessage(mismatch: CatalogRaceDateMismatch) {
+  return `The online listing’s races are on ${joinCatalogDayLabels(mismatch.listingDates)}, but this booking is dated ${mismatch.bookingDate}. Refresh will not copy those races, and Google Calendar stays unavailable, until the dates match. Change Event details, then Refresh from online listing, or add race start times manually.`;
+}
+
 export async function loadCatalogOfferingsForListing(
   client: PoolClient,
   listingId: string,

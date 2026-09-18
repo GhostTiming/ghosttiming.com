@@ -162,8 +162,8 @@ export function formatCalendarHardwareFields(input: {
 function raceDescription(race: CalendarRace) {
   return [
     formatCalendarRaceHeading(race),
-    optionalCalendarField("Age Groups", race.ageGroups),
     optionalCalendarField("Awards", race.awards),
+    optionalCalendarField("Age Groups", race.ageGroups),
     optionalCalendarField("Notes", race.notes),
   ]
     .filter(Boolean)

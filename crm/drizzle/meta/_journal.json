@@ -204,6 +204,13 @@
       "when": 1789693000000,
       "tag": "0028_task_calendar_links",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789700000000,
+      "tag": "0029_email_signatures",
+      "breakpoints": true
     }
   ]
 }

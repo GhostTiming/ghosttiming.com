@@ -4,11 +4,13 @@ import {
   updateGoogleAccountDefaultsAction,
   updateUserProfileAction,
 } from "@/app/settings-actions";
+import { EmailSignatureManager } from "@/components/email-signature-manager";
 import { EmailTemplateManager } from "@/components/email-template-manager";
 import { GoogleConnectionControl } from "@/components/google/google-connection-control";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { getPool } from "@/db";
 import { getAccessContext } from "@/lib/auth/server";
+import { listUserEmailSignatures } from "@/lib/crm/email-signatures";
 import { listUserEmailTemplates } from "@/lib/crm/email-templates";
 import {
   GOOGLE_PUBLIC_CONNECTION_SELECT,
@@ -40,7 +42,10 @@ export default async function SettingsPage() {
     linked.find((row) => row.google_sub === access.user.defaultCalendarGoogleSub)?.google_sub ??
     linked[0]?.google_sub ??
     "";
-  const emailTemplates = await listUserEmailTemplates(access.user.id);
+  const [emailTemplates, emailSignatures] = await Promise.all([
+    listUserEmailTemplates(access.user.id),
+    listUserEmailSignatures(access.user.id),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -55,7 +60,7 @@ export default async function SettingsPage() {
         <p className="mt-1 text-slate-600">
           Your name and phone are used across the CRM. Linked Google accounts can
           have separate defaults for sending email and for Calendar. Crew email
-          templates live on this page too.
+          templates and signatures live on this page too.
         </p>
       </header>
 
@@ -103,6 +108,7 @@ export default async function SettingsPage() {
       </form>
 
       <EmailTemplateManager templates={emailTemplates} />
+      <EmailSignatureManager signatures={emailSignatures} />
 
       {access.canAccessGoogle ? (
         <section id="google" className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

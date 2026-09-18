@@ -55,11 +55,11 @@ describe("Google Calendar booking links", () => {
     expect(parsed.searchParams.get("details")).not.toContain("seth@example.com");
     expect(parsed.searchParams.get("details")).toContain("5K @ 8:00AM Start");
     expect(parsed.searchParams.get("details")).toContain(
-      "5K @ 8:00AM Start\n\nAge Groups:",
+      "5K @ 8:00AM Start\n\nAwards:",
     );
-    expect(parsed.searchParams.get("details")).toContain("Age Groups:\nOverall");
+    expect(parsed.searchParams.get("details")).toContain("Awards:\nOverall M/F");
     expect(parsed.searchParams.get("details")).toContain(
-      "Age Groups:\nOverall\n0-9\n10-14\n\nAwards:",
+      "Awards:\nOverall M/F\n\nAge Groups:",
     );
     expect(parsed.searchParams.get("add")).toBe("seth@example.com");
   });
@@ -185,8 +185,8 @@ describe("calendar race copy", () => {
         "Race Registration:\nhttps://example.com/register",
         "Crew:\nMichelle Splitstone-Laloggia · (407) 687-2570\nSeth Doe (Lead) · 555-0100\nChris Batista",
         "Race(s):\n5K @ 8:00AM Start",
-        "Age Groups:\nOverall\n0-9\n10-14",
         "Awards:\nOverall M/F",
+        "Age Groups:\nOverall\n0-9\n10-14",
       ].join("\n\n"),
     );
   });
@@ -211,8 +211,8 @@ describe("calendar race copy", () => {
         "Race Registration:\nhttps://example.com/register",
         "Crew:\nMichelle Splitstone-Laloggia (Owner) · (407) 687-2570",
         "Race(s):\n5K @ 8:00AM Start",
-        "Age Groups:\nOverall\n0-9\n10-14",
         "Awards:\nOverall M/F",
+        "Age Groups:\nOverall\n0-9\n10-14",
       ].join("\n\n"),
     );
   });
@@ -229,8 +229,8 @@ describe("calendar race copy", () => {
         "Race Registration:\nhttps://example.com/register",
         "Crew:\nMichelle Splitstone-Laloggia · (407) 687-2570\nSeth Doe (Lead) · 555-0100\nChris Batista",
         "Race(s):\n5K @ 8:00AM Start",
-        "Age Groups:\nOverall\n0-9\n10-14",
         "Awards:\nOverall M/F",
+        "Age Groups:\nOverall\n0-9\n10-14",
         "Event Name to Program:\nMTG5K",
         "Start / Split / Finish Locations and Point Name to Program:\nStart/Finish • Point name: MAIN",
       ].join("\n\n"),

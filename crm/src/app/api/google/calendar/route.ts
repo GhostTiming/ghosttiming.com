@@ -8,9 +8,12 @@ import {
   loadCalendarPayload,
   loadPendingCalendarPayloads,
 } from "@/lib/crm/google-queries";
-import { rethrowNextControlFlow } from "@/lib/next-control-flow";
+import { isNextNotFoundError, rethrowNextControlFlow } from "@/lib/next-control-flow";
 
 function jsonError(error: unknown, fallback: string, status = 500) {
+  if (isNextNotFoundError(error)) {
+    return NextResponse.json({ error: "Booking not found." }, { status: 404 });
+  }
   rethrowNextControlFlow(error);
   const message = error instanceof Error ? error.message : fallback;
   return NextResponse.json({ error: message }, { status });

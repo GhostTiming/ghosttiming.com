@@ -20,6 +20,7 @@ import {
   filePastProspects,
 } from "./past-events";
 import {
+  catalogRaceDateMismatch,
   offeringsMatchingOccurrenceDate,
   preferredCatalogEditionSql,
 } from "./race-operations";
@@ -914,6 +915,7 @@ export async function getCatalogOverview(
     listing: listing.rows[0] ?? null,
     tags: tags.rows,
     offerings: offeringsMatchingOccurrenceDate(offerings.rows, raceDate),
+    dateMismatch: catalogRaceDateMismatch(offerings.rows, raceDate),
   };
 }
 

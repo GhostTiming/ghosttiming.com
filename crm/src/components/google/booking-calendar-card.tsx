@@ -3,6 +3,10 @@
 import { CalendarPlus, ExternalLink } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import {
+  catalogRaceDateMismatchMessage,
+  type CatalogRaceDateMismatch,
+} from "@/lib/crm/race-operations";
 import { useOptionalGoogleSession } from "./google-session-provider";
 
 export type BookingCalendarLink = {
@@ -35,11 +39,13 @@ export function BookingCalendarCard({
   link,
   canCreate,
   templateUrl,
+  dateMismatch,
 }: {
   bookingId: string;
   link: BookingCalendarLink;
   canCreate: boolean;
   templateUrl: string | null;
+  dateMismatch?: CatalogRaceDateMismatch | null;
 }) {
   const google = useOptionalGoogleSession();
   const router = useRouter();
@@ -151,7 +157,12 @@ export function BookingCalendarCard({
           </a>
         ) : null}
       </div>
-      {!canCreate && !link ? (
+      {!canCreate && !link && dateMismatch ? (
+        <p className="text-sm text-amber-200">
+          {catalogRaceDateMismatchMessage(dateMismatch)}
+        </p>
+      ) : null}
+      {!canCreate && !link && !dateMismatch ? (
         <p className="text-sm text-slate-400">
           Add race start times and durations to enable Google Calendar.
         </p>

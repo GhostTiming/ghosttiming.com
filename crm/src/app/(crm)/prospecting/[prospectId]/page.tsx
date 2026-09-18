@@ -62,6 +62,7 @@ import {
   listProspectEmailDrafts,
   listProspectEmailMessages,
 } from "@/lib/crm/email-compose";
+import { asSignatureSummaries, listUserEmailSignatures } from "@/lib/crm/email-signatures";
 import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
 
@@ -116,7 +117,7 @@ export default async function ProspectDetailPage({
   const directClients = organizations.rows.filter(
     (organization) => organization.is_direct_client,
   );
-  const [users, people, emailDrafts, emailMessages, googleConnection] = await Promise.all([
+  const [users, people, emailDrafts, emailMessages, googleConnection, emailSignatures] = await Promise.all([
     getPool().query<{ id: string; name: string }>(
       `SELECT id::text, name FROM crm.users WHERE is_active ORDER BY name`,
     ),
@@ -133,6 +134,7 @@ export default async function ProspectDetailPage({
        LIMIT 1`,
       [user.id],
     ),
+    listUserEmailSignatures(user.id),
   ]);
   const emailThreads = groupMessagesIntoThreads(
     emailMessages,
@@ -393,6 +395,7 @@ export default async function ProspectDetailPage({
           threads={emailThreads}
           initialReplyThreadId={firstParam(replyThread)?.trim() || null}
           initialDraftId={firstParam(draftId)?.trim() || null}
+          signatures={asSignatureSummaries(emailSignatures)}
           variant="workspace"
           collapsible
         />

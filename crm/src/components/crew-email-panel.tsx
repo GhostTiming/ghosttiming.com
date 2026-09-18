@@ -8,12 +8,18 @@ import {
   recordCrewEmailSentAction,
   renderCrewEmailAction,
 } from "@/app/crew-email-actions";
+import { EmailSignaturePicker } from "@/components/email-signature-picker";
 import { useGoogleSession } from "@/components/google/google-session-provider";
 import {
   formatRecipientField,
   parseRecipientField,
 } from "@/lib/crm/email-compose";
 import { htmlToPlainText } from "@/lib/crm/email-placeholders";
+import {
+  appendEmailSignature,
+  defaultSignatureId,
+} from "@/lib/crm/email-signature-html";
+import type { EmailSignatureSummary } from "@/lib/crm/email-signatures";
 import type { EmailTemplateSummary } from "@/lib/crm/email-templates";
 import { sendGmailMessage, getGmailMessage } from "@/lib/google/gmail-api";
 import { buildGmailMime, encodeGmailRaw } from "@/lib/google/gmail-mime";
@@ -24,10 +30,12 @@ const field = "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
 export function CrewEmailPanel({
   bookingId,
   templates,
+  signatures = [],
   defaultTo,
 }: {
   bookingId: string;
   templates: EmailTemplateSummary[];
+  signatures?: EmailSignatureSummary[];
   defaultTo: string;
 }) {
   const router = useRouter();
@@ -45,6 +53,13 @@ export function CrewEmailPanel({
   const [busy, setBusy] = useState<"load" | "send" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [signatureId, setSignatureId] = useState(() => defaultSignatureId(signatures));
+  const selectedSignature = signatures.find((item) => item.id === signatureId) ?? null;
+  const previewHtml =
+    appendEmailSignature({
+      bodyHtml: html,
+      signatureHtml: selectedSignature?.body_html,
+    }).html ?? html;
 
   async function loadTemplate(nextTemplateId = templateId) {
     if (!nextTemplateId) {
@@ -99,13 +114,18 @@ export function CrewEmailPanel({
         await google.connect();
       }
       const { token, email: from, googleSub } = await google.ensureGmailSendAccess();
+      const composed = appendEmailSignature({
+        bodyText: htmlToPlainText(html),
+        bodyHtml: html,
+        signatureHtml: selectedSignature?.body_html,
+      });
       const mime = buildGmailMime({
         from,
         to: recipients,
         cc: parseRecipientField(cc),
         subject,
-        body: htmlToPlainText(html),
-        html,
+        body: composed.text,
+        html: composed.html ?? html,
       });
       const sent = await sendGmailMessage(token, { raw: encodeGmailRaw(mime) });
       if (!sent.id) throw new Error("Gmail did not return a message id.");
@@ -241,10 +261,16 @@ export function CrewEmailPanel({
             <iframe
               title="Crew email preview"
               sandbox=""
-              srcDoc={html || "<p style='font-family:sans-serif;color:#6b7280'>Choose a template to preview.</p>"}
+              srcDoc={previewHtml || "<p style='font-family:sans-serif;color:#6b7280'>Choose a template to preview.</p>"}
               className="mt-2 h-[28rem] w-full rounded-lg border border-slate-200 bg-white"
             />
           </div>
+          <EmailSignaturePicker
+            signatures={signatures}
+            value={signatureId}
+            onChange={setSignatureId}
+            preview={false}
+          />
           <details>
             <summary className="cursor-pointer text-xs font-semibold text-slate-600">
               Edit HTML
@@ -284,6 +310,9 @@ export function CrewEmailPanel({
             </button>
             <Link href="/settings#email-templates" className="px-3 py-2 text-sm font-semibold text-cyan-800">
               Manage templates
+            </Link>
+            <Link href="/settings#email-signatures" className="px-3 py-2 text-sm font-semibold text-cyan-800">
+              Manage signatures
             </Link>
           </div>
         </div>

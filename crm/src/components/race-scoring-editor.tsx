@@ -152,16 +152,7 @@ export function RaceScoringEditor({
       <CollapsibleCard nested title="Awards and age groups" defaultOpen={hasContent}>
         <div className="space-y-5">
           <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-sm font-bold text-slate-950">Age groups</h4>
-              <button
-                type="button"
-                onClick={() => update({ ageGroups: [...state.ageGroups, emptyAgeBand()] })}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-              >
-                Add age group
-              </button>
-            </div>
+            <h4 className="text-sm font-bold text-slate-950">Age groups</h4>
             <div className="space-y-3">
               {state.ageGroups.map((band, index) => (
                 <article
@@ -228,6 +219,13 @@ export function RaceScoringEditor({
               {!state.ageGroups.length ? (
                 <p className="text-sm text-slate-500">No age groups yet.</p>
               ) : null}
+              <button
+                type="button"
+                onClick={() => update({ ageGroups: [...state.ageGroups, emptyAgeBand()] })}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                Add age group
+              </button>
             </div>
             <details className="rounded-xl bg-slate-50 p-3">
               <summary className="cursor-pointer text-sm font-semibold text-slate-900">

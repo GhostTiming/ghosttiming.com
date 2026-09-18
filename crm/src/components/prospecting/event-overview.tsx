@@ -13,6 +13,10 @@ import {
   sortPerkKeys,
   sortVibeKeys,
 } from "@/lib/crm/catalog-display";
+import {
+  catalogRaceDateMismatchMessage,
+  type CatalogRaceDateMismatch,
+} from "@/lib/crm/race-operations";
 import type { CatalogOfferingRow, CatalogTagRow, ProspectDetail } from "@/lib/crm/queries";
 
 export type CatalogOverviewFields = {
@@ -119,6 +123,7 @@ export function CatalogEventOverview({
   resync,
   uncouple,
   collapsible = false,
+  dateMismatch,
 }: {
   listing: CatalogOverviewFields;
   tags: CatalogTagRow[];
@@ -127,6 +132,7 @@ export function CatalogEventOverview({
   resync?: { bookingId: string; occurrenceId: string };
   uncouple?: { bookingId?: string; prospectId?: string };
   collapsible?: boolean;
+  dateMismatch?: CatalogRaceDateMismatch | null;
 }) {
   const timezone = listing.timezone;
   const dateLabel = formatPart(listing.event_date, timezone, {
@@ -207,6 +213,12 @@ export function CatalogEventOverview({
       {listing.quick_take ? (
         <p className={`${variant === "standalone" ? "mt-4" : "mt-3"} rounded-xl bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700`}>
           {listing.quick_take}
+        </p>
+      ) : null}
+
+      {dateMismatch ? (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          {catalogRaceDateMismatchMessage(dateMismatch)}
         </p>
       ) : null}
 

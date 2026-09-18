@@ -1,5 +1,8 @@
-import { googleFetch } from "./google-fetch";
+import { googleFetch, GoogleAuthError } from "./google-fetch";
 import type { GoogleCalendarEventResource } from "@/lib/crm/google-calendar";
+
+export const GOOGLE_CALENDAR_MISSING_MESSAGE =
+  "That Google Calendar was not found. Open Settings, choose a calendar you can write to, then try again.";
 
 export type GoogleCalendarListEntry = {
   id: string;
@@ -84,6 +87,35 @@ export function createGoogleCalendarEvent(
       body: JSON.stringify(event),
     },
   );
+}
+
+export async function createGoogleCalendarEventWithFallback(
+  accessToken: string,
+  calendarId: string,
+  event: GoogleCalendarEventWrite,
+) {
+  try {
+    return {
+      event: await createGoogleCalendarEvent(accessToken, calendarId, event),
+      calendarId,
+    };
+  } catch (error) {
+    if (!(error instanceof GoogleAuthError) || error.status !== 404) throw error;
+    if (calendarId !== "primary") {
+      try {
+        return {
+          event: await createGoogleCalendarEvent(accessToken, "primary", event),
+          calendarId: "primary",
+        };
+      } catch (retry) {
+        if (retry instanceof GoogleAuthError && retry.status === 404) {
+          throw new Error(GOOGLE_CALENDAR_MISSING_MESSAGE);
+        }
+        throw retry;
+      }
+    }
+    throw new Error(GOOGLE_CALENDAR_MISSING_MESSAGE);
+  }
 }
 
 export function updateGoogleCalendarEvent(

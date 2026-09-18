@@ -9,6 +9,8 @@ import {
   parseCatalogClock,
   preferredCatalogEditionId,
   preferredCatalogEditionSql,
+  catalogRaceDateMismatch,
+  catalogRaceDateMismatchMessage,
 } from "./race-operations";
 
 describe("race duration defaults", () => {
@@ -131,6 +133,15 @@ describe("virtual catalog offerings", () => {
       offeringsMatchingOccurrenceDate(offerings, "2026-03-15").map((row) => row.name),
     ).toEqual(["Half Marathon"]);
     expect(offeringsMatchingOccurrenceDate(offerings, "2026-03-16")).toEqual([]);
+    expect(catalogRaceDateMismatch(offerings, "2026-03-16")).toEqual({
+      bookingDate: "March 16, 2026",
+      listingDates: ["March 14, 2026", "March 15, 2026"],
+    });
+    expect(catalogRaceDateMismatchMessage({
+      bookingDate: "December 24, 2026",
+      listingDates: ["December 12, 2026"],
+    })).toContain("December 12, 2026");
+    expect(catalogRaceDateMismatch(offerings, "2026-03-14")).toBeNull();
   });
 
   it("uses the earliest non-virtual start for booking date and time", () => {
