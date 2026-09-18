@@ -218,6 +218,13 @@
       "when": 1789707000000,
       "tag": "0030_cadence_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789764000000,
+      "tag": "0031_contact_method_opted_out",
+      "breakpoints": true
     }
   ]
 }

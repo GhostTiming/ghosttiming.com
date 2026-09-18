@@ -84,6 +84,7 @@ export const contactMethodStatus = crm.enum("contact_method_status", [
   "valid",
   "invalid",
   "unknown",
+  "opted_out",
 ]);
 export const contactExtractionStatus = crm.enum("contact_extraction_status", [
   "processed",

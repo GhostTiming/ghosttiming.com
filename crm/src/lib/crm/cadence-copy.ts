@@ -4,6 +4,13 @@ import { appendEmailSignature } from "./email-signature-html";
 export const CADENCE_TEMPLATE_KIND = "cadence";
 export const DEFAULT_CADENCE_NAME = "Cold Outreach — 4 Touch";
 
+export const CADENCE_SENDABLE_CONTACT_STATUSES = ["valid", "unknown"] as const;
+
+export function cadenceSendableContactStatusSql(alias = "method") {
+  const values = CADENCE_SENDABLE_CONTACT_STATUSES.map((status) => `'${status}'`).join(", ");
+  return `${alias}.status IN (${values})`;
+}
+
 export const ONSITE_FIRST_STATES = new Set(["FL"]);
 export const REMOTE_OR_ONSITE_STATES = new Set(["GA", "AL", "SC", "NC", "TN"]);
 

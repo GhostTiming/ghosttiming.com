@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addOffsetDays,
+  cadenceSendableContactStatusSql,
   cadenceStepLabel,
   greetingLine,
   isAutomaticReply,
@@ -74,6 +75,14 @@ describe("cadence reply filter", () => {
         bodyText: "We already have a timer.",
       }),
     ).toBe(false);
+  });
+});
+
+describe("cadence contact status SQL", () => {
+  it("only compares enum values that exist on contact_method_status", () => {
+    const sql = cadenceSendableContactStatusSql("method");
+    expect(sql).toBe("method.status IN ('valid', 'unknown')");
+    expect(sql).not.toContain("opted_out");
   });
 });
 

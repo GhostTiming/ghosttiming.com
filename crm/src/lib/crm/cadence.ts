@@ -14,6 +14,7 @@ import { ingestGmailMessages } from "./google-sync";
 import {
   DEFAULT_CADENCE_NAME,
   addOffsetDays,
+  cadenceSendableContactStatusSql,
   cadenceStepLabel,
   greetingLine,
   isAutomaticReply,
@@ -169,7 +170,7 @@ async function loadMergeContext(client: Queryable, prospectId: string) {
             WHERE (method.prospect_id = prospect.id
               OR (method.prospect_id IS NULL AND method.race_listing_id = prospect.race_listing_id))
               AND method.type = 'email'
-              AND method.status NOT IN ('invalid', 'opted_out')
+              AND ${cadenceSendableContactStatusSql("method")}
             UNION
             SELECT lower(person.email)
             WHERE person.email IS NOT NULL
@@ -282,7 +283,7 @@ export async function listPendingCadenceSends(input: {
             WHERE (method.prospect_id = prospect.id
               OR (method.prospect_id IS NULL AND method.race_listing_id = prospect.race_listing_id))
               AND method.type = 'email'
-              AND method.status NOT IN ('invalid', 'opted_out')
+              AND ${cadenceSendableContactStatusSql("method")}
             UNION
             SELECT lower(person.email)
             WHERE person.email IS NOT NULL

@@ -23,7 +23,7 @@ import {
 } from "@/app/cadence-actions";
 import { formatNextStep } from "@/lib/crm/domain";
 import { filePastProspectsWithPool, listProspects } from "@/lib/crm/queries";
-import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
+import { MOBILE_CARDS } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Prospecting" };
@@ -239,7 +239,7 @@ export default async function ProspectingPage({
               ]
         }
       />
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className={MOBILE_CARDS + " p-3"}>
           <label className="flex items-center gap-2 px-1 text-sm text-slate-600">
             <DatasetHeaderCheckbox ids={bulkIds} />
@@ -316,9 +316,9 @@ export default async function ProspectingPage({
             );
           })}
         </div>
-        <div className={DESKTOP_TABLE}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] text-left text-sm">
+        <div className="hidden md:block">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[1024px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="w-10 px-4 py-3">
@@ -378,7 +378,7 @@ export default async function ProspectingPage({
                 <th className="px-4 py-3">{column("Last touch", "last_touch")}</th>
                 <th className="px-4 py-3">{column("Next step", "next_step")}</th>
                 <th className="whitespace-nowrap px-4 py-3">{column("Owner", "owner")}</th>
-                <th className="w-[11.5rem] whitespace-nowrap px-3 py-3">Outcome</th>
+                <th className="whitespace-nowrap px-3 py-3">Outcome</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -461,7 +461,7 @@ export default async function ProspectingPage({
                     ) : null}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">{row.owner_name ?? "Unassigned"}</td>
-                  <td className="w-[11.5rem] px-3 py-3 align-middle">
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">
                     {row.prospect_id ? (
                       <ListRowActions>
                         <ProspectListStageBubbles
@@ -476,7 +476,7 @@ export default async function ProspectingPage({
               })}
             </tbody>
           </table>
-        </div>
+          </div>
         </div>
         {result.rows.length === 0 ? (
           <p className="p-10 text-center text-slate-500">
