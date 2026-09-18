@@ -15,7 +15,7 @@ import {
 } from "@/lib/crm/domain";
 
 function bubbleClass(active: boolean) {
-  return `whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold leading-tight ring-1 ${
+  return `inline-flex w-full items-center justify-center whitespace-nowrap rounded-md px-1.5 py-1 text-[11px] font-semibold leading-tight ring-1 ${
     active
       ? "bg-slate-900 text-white ring-slate-900"
       : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50 hover:ring-slate-300"
@@ -78,7 +78,7 @@ export function ProspectListStageBubbles({
         action={submit}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
-        className="relative z-10 flex flex-wrap justify-start gap-1 md:flex-nowrap md:justify-end"
+        className="relative z-10 grid w-[10.75rem] grid-cols-2 gap-1"
         aria-label="Mark prospect outcome"
       >
         <input type="hidden" name="prospectId" value={prospectId} />
