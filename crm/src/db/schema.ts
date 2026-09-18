@@ -649,6 +649,9 @@ export const prospects = crm.table(
       "prospects_unqualified_reason_check",
       sql`${table.unqualifiedReason} IS NULL OR ${table.unqualifiedReason} IN (
         'event_too_soon',
+        'already_has_timer',
+        'untimed_event',
+        'no_need',
         'other'
       )`,
     ),
@@ -657,6 +660,8 @@ export const prospects = crm.table(
       sql`${table.disqualifiedReason} IS NULL OR ${table.disqualifiedReason} IN (
         'is_a_timing_company',
         'blacklisted_email',
+        'do_not_contact',
+        'race_canceled',
         'other'
       )`,
     ),

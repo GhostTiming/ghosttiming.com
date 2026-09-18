@@ -252,6 +252,10 @@ export async function changeProspectStage(
               WHEN target_stage.key = 'disqualified' THEN $9
               ELSE disqualified_note
             END,
+            do_not_contact = CASE
+              WHEN target_stage.key = 'disqualified' AND $8 = 'do_not_contact' THEN true
+              ELSE do_not_contact
+            END,
             updated_at = now()
         FROM target_stage, current_state
         WHERE prospects.id = $1::uuid

@@ -8,7 +8,7 @@ import {
   applyEmailBlacklist,
   parseBlacklistPattern,
 } from "@/lib/crm/email-blacklist";
-import { parseDisqualifiedDetails } from "@/lib/crm/domain";
+import { emailBlacklistReasons, parseDisqualifiedDetails } from "@/lib/crm/domain";
 
 function revalidateBlacklist() {
   revalidatePath("/prospecting");
@@ -23,6 +23,9 @@ export async function addEmailBlacklistAction(formData: FormData) {
     reason: String(formData.get("reason") ?? ""),
     note: String(formData.get("note") ?? ""),
   });
+  if (!(emailBlacklistReasons as readonly string[]).includes(details.reason)) {
+    throw new Error("Choose a valid blacklist reason.");
+  }
   const client = await getPool().connect();
   let closed = 0;
   try {

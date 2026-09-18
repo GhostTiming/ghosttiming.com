@@ -9,7 +9,7 @@ import {
 } from "@/components/pending-submit-button";
 import {
   disqualifiedReasonLabels,
-  disqualifiedReasons,
+  emailBlacklistReasons,
 } from "@/lib/crm/domain";
 
 export function EmailBlacklistForm() {
@@ -67,7 +67,7 @@ export function EmailBlacklistForm() {
             onChange={(event) => setReason(event.target.value)}
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
-            {disqualifiedReasons.map((key) => (
+            {emailBlacklistReasons.map((key) => (
               <option key={key} value={key}>
                 {disqualifiedReasonLabels[key]}
               </option>

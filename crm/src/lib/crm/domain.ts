@@ -73,24 +73,43 @@ export const closedLostReasonLabels: Record<ClosedLostReason, string> = {
   other: "Other",
 };
 
-export const unqualifiedReasons = ["event_too_soon", "other"] as const;
+export const unqualifiedReasons = [
+  "event_too_soon",
+  "already_has_timer",
+  "untimed_event",
+  "no_need",
+  "other",
+] as const;
 export type UnqualifiedReason = (typeof unqualifiedReasons)[number];
 export const unqualifiedReasonLabels: Record<UnqualifiedReason, string> = {
   event_too_soon: "Event too soon",
+  already_has_timer: "Already has a timer",
+  untimed_event: "Untimed event",
+  no_need: "No need",
   other: "Other",
 };
 
 export const disqualifiedReasons = [
   "is_a_timing_company",
   "blacklisted_email",
+  "do_not_contact",
+  "race_canceled",
   "other",
 ] as const;
 export type DisqualifiedReason = (typeof disqualifiedReasons)[number];
 export const disqualifiedReasonLabels: Record<DisqualifiedReason, string> = {
   is_a_timing_company: "Is a timing company",
   blacklisted_email: "Blacklisted email",
+  do_not_contact: "Do not contact",
+  race_canceled: "Race canceled",
   other: "Other",
 };
+
+export const emailBlacklistReasons = [
+  "is_a_timing_company",
+  "blacklisted_email",
+  "other",
+] as const;
 
 export const bookingPipelineStageKeys = [
   "awaiting_decision",

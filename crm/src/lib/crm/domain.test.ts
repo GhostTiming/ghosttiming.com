@@ -128,7 +128,7 @@ describe("prospecting business rules", () => {
     ).toBe(false);
   });
 
-  it("requires Event too soon or Other when unqualifying", () => {
+  it("accepts the full unqualified reason list", () => {
     expect(validateUnqualifiedDetails({ reason: "" }).success).toBe(false);
     expect(
       validateUnqualifiedDetails({ reason: "event_too_soon" }),
@@ -137,11 +137,27 @@ describe("prospecting business rules", () => {
       data: { reason: "event_too_soon", note: null },
     });
     expect(
+      validateUnqualifiedDetails({ reason: "already_has_timer" }),
+    ).toEqual({
+      success: true,
+      data: { reason: "already_has_timer", note: null },
+    });
+    expect(
+      validateUnqualifiedDetails({ reason: "untimed_event" }),
+    ).toEqual({
+      success: true,
+      data: { reason: "untimed_event", note: null },
+    });
+    expect(validateUnqualifiedDetails({ reason: "no_need" })).toEqual({
+      success: true,
+      data: { reason: "no_need", note: null },
+    });
+    expect(
       validateUnqualifiedDetails({ reason: "other", note: "   " }).success,
     ).toBe(false);
   });
 
-  it("requires Is a timing company, Blacklisted email, or Other when disqualifying", () => {
+  it("accepts the full disqualified reason list", () => {
     expect(
       validateDisqualifiedDetails({ reason: "is_a_timing_company" }),
     ).toEqual({
@@ -153,6 +169,18 @@ describe("prospecting business rules", () => {
     ).toEqual({
       success: true,
       data: { reason: "blacklisted_email", note: null },
+    });
+    expect(
+      validateDisqualifiedDetails({ reason: "do_not_contact" }),
+    ).toEqual({
+      success: true,
+      data: { reason: "do_not_contact", note: null },
+    });
+    expect(
+      validateDisqualifiedDetails({ reason: "race_canceled" }),
+    ).toEqual({
+      success: true,
+      data: { reason: "race_canceled", note: null },
     });
     expect(
       validateDisqualifiedDetails({ reason: "went_with_another_timer" }).success,
