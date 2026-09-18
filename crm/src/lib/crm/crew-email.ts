@@ -6,8 +6,10 @@ import {
 } from "./google-calendar";
 import {
   formatAgeGroupsField,
+  formatAwardDepth,
   formatAwardsField,
   scoringFromLegacyText,
+  type AgeBand,
   type RaceScoring,
 } from "./race-scoring";
 import {
@@ -304,13 +306,21 @@ function scoringForRace(race: CrewEmailRace) {
   });
 }
 
+function formatImpliedAwards(bands: AgeBand[]) {
+  const depths = [
+    ...new Set(bands.map((band) => formatAwardDepth(band.awardDepth)).filter(Boolean)),
+  ];
+  return depths.length ? depths.join("\n") : null;
+}
+
 export function formatCrewAwardsAndAgeGroups(races: CrewEmailRace[]) {
   if (!races.length) return unset;
   const blocks = races.map((race) => {
     const scoring = scoringForRace(race);
     const heading = formatCalendarRaceHeading(race);
     const ageGroups = formatAgeGroupsField(scoring.ageGroups);
-    const awards = formatAwardsField(scoring.awards);
+    const awards =
+      formatAwardsField(scoring.awards) ?? formatImpliedAwards(scoring.ageGroups);
     const lines = [heading];
     if (awards) lines.push(`Awards:\n${awards}`);
     if (ageGroups) lines.push(`Age groups:\n${ageGroups}`);

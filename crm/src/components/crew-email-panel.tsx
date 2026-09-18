@@ -89,7 +89,7 @@ export function CrewEmailPanel({
 
   async function openComposer() {
     setOpen(true);
-    if (!html) await loadTemplate();
+    await loadTemplate();
   }
 
   async function sendEmail() {
