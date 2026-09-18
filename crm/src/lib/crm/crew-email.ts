@@ -326,7 +326,7 @@ export function formatCrewAwardsAndAgeGroups(races: CrewEmailRace[]) {
     if (ageGroups) lines.push(`Age groups:\n${ageGroups}`);
     if (scoring.notes?.trim()) lines.push(scoring.notes.trim());
     if (lines.length === 1) lines.push("No age groups or awards entered.");
-    return lines.join("\n");
+    return lines.join("\n\n");
   });
   return blocks.join("\n\n");
 }
