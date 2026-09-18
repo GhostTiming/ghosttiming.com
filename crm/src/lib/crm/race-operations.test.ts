@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  catalogListingRegistrationUrl,
   catalogOfferingStartTimestamp,
   earliestNonVirtualCatalogStart,
   estimateRaceDurationMinutes,
@@ -140,7 +141,7 @@ describe("virtual catalog offerings", () => {
     expect(catalogRaceDateMismatchMessage({
       bookingDate: "December 24, 2026",
       listingDates: ["December 12, 2026"],
-    })).toContain("December 12, 2026");
+    })).toContain("earliest race start");
     expect(catalogRaceDateMismatch(offerings, "2026-03-14")).toBeNull();
   });
 
@@ -165,6 +166,21 @@ describe("virtual catalog offerings", () => {
         },
       ]),
     ).toBe("2026-10-18 07:00:00");
+  });
+
+  it("prefers the listing registration URL over the external race URL", () => {
+    expect(
+      catalogListingRegistrationUrl({
+        registration_url: " https://runsignup.com/Race/Register/123 ",
+        external_race_url: "https://getrunvibes.com/race/example",
+      }),
+    ).toBe("https://runsignup.com/Race/Register/123");
+    expect(
+      catalogListingRegistrationUrl({
+        registration_url: "  ",
+        external_race_url: "https://getrunvibes.com/race/example",
+      }),
+    ).toBe("https://getrunvibes.com/race/example");
   });
 
   it("falls back to null when every offering is virtual", () => {

@@ -31,8 +31,8 @@ function actorFromUser(user: {
   return {
     id: user.id,
     name: user.name,
-    actorType: "system" as const,
-    actorName: "System",
+    actorType: "human" as const,
+    actorName: user.name,
     defaultSendGoogleSub: user.defaultSendGoogleSub,
   };
 }

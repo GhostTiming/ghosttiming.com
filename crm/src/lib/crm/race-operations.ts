@@ -234,6 +234,16 @@ export function earliestNonVirtualCatalogStart(
   return starts[0] ?? null;
 }
 
+export function catalogListingRegistrationUrl(listing: {
+  registration_url?: string | null;
+  external_race_url?: string | null;
+}) {
+  const registration = listing.registration_url?.trim();
+  if (registration) return registration;
+  const external = listing.external_race_url?.trim();
+  return external || null;
+}
+
 export type CatalogOfferingRow = CatalogOfferingStartLike & {
   id: string;
   name: string;
@@ -374,7 +384,7 @@ export function catalogRaceDateMismatch(
 }
 
 export function catalogRaceDateMismatchMessage(mismatch: CatalogRaceDateMismatch) {
-  return `The online listing’s races are on ${joinCatalogDayLabels(mismatch.listingDates)}, but this booking is dated ${mismatch.bookingDate}. Refresh will not copy those races, and Google Calendar stays unavailable, until the dates match. Change Event details, then Refresh from online listing, or add race start times manually.`;
+  return `The online listing’s races are on ${joinCatalogDayLabels(mismatch.listingDates)}, but this booking is dated ${mismatch.bookingDate}. Match or refresh from the online listing to set Event details to the earliest race start and update the registration link.`;
 }
 
 export async function loadCatalogOfferingsForListing(
@@ -430,18 +440,28 @@ export async function syncOccurrenceRacesFromCatalog(
   occurrenceId: string,
 ) {
   const occurrence = await client.query<{
+    event_id: string;
     listing_id: string | null;
     race_date: string | null;
-    occurrence_year: number | null;
     catalog_race_edition_id: string | null;
+    timezone: string | null;
+    listing_timezone: string | null;
+    registration_url: string | null;
+    external_race_url: string | null;
   }>(
     `
-      SELECT event.catalog_race_listing_id AS listing_id,
+      SELECT event.id::text AS event_id,
+             event.catalog_race_listing_id AS listing_id,
              occurrence.race_date::text,
-             occurrence.occurrence_year,
-             occurrence.catalog_race_edition_id
+             occurrence.catalog_race_edition_id,
+             occurrence.timezone,
+             listing.timezone AS listing_timezone,
+             listing.registration_url,
+             listing.external_race_url
       FROM crm.event_occurrences occurrence
       JOIN crm.events event ON event.id = occurrence.event_id
+      LEFT JOIN catalog.race_listings listing
+        ON listing.id = event.catalog_race_listing_id
       WHERE occurrence.id = $1::uuid
     `,
     [occurrenceId],
@@ -452,13 +472,12 @@ export async function syncOccurrenceRacesFromCatalog(
     return { inserted: 0, updated: 0, removed: 0 };
   }
 
-  const occurrenceYear = occurrence.rows[0]?.occurrence_year ?? null;
   const existingEdition = occurrence.rows[0]?.catalog_race_edition_id ?? null;
   let editionId = existingEdition;
   if (!editionId) {
     const preferredEdition = await client.query<{ id: string | null }>(
-      `SELECT ${preferredCatalogEditionSql("$1", occurrenceYear ? "$2" : null)} AS id`,
-      occurrenceYear ? [listingId, occurrenceYear] : [listingId],
+      `SELECT ${preferredCatalogEditionSql("$1")} AS id`,
+      [listingId],
     );
     editionId = preferredEdition.rows[0]?.id ?? null;
     if (editionId) {
@@ -473,13 +492,60 @@ export async function syncOccurrenceRacesFromCatalog(
     }
   }
 
+  let timezone =
+    occurrence.rows[0]?.timezone?.trim() ||
+    occurrence.rows[0]?.listing_timezone?.trim() ||
+    "America/New_York";
+  if (editionId) {
+    const edition = await client.query<{ timezone: string | null }>(
+      `SELECT timezone FROM catalog.race_editions WHERE id = $1`,
+      [editionId],
+    );
+    timezone =
+      edition.rows[0]?.timezone?.trim() ||
+      occurrence.rows[0]?.listing_timezone?.trim() ||
+      timezone;
+  }
+
   const offerings = await loadCatalogOfferingsForListing(client, listingId, {
     editionId,
     raceDate: occurrence.rows[0]?.race_date ?? null,
   });
-  const matching = offeringsMatchingOccurrenceDate(
-    offerings,
-    occurrence.rows[0]?.race_date,
+  const matching = excludeVirtualCatalogOfferings(offerings);
+  const earliestStart = earliestNonVirtualCatalogStart(offerings);
+  const registrationUrl = catalogListingRegistrationUrl({
+    registration_url: occurrence.rows[0]?.registration_url,
+    external_race_url: occurrence.rows[0]?.external_race_url,
+  });
+
+  await client.query(
+    `
+      UPDATE crm.events
+      SET website = COALESCE($2, website),
+          updated_at = now()
+      WHERE id = $1::uuid
+    `,
+    [occurrence.rows[0].event_id, registrationUrl],
+  );
+  await client.query(
+    `
+      UPDATE crm.event_occurrences
+      SET timezone = $2,
+          registration_url_override = COALESCE($3, registration_url_override),
+          race_date = CASE
+            WHEN $4::text IS NOT NULL THEN $4::timestamp AT TIME ZONE $2
+            ELSE race_date
+          END,
+          occurrence_year = COALESCE(
+            CASE
+              WHEN $4::text IS NOT NULL THEN EXTRACT(YEAR FROM $4::timestamp)::integer
+            END,
+            occurrence_year
+          ),
+          updated_at = now()
+      WHERE id = $1::uuid
+    `,
+    [occurrenceId, timezone, registrationUrl, earliestStart],
   );
 
   const existing = await client.query<{
@@ -514,7 +580,7 @@ export async function syncOccurrenceRacesFromCatalog(
     const startTime =
       catalogOfferingOwnStartTimestamp(offering) ??
       catalogOfferingStartTimestamp({
-        raceDate: occurrence.rows[0]?.race_date,
+        raceDate: earliestStart ?? occurrence.rows[0]?.race_date,
         startTimeRaw: offering.start_time_raw,
         startsAt: offering.starts_at,
       });

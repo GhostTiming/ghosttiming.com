@@ -318,7 +318,7 @@ export default async function ProspectingPage({
         </div>
         <div className={DESKTOP_TABLE}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-left text-sm">
+          <table className="w-full min-w-[1360px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="w-10 px-4 py-3">
@@ -377,8 +377,8 @@ export default async function ProspectingPage({
                 </th>
                 <th className="px-4 py-3">{column("Last touch", "last_touch")}</th>
                 <th className="px-4 py-3">{column("Next step", "next_step")}</th>
-                <th className="px-4 py-3">{column("Owner", "owner", undefined, "right")}</th>
-                <th className="px-4 py-3" aria-label="Actions" />
+                <th className="whitespace-nowrap px-4 py-3">{column("Owner", "owner", undefined, "right")}</th>
+                <th className="whitespace-nowrap px-3 py-3" aria-label="Actions" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -460,8 +460,8 @@ export default async function ProspectingPage({
                       </p>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3">{row.owner_name ?? "Unassigned"}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="whitespace-nowrap px-4 py-3">{row.owner_name ?? "Unassigned"}</td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right align-middle">
                     {row.prospect_id ? (
                       <ListRowActions>
                         <ProspectListStageBubbles

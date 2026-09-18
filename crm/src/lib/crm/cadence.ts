@@ -493,8 +493,13 @@ async function sendRenderedCadenceEmail(input: {
   });
   if (!sent.id) throw new Error("Gmail did not return a message id.");
 
-  const raw = await getGmailMessage(token.accessToken, sent.id);
-  const parsed = parseGmailMessage(raw, token.googleEmail);
+  let parsed = null;
+  try {
+    const raw = await getGmailMessage(token.accessToken, sent.id);
+    parsed = parseGmailMessage(raw, token.googleEmail);
+  } catch {
+    parsed = null;
+  }
 
   await input.client.query("BEGIN");
   try {
@@ -613,7 +618,21 @@ async function sendRenderedCadenceEmail(input: {
     nextStepOrder: nextStep?.step_order ?? null,
   };
   } catch (error) {
-    await input.client.query("ROLLBACK");
+    try {
+      await input.client.query("ROLLBACK");
+    } catch {
+      /* no open transaction */
+    }
+    await input.client.query(
+      `
+        UPDATE crm.cadence_step_sends
+        SET status = 'sent',
+            sent_at = COALESCE(sent_at, now()),
+            updated_at = now()
+        WHERE id = $1::uuid AND status = 'scheduled'
+      `,
+      [input.sendId],
+    );
     throw error;
   }
 }

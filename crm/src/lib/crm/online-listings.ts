@@ -295,7 +295,7 @@ export async function applyRunSignupRaceToEvent(
     `UPDATE crm.event_occurrences
      SET timezone = $2,
          registration_platform = 'runsignup',
-         registration_url_override = COALESCE(registration_url_override, $3),
+         registration_url_override = COALESCE($3, registration_url_override),
          street_override = COALESCE(street_override, $4),
          street2_override = COALESCE(street2_override, $5),
          city_override = COALESCE(city_override, $6),
