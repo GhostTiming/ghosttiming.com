@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getPool } from "@/db";
 import { requireProspectingAccess } from "@/lib/auth/server";
@@ -38,22 +37,27 @@ function actorFromUser(user: {
   };
 }
 
-export async function enrollProspectInCadenceAction(formData: FormData) {
+export async function enrollProspectInCadenceAction(
+  _prev: { ok: boolean; message: string } | null,
+  formData: FormData,
+): Promise<{ ok: boolean; message: string }> {
   const access = await requireProspectingAccess();
-  const prospectId = uuid.parse(formData.get("prospectId"));
-  const cadenceId = String(formData.get("cadenceId") ?? "").trim() || null;
-  const result = await enrollProspectInCadence({
-    prospectId,
-    cadenceId,
-    actor: actorFromUser(access.user),
-  });
-  refreshCadence(prospectId);
-  if (!result.sent) {
-    redirect(
-      `/prospecting/${prospectId}?cadenceError=${encodeURIComponent(result.message.slice(0, 180))}`,
-    );
+  try {
+    const prospectId = uuid.parse(formData.get("prospectId"));
+    const cadenceId = String(formData.get("cadenceId") ?? "").trim() || null;
+    const result = await enrollProspectInCadence({
+      prospectId,
+      cadenceId,
+      actor: actorFromUser(access.user),
+    });
+    refreshCadence(prospectId);
+    return { ok: true, message: result.message };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not start the cadence.";
+    console.error("enrollProspectInCadenceAction", message);
+    return { ok: false, message };
   }
-  redirect(`/prospecting/${prospectId}`);
 }
 
 export async function approveCadenceSendAction(formData: FormData) {

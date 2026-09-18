@@ -4,8 +4,7 @@ import {
   type CadenceEnrollmentSummary,
   type CadenceRow,
 } from "@/lib/crm/cadence-copy";
-import { enrollProspectInCadenceAction } from "@/app/cadence-actions";
-import { PendingSubmitButton } from "@/components/pending-submit-button";
+import { CadenceEnrollForm } from "@/components/cadence/cadence-enroll-form";
 
 function statusLabel(status: string) {
   if (status === "active") return "Active";
@@ -67,17 +66,11 @@ export function CadencePanel({
         </p>
       )}
       {showStart ? (
-        <form action={enrollProspectInCadenceAction} className="mt-4">
-          <input type="hidden" name="prospectId" value={prospectId} />
-          <input type="hidden" name="cadenceId" value={cadence.id} />
-          <PendingSubmitButton
-            pendingLabel="Starting…"
-            savedLabel="Started"
-            className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {enrollment ? "Re-enroll in cadence" : "Start cadence"}
-          </PendingSubmitButton>
-        </form>
+        <CadenceEnrollForm
+          prospectId={prospectId}
+          cadenceId={cadence.id}
+          label={enrollment ? "Re-enroll in cadence" : "Start cadence"}
+        />
       ) : null}
     </section>
   );
