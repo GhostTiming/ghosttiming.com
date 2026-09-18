@@ -4,6 +4,11 @@ This server-only API gives an approved AI process the same shared CRM state used
 by human users. Every AI write is labeled with `actor_type: "ai"` and the
 configured `CRM_AI_ACTOR_NAME`.
 
+For full-database investigation and approved data repair through Neon MCP, use
+[`claude-neon-mcp-user-guide.md`](./claude-neon-mcp-user-guide.md) instead of
+inventing SQL. This HTTP API only covers the prospecting slice and still runs
+through Next.js validation.
+
 ## Authentication
 
 Set a random secret of at least 32 characters:
