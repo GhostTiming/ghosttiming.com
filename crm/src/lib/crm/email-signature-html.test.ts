@@ -36,6 +36,7 @@ describe("email signatures", () => {
       signatureHtml: DEFAULT_EMAIL_SIGNATURE_HTML,
     });
     expect(composed.html).toContain("See you Saturday.");
+    expect(composed.html).toContain("<br /><br />");
     expect(composed.html).toContain("<img");
     expect(composed.html).toContain("ghosttiming.com");
     expect(composed.text).toContain("See you Saturday.");

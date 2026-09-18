@@ -54,6 +54,34 @@ describe("cadence merge fields", () => {
     expect(rendered.bodyHtml).toContain("Ghost Timing");
     expect(rendered.bodyText).toContain("Ghost Timing");
   });
+
+  it("uses one break before the signature instead of two", () => {
+    const rendered = renderCadenceTemplate({
+      subject: "Hi",
+      bodyHtml: "<p>All my best,</p>",
+      greetingLine: "Hey there,",
+      eventName: "Race",
+      timingModeLine: "remote timing",
+      signatureHtml: "<p>Ghost Timing</p>",
+    });
+    expect(rendered.bodyHtml).toContain("<p>All my best,</p><br /><p>Ghost Timing</p>");
+    expect(rendered.bodyHtml).not.toContain("<br /><br />");
+    expect(rendered.bodyText).toBe("All my best,\nGhost Timing");
+  });
+
+  it("replaces em dashes in cadence copy with a regular dash", () => {
+    const rendered = renderCadenceTemplate({
+      subject: "Follow up — {{event_name}}",
+      bodyHtml: "<p>That's awesome — we'd love to connect.</p>",
+      greetingLine: "Hi Jane,",
+      eventName: "Night Crawl 5K",
+      timingModeLine: "remote timing",
+    });
+    expect(rendered.subject).toBe("Follow up - Night Crawl 5K");
+    expect(rendered.bodyHtml).toContain("That's awesome - we'd love to connect.");
+    expect(rendered.subject).not.toContain("—");
+    expect(rendered.bodyHtml).not.toContain("—");
+  });
 });
 
 describe("cadence reply filter", () => {

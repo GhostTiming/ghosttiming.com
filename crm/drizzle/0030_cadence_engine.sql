@@ -88,7 +88,7 @@ VALUES
     '{{event_name}}, timing & event support',
     $cadence$<p>{{greeting_line}}</p>
 <p>We work with race organizers on {{timing_mode_line}}, medals, and general event-day support, and wanted to reach out about {{event_name}}.</p>
-<p>If you've already got that piece figured out, that's awesome — we're excited for you and hope you have a great event! If you're still working through timing or medals, or just want to compare notes, we'd love to connect.</p>
+<p>If you've already got that piece figured out, that's awesome - we're excited for you and hope you have a great event! If you're still working through timing or medals, or just want to compare notes, we'd love to connect.</p>
 <p>All my best,</p>$cadence$,
     'cadence'
   ),
@@ -97,7 +97,7 @@ VALUES
     'Cadence — Bump',
     'Quick follow up on {{event_name}}',
     $cadence$<p>{{greeting_line}}</p>
-<p>Just wanted to bump the note I sent about {{event_name}}. If you've already got timing and medals squared away, no need to reply — just figured I'd check back in!</p>
+<p>Just wanted to bump the note I sent about {{event_name}}. If you've already got timing and medals squared away, no need to reply - just figured I'd check back in!</p>
 <p>If you're still working through that piece, happy to connect whenever's good for you.</p>
 <p>All my best,</p>$cadence$,
     'cadence'

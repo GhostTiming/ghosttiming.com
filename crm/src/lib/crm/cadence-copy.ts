@@ -110,6 +110,13 @@ export function addOffsetDays(from: Date, offsetDays: number) {
   return next;
 }
 
+export function replaceCadenceEndDashes(value: string) {
+  return value
+    .replace(/&mdash;|&#8212;|&#x2014;/gi, "-")
+    .replace(/&ndash;|&#8211;|&#x2013;/gi, "-")
+    .replace(/[\u2014\u2013]/g, "-");
+}
+
 export function renderCadenceTemplate(input: {
   subject: string;
   bodyHtml: string;
@@ -128,12 +135,16 @@ export function renderCadenceTemplate(input: {
     event_name: { html: input.eventName },
     timing_mode_line: { html: input.timingModeLine },
   };
-  const subject = applyEmailTemplate(input.subject, unescaped).trim();
-  const bodyHtml = applyEmailTemplate(input.bodyHtml, escaped);
+  const subject = replaceCadenceEndDashes(
+    applyEmailTemplate(input.subject, unescaped).trim(),
+  );
+  const bodyHtml = replaceCadenceEndDashes(applyEmailTemplate(input.bodyHtml, escaped));
   const composed = appendEmailSignature({
     bodyHtml,
     bodyText: htmlToPlainText(bodyHtml),
     signatureHtml: input.signatureHtml,
+    htmlSeparator: "<br />",
+    textSeparator: "\n",
   });
   return {
     subject,

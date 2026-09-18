@@ -53,6 +53,8 @@ export function appendEmailSignature(input: {
   bodyText?: string | null;
   bodyHtml?: string | null;
   signatureHtml?: string | null;
+  htmlSeparator?: string;
+  textSeparator?: string;
 }) {
   const signature = sanitizeSignatureHtml(input.signatureHtml ?? "");
   const bodyText = (input.bodyText ?? "").replace(/\r\n/g, "\n").trim();
@@ -63,9 +65,11 @@ export function appendEmailSignature(input: {
       html: (input.bodyHtml ?? "").trim() || undefined,
     };
   }
+  const htmlSeparator = input.htmlSeparator ?? "<br /><br />";
+  const textSeparator = input.textSeparator ?? "\n\n";
   return {
-    text: [bodyText, htmlToPlainText(signature)].filter(Boolean).join("\n\n"),
-    html: `${bodyHtml}${bodyHtml ? "<br /><br />" : ""}${signature}`,
+    text: [bodyText, htmlToPlainText(signature)].filter(Boolean).join(textSeparator),
+    html: `${bodyHtml}${bodyHtml ? htmlSeparator : ""}${signature}`,
   };
 }
 
