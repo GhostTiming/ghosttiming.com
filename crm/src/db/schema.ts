@@ -784,9 +784,7 @@ export const emailTemplates = crm.table(
   "email_templates",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     subject: text("subject").notNull().default(""),
     bodyHtml: text("body_html").notNull().default(""),
@@ -796,6 +794,9 @@ export const emailTemplates = crm.table(
   },
   (table) => [
     uniqueIndex("email_templates_user_name_uidx").on(table.userId, table.name),
+    uniqueIndex("email_templates_shared_name_uidx")
+      .on(table.name)
+      .where(sql`${table.userId} IS NULL`),
     index("email_templates_user_idx").on(table.userId),
   ],
 );
@@ -819,6 +820,125 @@ export const emailSignatures = crm.table(
       .on(table.userId)
       .where(sql`${table.isDefault}`),
     index("email_signatures_user_idx").on(table.userId),
+  ],
+);
+
+export const cadences = crm.table(
+  "cadences",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("cadences_name_uidx").on(table.name)],
+);
+
+export const cadenceSteps = crm.table(
+  "cadence_steps",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cadenceId: uuid("cadence_id")
+      .notNull()
+      .references(() => cadences.id, { onDelete: "cascade" }),
+    stepOrder: integer("step_order").notNull(),
+    offsetDays: integer("offset_days").notNull(),
+    emailTemplateId: uuid("email_template_id")
+      .notNull()
+      .references(() => emailTemplates.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("cadence_steps_cadence_order_uidx").on(
+      table.cadenceId,
+      table.stepOrder,
+    ),
+    index("cadence_steps_template_idx").on(table.emailTemplateId),
+    check("cadence_steps_order_positive_check", sql`${table.stepOrder} > 0`),
+    check("cadence_steps_offset_nonnegative_check", sql`${table.offsetDays} >= 0`),
+  ],
+);
+
+export const cadenceEnrollments = crm.table(
+  "cadence_enrollments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cadenceId: uuid("cadence_id")
+      .notNull()
+      .references(() => cadences.id),
+    prospectId: uuid("prospect_id")
+      .notNull()
+      .references(() => prospects.id, { onDelete: "cascade" }),
+    status: text("status").notNull(),
+    currentStepOrder: integer("current_step_order"),
+    enrolledAt: timestamp("enrolled_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    enrolledByUserId: uuid("enrolled_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    exitedAt: timestamp("exited_at", { withTimezone: true }),
+    exitedReason: text("exited_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("cadence_enrollments_active_prospect_uidx")
+      .on(table.prospectId)
+      .where(sql`${table.status} = 'active'`),
+    index("cadence_enrollments_prospect_idx").on(table.prospectId),
+    index("cadence_enrollments_status_idx").on(table.status),
+    check(
+      "cadence_enrollments_status_check",
+      sql`${table.status} IN ('active', 'completed', 'exited_manual', 'exited_reply')`,
+    ),
+    check(
+      "cadence_enrollments_exit_reason_check",
+      sql`${table.exitedReason} IS NULL OR ${table.exitedReason} IN (
+        'declined_by_user',
+        'reply_detected',
+        'completed_cadence'
+      )`,
+    ),
+  ],
+);
+
+export const cadenceStepSends = crm.table(
+  "cadence_step_sends",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    enrollmentId: uuid("enrollment_id")
+      .notNull()
+      .references(() => cadenceEnrollments.id, { onDelete: "cascade" }),
+    cadenceStepId: uuid("cadence_step_id")
+      .notNull()
+      .references(() => cadenceSteps.id),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    status: text("status").notNull(),
+    emailDraftId: uuid("email_draft_id").references(() => emailDrafts.id, {
+      onDelete: "set null",
+    }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    canceledAt: timestamp("canceled_at", { withTimezone: true }),
+    canceledByUserId: uuid("canceled_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("cadence_step_sends_enrollment_step_uidx").on(
+      table.enrollmentId,
+      table.cadenceStepId,
+    ),
+    index("cadence_step_sends_due_idx").on(table.status, table.scheduledFor),
+    check(
+      "cadence_step_sends_status_check",
+      sql`${table.status} IN ('scheduled', 'sent', 'canceled')`,
+    ),
   ],
 );
 
@@ -1114,6 +1234,8 @@ export type EventOccurrence = typeof eventOccurrences.$inferSelect;
 export type OccurrenceRace = typeof occurrenceRaces.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
 export type Prospect = typeof prospects.$inferSelect;
+export type Cadence = typeof cadences.$inferSelect;
+export type CadenceEnrollment = typeof cadenceEnrollments.$inferSelect;
 export type EmailDraft = typeof emailDrafts.$inferSelect;
 export type Activity = typeof activities.$inferSelect;
 export type Task = typeof tasks.$inferSelect;

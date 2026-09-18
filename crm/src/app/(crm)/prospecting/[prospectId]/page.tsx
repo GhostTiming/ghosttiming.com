@@ -65,6 +65,11 @@ import {
 import { asSignatureSummaries, listUserEmailSignatures } from "@/lib/crm/email-signatures";
 import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
+import { CadencePanel } from "@/components/cadence/cadence-panel";
+import {
+  getDefaultCadence,
+  getProspectCadenceSummary,
+} from "@/lib/crm/cadence";
 
 function formatDateTime(value: string | null) {
   if (!value) return "—";
@@ -88,12 +93,13 @@ export default async function ProspectDetailPage({
     listingQ?: string;
     replyThread?: string;
     draftId?: string;
+    cadenceError?: string;
   }>;
 }) {
   const access = await requireProspectingAccess();
   const user = access.user;
   const prospectId = parseRouteUuid((await params).prospectId);
-  const { edit, listingQ, replyThread, draftId } = await searchParams;
+  const { edit, listingQ, replyThread, draftId, cadenceError } = await searchParams;
   await filePastProspectsWithPool();
   const data = await getProspectDetail(prospectId);
   if (!data.prospect) notFound();
@@ -117,7 +123,7 @@ export default async function ProspectDetailPage({
   const directClients = organizations.rows.filter(
     (organization) => organization.is_direct_client,
   );
-  const [users, people, emailDrafts, emailMessages, googleConnection, emailSignatures] = await Promise.all([
+  const [users, people, emailDrafts, emailMessages, googleConnection, emailSignatures, cadence, cadenceEnrollment] = await Promise.all([
     getPool().query<{ id: string; name: string }>(
       `SELECT id::text, name FROM crm.users WHERE is_active ORDER BY name`,
     ),
@@ -135,6 +141,8 @@ export default async function ProspectDetailPage({
       [user.id],
     ),
     listUserEmailSignatures(user.id),
+    getDefaultCadence().catch(() => null),
+    getProspectCadenceSummary(prospect.id).catch(() => null),
   ]);
   const emailThreads = groupMessagesIntoThreads(
     emailMessages,
@@ -330,6 +338,13 @@ export default async function ProspectDetailPage({
         lastStepNote={prospect.last_step_note}
         nextStepOn={prospect.next_step_on}
         nextStepNote={prospect.next_step_note}
+      />
+      <CadencePanel
+        prospectId={prospect.id}
+        cadence={cadence}
+        enrollment={cadenceEnrollment}
+        canEnroll={!prospect.archived_at && !prospect.do_not_contact}
+        error={firstParam(cadenceError)}
       />
 
       {prospect.stage_key === "closed_lost" ? (

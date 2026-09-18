@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Contact,
   LayoutDashboard,
+  Mail,
   Menu,
   Search,
   Settings,
@@ -89,7 +90,10 @@ export function MobileShell({
       ? [{ href: "/contacts", label: "Contacts", icon: Contact }]
       : []),
     ...(canAccessProspecting
-      ? [{ href: "/prospecting/blacklist", label: "Email blacklist", icon: Ban }]
+      ? [
+          { href: "/prospecting/pending-emails", label: "Pending emails", icon: Mail },
+          { href: "/prospecting/blacklist", label: "Email blacklist", icon: Ban },
+        ]
       : []),
     ...(canAccessAdminConsole
       ? [{ href: "/admin", label: "Admin", icon: Shield }]

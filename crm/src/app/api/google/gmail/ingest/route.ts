@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getPool } from "@/db";
 import { getAccessContext } from "@/lib/auth/server";
 import { ingestGmailMessages } from "@/lib/crm/google-sync";
+import { processCadenceReplies } from "@/lib/crm/cadence";
 
 const messageSchema = z.object({
   gmailMessageId: z.string().min(1),
@@ -60,11 +61,19 @@ export async function POST(request: Request) {
       organizationIds: access.isSuperAdmin ? null : access.assignedOrgIds,
       messages: body.messages,
     });
+    let cadence = { exited: 0, automatic: 0, scanned: 0 };
+    try {
+      cadence = await processCadenceReplies(client);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (!/does not exist/i.test(message)) throw error;
+    }
     await client.query("COMMIT");
     revalidatePath("/prospecting");
+    revalidatePath("/prospecting/pending-emails");
     revalidatePath("/bookings");
     revalidatePath("/organizations");
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, cadence });
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

@@ -17,6 +17,10 @@ import { ProspectingLocationFilter } from "@/components/prospecting-location-fil
 import { TableColumnHeader } from "@/components/table-column-header";
 import { getPool } from "@/db";
 import { requireProspectingUser } from "@/lib/auth/server";
+import {
+  bulkEnrollProspectsInCadenceAction,
+  bulkStartCadenceFromListingsAction,
+} from "@/app/cadence-actions";
 import { formatNextStep } from "@/lib/crm/domain";
 import { filePastProspectsWithPool, listProspects } from "@/lib/crm/queries";
 import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
@@ -177,6 +181,12 @@ export default async function ProspectingPage({
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
           <Link
+            href="/prospecting/pending-emails"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            Pending emails
+          </Link>
+          <Link
             href="/prospecting/blacklist"
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50"
           >
@@ -207,6 +217,27 @@ export default async function ProspectingPage({
       <ProspectBulkBar
         users={users.rows}
         mode={current.view === "candidate" ? "candidates" : "prospects"}
+        extraActions={
+          current.view === "candidate"
+            ? [
+                {
+                  key: "start-cadence",
+                  label: "Start cadence",
+                  confirm: "Start the 4-touch cadence for {n} candidates? The intro email sends immediately.",
+                  pendingLabel: "Starting…",
+                  action: bulkStartCadenceFromListingsAction,
+                },
+              ]
+            : [
+                {
+                  key: "start-cadence",
+                  label: "Start cadence",
+                  confirm: "Start the 4-touch cadence for {n} prospects? The intro email sends immediately.",
+                  pendingLabel: "Starting…",
+                  action: bulkEnrollProspectsInCadenceAction,
+                },
+              ]
+        }
       />
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className={MOBILE_CARDS + " p-3"}>

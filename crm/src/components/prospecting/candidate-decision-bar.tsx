@@ -27,6 +27,17 @@ export function CandidateDecisionBar({ raceListingId }: { raceListingId: string 
             Start
           </PendingSubmitButton>
         </form>
+        <form action={startProspectAction}>
+          <input type="hidden" name="raceListingId" value={raceListingId} />
+          <input type="hidden" name="startCadence" value="1" />
+          <PendingSubmitButton
+            pendingLabel="Starting cadence…"
+            savedLabel="Started"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            Start cadence
+          </PendingSubmitButton>
+        </form>
         <button
           type="button"
           onClick={() => setOutcome("disqualified")}

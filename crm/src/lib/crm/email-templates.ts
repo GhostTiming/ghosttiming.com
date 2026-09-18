@@ -62,6 +62,7 @@ export async function listUserEmailTemplates(userId: string) {
       SELECT ${TEMPLATE_COLUMNS}
       FROM crm.email_templates
       WHERE user_id = $1::uuid
+        AND kind IS DISTINCT FROM 'cadence'
       ORDER BY name ASC
     `,
     [userId],

@@ -20,6 +20,7 @@ import type { ReactNode } from "react";
 import type { CrmUser } from "@/db/schema";
 import { GHOST_TIMING_LOGO_WHITE } from "@/lib/branding";
 import type { GoogleConnectionRow } from "@/lib/crm/google-sync";
+import { CadencePendingBanner } from "@/components/cadence/cadence-pending-banner";
 
 export function AppShell({
   user,
@@ -32,6 +33,7 @@ export function AppShell({
   viewingAs,
   googleClientId,
   googleConnections,
+  pendingCadenceCount = 0,
   children,
 }: {
   user: CrmUser;
@@ -44,6 +46,7 @@ export function AppShell({
   viewingAs: { email: string; role: string } | null;
   googleClientId: string;
   googleConnections: GoogleConnectionRow[];
+  pendingCadenceCount?: number;
   children: ReactNode;
 }) {
   return (
@@ -168,6 +171,7 @@ export function AppShell({
           </div>
         </div>
       ) : null}
+      {canAccessProspecting ? <CadencePendingBanner count={pendingCadenceCount} /> : null}
       <main className="mx-auto max-w-screen-2xl px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-6">
         {children}
       </main>

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getPool } from "@/db";
 import { requireProspectingUser } from "@/lib/auth/server";
+import { enrollProspectInCadence } from "@/lib/crm/cadence";
 import {
   closeCandidateListing,
   startProspectFromListing,
@@ -12,6 +13,7 @@ import {
 export async function startProspectAction(formData: FormData) {
   const user = await requireProspectingUser();
   const raceListingId = z.string().min(1).max(200).parse(formData.get("raceListingId"));
+  const startCadence = String(formData.get("startCadence") ?? "") === "1";
   const client = await getPool().connect();
   let prospectId: string;
 
@@ -29,6 +31,32 @@ export async function startProspectAction(formData: FormData) {
     client.release();
   }
 
+  if (!startCadence) {
+    redirect(`/prospecting/${prospectId}`);
+  }
+
+  let cadenceError: string | null = null;
+  try {
+    const result = await enrollProspectInCadence({
+      prospectId,
+      actor: {
+        id: user.id,
+        name: user.name,
+        actorType: "system",
+        actorName: "System",
+        defaultSendGoogleSub: user.defaultSendGoogleSub,
+      },
+    });
+    if (!result.sent) cadenceError = result.message;
+  } catch (error) {
+    cadenceError =
+      error instanceof Error ? error.message : "Could not start the cadence.";
+  }
+  if (cadenceError) {
+    redirect(
+      `/prospecting/${prospectId}?cadenceError=${encodeURIComponent(cadenceError.slice(0, 180))}`,
+    );
+  }
   redirect(`/prospecting/${prospectId}`);
 }
 

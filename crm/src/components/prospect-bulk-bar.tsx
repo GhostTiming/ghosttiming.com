@@ -1,13 +1,15 @@
 "use client";
 
 import { bulkUpdateCandidatesAction, bulkUpdateProspectsAction } from "@/app/bulk-actions";
-import { DatasetBulkBar } from "@/components/dataset-bulk";
+import { DatasetBulkBar, type BulkExtraAction } from "@/components/dataset-bulk";
 import { candidateBulkFields, prospectBulkFields } from "@/lib/crm/bulk-fields";
 
 export function ProspectBulkBar({
   users,
+  extraActions = [],
   mode = "prospects",
 }: {
+  extraActions?: BulkExtraAction[];
   users: Array<{ id: string; name: string }>;
   mode?: "prospects" | "candidates";
 }) {
@@ -16,6 +18,7 @@ export function ProspectBulkBar({
       <DatasetBulkBar
         noun="leads"
         fields={candidateBulkFields()}
+        extraActions={extraActions}
         updateAction={bulkUpdateCandidatesAction}
       />
     );
@@ -24,6 +27,7 @@ export function ProspectBulkBar({
     <DatasetBulkBar
       noun="prospects"
       fields={prospectBulkFields(users)}
+      extraActions={extraActions}
       updateAction={bulkUpdateProspectsAction}
     />
   );
