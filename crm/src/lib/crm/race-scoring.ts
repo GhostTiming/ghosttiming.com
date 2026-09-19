@@ -119,10 +119,77 @@ export function formatGenderList(genders: RaceGender[]) {
     .join(", ");
 }
 
+const LIST_GENDER_CODES: Record<Exclude<RaceGender, "combined">, string> = {
+  female: "F",
+  male: "M",
+  non_binary: "X",
+};
+
+export function formatListGenderCodes(genders: RaceGender[]) {
+  const unique = uniqueGenders(genders);
+  if (!unique.length) return "";
+  if (unique.includes("combined")) return "F/M/X";
+  const codes = (["female", "male", "non_binary"] as const)
+    .filter((gender) => unique.includes(gender))
+    .map((gender) => LIST_GENDER_CODES[gender]);
+  return codes.length === 3 ? "F/M/X" : codes.join("/");
+}
+
 function withGenders(genders: RaceGender[], detail: string) {
   const labels = formatGenderList(genders);
   if (!labels) return detail;
   return detail ? `${labels} · ${detail}` : labels;
+}
+
+function withListGenders(genders: RaceGender[], detail: string) {
+  const labels = formatListGenderCodes(genders);
+  if (!labels) return detail;
+  return detail ? `${labels} · ${detail}` : labels;
+}
+
+function openEndedMaxKey(maxAge: number | null | undefined) {
+  return isOpenEndedMax(maxAge) ? 99 : maxAge;
+}
+
+function collapseMatchingAgeBands(bands: readonly AgeBand[]) {
+  const merged: AgeBand[] = [];
+  const indexByKey = new Map<string, number>();
+  for (const band of bands) {
+    if (isContactTimerBand(band)) continue;
+    const key = `${band.minAge ?? ""}:${openEndedMaxKey(band.maxAge) ?? ""}:${band.awardDepth ?? ""}`;
+    const existing = indexByKey.get(key);
+    if (existing == null) {
+      indexByKey.set(key, merged.length);
+      merged.push({ ...band, genders: [...band.genders] });
+      continue;
+    }
+    merged[existing] = {
+      ...merged[existing],
+      genders: uniqueGenders([...merged[existing].genders, ...band.genders]),
+    };
+  }
+  return merged;
+}
+
+function collapseMatchingAwards(awards: readonly AwardRule[]) {
+  const merged: AwardRule[] = [];
+  const indexByKey = new Map<string, number>();
+  for (const award of awards) {
+    const title = award.title.trim();
+    if (!title) continue;
+    const key = `${title.toLowerCase()}:${award.minAge ?? ""}:${openEndedMaxKey(award.maxAge) ?? ""}`;
+    const existing = indexByKey.get(key);
+    if (existing == null) {
+      indexByKey.set(key, merged.length);
+      merged.push({ ...award, title, genders: [...award.genders] });
+      continue;
+    }
+    merged[existing] = {
+      ...merged[existing],
+      genders: uniqueGenders([...merged[existing].genders, ...award.genders]),
+    };
+  }
+  return merged;
 }
 
 export function formatAwardDepth(depth: number | null | undefined) {
@@ -147,16 +214,34 @@ export function formatAwardRule(award: AwardRule) {
   return headed ? `${headed} · ${labels}` : labels;
 }
 
+export function formatAgeBandListLine(band: AgeBand) {
+  if (isContactTimerBand(band)) return "";
+  const detail = [formatAgeRange(band.minAge, band.maxAge), formatAwardDepth(band.awardDepth)]
+    .filter(Boolean)
+    .join(" · ");
+  return withListGenders(band.genders, detail);
+}
+
+export function formatAwardListLine(award: AwardRule) {
+  const title = award.title.trim();
+  const range = formatAgeRange(award.minAge, award.maxAge);
+  const headed = range ? `${title} (${range})` : title;
+  const labels = formatListGenderCodes(award.genders);
+  if (!labels) return headed;
+  return headed ? `${headed} · ${labels}` : labels;
+}
+
 export function formatAgeGroupsField(bands: AgeBand[]) {
-  const lines = bands
-    .filter((band) => !isContactTimerBand(band))
-    .map(formatAgeBand)
+  const lines = collapseMatchingAgeBands(bands)
+    .map(formatAgeBandListLine)
     .filter(Boolean);
   return lines.length ? lines.join("\n") : null;
 }
 
 export function formatAwardsField(awards: AwardRule[]) {
-  const lines = awards.map(formatAwardRule).filter(Boolean);
+  const lines = collapseMatchingAwards(awards)
+    .map(formatAwardListLine)
+    .filter(Boolean);
   return lines.length ? lines.join("\n") : null;
 }
 

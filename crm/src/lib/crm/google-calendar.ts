@@ -1,5 +1,11 @@
 import { normalizeEmail } from "../contact-extraction/extract";
 import { formatTaskHeadline, taskDescription } from "./domain";
+import {
+  formatAgeGroupsField,
+  formatAwardsField,
+  hasStructuredScoring,
+  scoringFromLegacyText,
+} from "./race-scoring";
 
 export type CalendarRace = {
   name: string;
@@ -8,6 +14,7 @@ export type CalendarRace = {
   ageGroups?: string | null;
   awards?: string | null;
   notes?: string | null;
+  scoring?: unknown;
 };
 
 export type CalendarCrewMember = {
@@ -160,11 +167,23 @@ export function formatCalendarHardwareFields(input: {
 }
 
 function raceDescription(race: CalendarRace) {
+  const scoring = scoringFromLegacyText({
+    scoring: race.scoring,
+    ageGroups: race.ageGroups,
+    awards: race.awards,
+  });
+  const structured = hasStructuredScoring(scoring);
   return [
     formatCalendarRaceHeading(race),
-    optionalCalendarField("Awards", race.awards),
-    optionalCalendarField("Age Groups", race.ageGroups),
-    optionalCalendarField("Notes", race.notes),
+    optionalCalendarField(
+      "Awards",
+      structured ? formatAwardsField(scoring.awards) : race.awards,
+    ),
+    optionalCalendarField(
+      "Age Groups",
+      structured ? formatAgeGroupsField(scoring.ageGroups) : race.ageGroups,
+    ),
+    optionalCalendarField("Notes", structured ? scoring.notes : race.notes),
   ]
     .filter(Boolean)
     .join("\n\n");

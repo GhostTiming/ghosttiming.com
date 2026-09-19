@@ -118,6 +118,53 @@ describe("Google Calendar booking links", () => {
 });
 
 describe("calendar race copy", () => {
+  it("collapses matching gender age groups onto one F/M line", () => {
+    expect(
+      googleCalendarEventDescription({
+        ...baseBooking,
+        races: [
+          {
+            name: "5K",
+            startTime: "08:00",
+            scoring: {
+              ageGroups: [
+                { genders: ["female"], minAge: 11, maxAge: 14, awardDepth: 3 },
+                { genders: ["male"], minAge: 11, maxAge: 14, awardDepth: 3 },
+              ],
+              awards: [
+                { title: "Overall", genders: ["female"], minAge: null, maxAge: null },
+                { title: "Overall", genders: ["male"], minAge: null, maxAge: null },
+              ],
+              notes: null,
+            },
+          },
+        ],
+      }),
+    ).toContain("Age Groups:\nF/M · 11–14 · Top 3");
+    expect(
+      googleCalendarEventDescription({
+        ...baseBooking,
+        races: [
+          {
+            name: "5K",
+            startTime: "08:00",
+            scoring: {
+              ageGroups: [
+                { genders: ["female"], minAge: 11, maxAge: 14, awardDepth: 3 },
+                { genders: ["male"], minAge: 11, maxAge: 14, awardDepth: 3 },
+              ],
+              awards: [
+                { title: "Overall", genders: ["female"], minAge: null, maxAge: null },
+                { title: "Overall", genders: ["male"], minAge: null, maxAge: null },
+              ],
+              notes: null,
+            },
+          },
+        ],
+      }),
+    ).toContain("Awards:\nOverall · F/M");
+  });
+
   it("prints start time without the date", () => {
     expect(formatCalendarRaceClock("2026-09-19 08:00:00")).toBe("8:00AM");
     expect(formatCalendarRaceClock("2026-09-19T08:30:00")).toBe("8:30AM");

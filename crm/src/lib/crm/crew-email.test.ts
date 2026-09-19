@@ -69,7 +69,7 @@ describe("crew email field formatters", () => {
           },
         },
       ]),
-    ).toMatch(/5K @ 8:00AM Start\n\nAwards:\nOverall[\s\S]*\n\nAge groups:/);
+    ).toMatch(/5K @ 8:00AM Start\n\nAwards:\nOverall · F\n\nAge groups:\nF · 19 and under · Top 3/);
     expect(
       formatCrewAwardsAndAgeGroups([
         {
@@ -82,7 +82,7 @@ describe("crew email field formatters", () => {
           },
         },
       ]),
-    ).toMatch(/5K @ 8:00AM Start\n\nAwards:\nTop 3\n\nAge groups:/);
+    ).toMatch(/5K @ 8:00AM Start\n\nAwards:\nTop 3\n\nAge groups:\nF\/M · 12 and under · Top 3/);
     expect(formatCrewNotesLabel("remote")).toBe("Remote crew notes");
     expect(formatTimerPhone("4076872570")).toBe("(407) 687-2570");
     expect(timerPhoneHref("4076872570")).toBe("+14076872570");

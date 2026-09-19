@@ -7,6 +7,7 @@ import {
   formatAgeRange,
   formatAwardRule,
   formatAwardsField,
+  formatListGenderCodes,
   scoringFromLegacyText,
   serializeRaceScoring,
   toggleRaceGender,
@@ -262,22 +263,49 @@ describe("legacy text", () => {
 });
 
 describe("field snapshots", () => {
-  it("joins structured rows for the stored text snapshot", () => {
+  it("collapses matching gender bands onto one F/M or F/M/X line", () => {
+    expect(formatListGenderCodes(["male", "female"])).toBe("F/M");
+    expect(formatListGenderCodes(["combined"])).toBe("F/M/X");
+    expect(formatListGenderCodes(["female", "male", "non_binary"])).toBe("F/M/X");
+    expect(
+      formatAgeGroupsField([
+        { genders: ["female"], minAge: 11, maxAge: 14, awardDepth: 3 },
+        { genders: ["male"], minAge: 11, maxAge: 14, awardDepth: 3 },
+      ]),
+    ).toBe("F/M · 11–14 · Top 3");
+    expect(
+      formatAgeGroupsField([
+        { genders: ["female"], minAge: 11, maxAge: 14, awardDepth: 3 },
+        { genders: ["male"], minAge: 11, maxAge: 14, awardDepth: 3 },
+        { genders: ["non_binary"], minAge: 11, maxAge: 14, awardDepth: 3 },
+      ]),
+    ).toBe("F/M/X · 11–14 · Top 3");
+    expect(
+      formatAgeGroupsField([
+        { genders: ["combined"], minAge: 11, maxAge: 14, awardDepth: 3 },
+      ]),
+    ).toBe("F/M/X · 11–14 · Top 3");
     expect(
       formatAgeGroupsField([
         { genders: ["male", "female"], minAge: 0, maxAge: 13, awardDepth: 3 },
         { genders: ["male", "female"], minAge: 14, maxAge: 16, awardDepth: 3 },
       ]),
-    ).toBe("Male, Female · 13 and under · Top 3\nMale, Female · 14–16 · Top 3");
+    ).toBe("F/M · 13 and under · Top 3\nF/M · 14–16 · Top 3");
     expect(
       formatAwardsField([
         {
           title: "Overall",
-          genders: ["male", "female"],
+          genders: ["male"],
+          minAge: null,
+          maxAge: null,
+        },
+        {
+          title: "Overall",
+          genders: ["female"],
           minAge: null,
           maxAge: null,
         },
       ]),
-    ).toBe("Overall · Male, Female");
+    ).toBe("Overall · F/M");
   });
 });

@@ -586,6 +586,7 @@ export default async function BookingDetailPage({
             startTime: race.start_time,
             ageGroups: race.age_groups,
             awards: race.awards,
+            scoring: race.scoring,
             notes: parseRaceScoring(race.scoring).notes,
           })),
         })
