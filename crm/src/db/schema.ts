@@ -516,6 +516,9 @@ export const bookings = crm.table(
     paymentDueAt: timestamp("payment_due_at", { withTimezone: true }),
     paymentAt: timestamp("payment_at", { withTimezone: true }),
     notes: text("notes"),
+    closedLostReason: text("closed_lost_reason"),
+    closedLostNote: text("closed_lost_note"),
+    circleBackOn: date("circle_back_on"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedByUserId: uuid("archived_by_user_id").references(() => users.id, {
       onDelete: "set null",
@@ -528,6 +531,15 @@ export const bookings = crm.table(
     index("bookings_stage_idx").on(table.stageId),
     index("bookings_client_idx").on(table.directClientOrganizationId),
     index("bookings_completed_idx").on(table.completedAt),
+    check(
+      "bookings_closed_lost_reason_check",
+      sql`${table.closedLostReason} IS NULL OR ${table.closedLostReason} IN (
+        'went_with_another_timer',
+        'event_cancelled',
+        'no_decision',
+        'other'
+      )`,
+    ),
   ],
 );
 

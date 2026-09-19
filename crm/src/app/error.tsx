@@ -1,5 +1,12 @@
 "use client";
 
+function displayErrorMessage(error: Error) {
+  if (/minified react error #441/i.test(error.message)) {
+    return "The last save could not finish. Try again, or complete the required fields first.";
+  }
+  return error.message || "Try again, or go back to the dashboard.";
+}
+
 export default function ErrorPage({
   error,
   reset,
@@ -17,7 +24,7 @@ export default function ErrorPage({
           The CRM hit an error
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          {error.message || "Try again, or go back to the dashboard."}
+          {displayErrorMessage(error)}
         </p>
         <div className="mt-6 flex justify-center gap-3">
           <button

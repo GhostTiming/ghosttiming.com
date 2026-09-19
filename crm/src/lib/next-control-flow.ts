@@ -12,3 +12,14 @@ export function isNextNotFoundError(error: unknown) {
 export function rethrowNextControlFlow(error: unknown) {
   if (isNextControlFlowError(error)) throw error;
 }
+
+export function actionFailureResult(
+  error: unknown,
+  fallback = "Could not save.",
+): { ok: false; message: string } {
+  rethrowNextControlFlow(error);
+  return {
+    ok: false,
+    message: error instanceof Error && error.message ? error.message : fallback,
+  };
+}

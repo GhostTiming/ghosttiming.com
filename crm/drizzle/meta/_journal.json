@@ -239,6 +239,13 @@
       "when": 1789770000000,
       "tag": "0033_outcome_reason_options",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789774000000,
+      "tag": "0034_booking_closed_lost",
+      "breakpoints": true
     }
   ]
 }

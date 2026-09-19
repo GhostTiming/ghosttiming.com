@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { changeBookingStageAction } from "@/app/booking-actions";
 import { updateProspectStageAction } from "@/app/prospect-actions";
 import {
   FormSaveFailedContext,
@@ -15,9 +16,11 @@ import {
 
 export function ClosedLostPrompt({
   prospectId,
+  bookingId,
   onCancel,
 }: {
-  prospectId: string;
+  prospectId?: string;
+  bookingId?: string;
   onCancel: () => void;
 }) {
   const router = useRouter();
@@ -27,12 +30,22 @@ export function ClosedLostPrompt({
   const [saveFailed, setSaveFailed] = useState(false);
   const noteRequired = reason === "other";
   const canSave = Boolean(reason) && (!noteRequired || note.trim());
+  const recordLabel = bookingId ? "booking" : "prospect";
 
   async function submit(formData: FormData) {
     setError(null);
     setSaveFailed(false);
     try {
-      await updateProspectStageAction(formData);
+      if (bookingId) {
+        const result = await changeBookingStageAction(formData);
+        if (result && result.ok === false) {
+          setSaveFailed(true);
+          setError(result.message ?? "Could not close as lost.");
+          return;
+        }
+      } else {
+        await updateProspectStageAction(formData);
+      }
       onCancel();
       router.refresh();
     } catch (cause) {
@@ -61,11 +74,12 @@ export function ClosedLostPrompt({
           Close as lost
         </h2>
         <p className="mt-1 text-sm text-slate-600">
-          Choose why this prospect was lost before changing the stage.
+          Choose why this {recordLabel} was lost before changing the stage.
         </p>
         <FormSaveFailedContext.Provider value={saveFailed}>
         <form action={submit} className="mt-4 space-y-3">
-          <input type="hidden" name="prospectId" value={prospectId} />
+          {prospectId ? <input type="hidden" name="prospectId" value={prospectId} /> : null}
+          {bookingId ? <input type="hidden" name="bookingId" value={bookingId} /> : null}
           <input type="hidden" name="stageKey" value="closed_lost" />
           <label className="block text-sm">
             Reason

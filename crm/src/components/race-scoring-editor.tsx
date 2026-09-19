@@ -7,11 +7,13 @@ import {
   copyAwardDepthToOtherBands,
   formatAgeBand,
   formatAwardRule,
+  isContactTimerBand,
   RACE_GENDER_LABELS,
   RACE_GENDERS,
   scoringFromLegacyText,
   serializeRaceScoring,
   toggleRaceGender,
+  withContactTimerAgeGroup,
   type AgeBand,
   type AwardRule,
   type RaceGender,
@@ -53,11 +55,13 @@ function AgeInput({
   value,
   onChange,
   min = 0,
+  emptyValue = "",
 }: {
   label: string;
   value: number | null;
   onChange: (next: number | null) => void;
   min?: number;
+  emptyValue?: number | "";
 }) {
   return (
     <label className="text-xs text-slate-600">
@@ -66,7 +70,7 @@ function AgeInput({
         type="number"
         min={min}
         inputMode="numeric"
-        value={value ?? ""}
+        value={value ?? emptyValue}
         onChange={(event) => {
           const raw = event.target.value;
           if (raw === "") {
@@ -85,7 +89,7 @@ function AgeInput({
 const defaultGenders: RaceGender[] = ["male", "female"];
 
 function emptyAgeBand(): AgeBand {
-  return { genders: defaultGenders, minAge: 0, maxAge: null, awardDepth: null };
+  return { genders: defaultGenders, minAge: null, maxAge: null, awardDepth: null };
 }
 
 function emptyAward(): AwardRule {
@@ -110,7 +114,13 @@ export function RaceScoringEditor({
       }),
     [scoring, legacyAgeGroups, legacyAwards],
   );
+  const incomingKey = JSON.stringify(initial);
   const [state, setState] = useState<RaceScoring>(initial);
+  const [appliedKey, setAppliedKey] = useState(incomingKey);
+  if (appliedKey !== incomingKey) {
+    setAppliedKey(incomingKey);
+    setState(initial);
+  }
   const [series, setSeries] = useState({
     genders: defaultGenders,
     start: "25",
@@ -152,6 +162,74 @@ export function RaceScoringEditor({
       <CollapsibleCard nested title="Awards and age groups" defaultOpen={hasContent}>
         <div className="space-y-5">
           <section className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-bold text-slate-950">Awards</h4>
+              <button
+                type="button"
+                onClick={() => update({ awards: [...state.awards, emptyAward()] })}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                Add award
+              </button>
+            </div>
+            <div className="space-y-3">
+              {state.awards.map((award, index) => (
+                <article
+                  key={`award-${index}`}
+                  className="space-y-2 rounded-xl border border-slate-200 bg-white p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium text-slate-800">
+                      {formatAwardRule({ ...award, title: award.title || "New award" })}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        update({
+                          awards: state.awards.filter((_, item) => item !== index),
+                        })
+                      }
+                      className="text-xs font-semibold text-red-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <label className="block text-xs text-slate-600">
+                    Title
+                    <input
+                      value={award.title}
+                      onChange={(event) => patchAward(index, { title: event.target.value })}
+                      placeholder="Overall, Masters…"
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+                    />
+                  </label>
+                  <GenderChips
+                    value={award.genders}
+                    onChange={(genders) => patchAward(index, { genders })}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <AgeInput
+                      label="Min age"
+                      value={award.minAge}
+                      onChange={(minAge) => patchAward(index, { minAge })}
+                    />
+                    <AgeInput
+                      label="Max age"
+                      value={award.maxAge}
+                      onChange={(maxAge) => patchAward(index, { maxAge })}
+                    />
+                  </div>
+                </article>
+              ))}
+              {!state.awards.length ? (
+                <p className="text-sm text-slate-500">
+                  Overall, Masters, and similar awards that sit outside age groups.
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="space-y-3">
             <h4 className="text-sm font-bold text-slate-950">Age groups</h4>
             <div className="space-y-3">
               {state.ageGroups.map((band, index) => (
@@ -159,6 +237,22 @@ export function RaceScoringEditor({
                   key={`age-${index}`}
                   className="space-y-2 rounded-xl border border-slate-200 bg-white p-3"
                 >
+                  {isContactTimerBand(band) ? (
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">
+                          All · Contact Timer
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Added on every race. 0 awards. Included in Age Groups JSON.
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-500">
+                        Required
+                      </span>
+                    </div>
+                  ) : (
+                    <>
                   <div className="flex items-start justify-between gap-3">
                     <p className="text-sm font-medium text-slate-800">
                       {formatAgeBand(band) || "New age group"}
@@ -167,7 +261,9 @@ export function RaceScoringEditor({
                       type="button"
                       onClick={() =>
                         update({
-                          ageGroups: state.ageGroups.filter((_, item) => item !== index),
+                          ageGroups: withContactTimerAgeGroup(
+                            state.ageGroups.filter((_, item) => item !== index),
+                          ),
                         })
                       }
                       className="text-xs font-semibold text-red-700"
@@ -200,7 +296,7 @@ export function RaceScoringEditor({
                         onChange={(awardDepth) => patchAgeGroup(index, { awardDepth })}
                       />
                     </div>
-                    {state.ageGroups.length > 1 ? (
+                    {state.ageGroups.filter((item) => !isContactTimerBand(item)).length > 1 ? (
                       <button
                         type="button"
                         onClick={() =>
@@ -214,6 +310,8 @@ export function RaceScoringEditor({
                       </button>
                     ) : null}
                   </div>
+                    </>
+                  )}
                 </article>
               ))}
               {!state.ageGroups.length ? (
@@ -221,7 +319,14 @@ export function RaceScoringEditor({
               ) : null}
               <button
                 type="button"
-                onClick={() => update({ ageGroups: [...state.ageGroups, emptyAgeBand()] })}
+                onClick={() =>
+                  update({
+                    ageGroups: withContactTimerAgeGroup([
+                      ...state.ageGroups.filter((band) => !isContactTimerBand(band)),
+                      emptyAgeBand(),
+                    ]),
+                  })
+                }
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
               >
                 Add age group
@@ -291,7 +396,12 @@ export function RaceScoringEditor({
                         lastHigh: Number(series.lastHigh),
                         awardDepth: inheritedDepth,
                       });
-                      update({ ageGroups: [...state.ageGroups, ...added] });
+                      update({
+                        ageGroups: withContactTimerAgeGroup([
+                          ...state.ageGroups.filter((band) => !isContactTimerBand(band)),
+                          ...added,
+                        ]),
+                      });
                       setSeriesError(null);
                     } catch (error) {
                       setSeriesError(
@@ -305,74 +415,6 @@ export function RaceScoringEditor({
                 </button>
               </div>
             </details>
-          </section>
-
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="text-sm font-bold text-slate-950">Awards</h4>
-              <button
-                type="button"
-                onClick={() => update({ awards: [...state.awards, emptyAward()] })}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-              >
-                Add award
-              </button>
-            </div>
-            <div className="space-y-3">
-              {state.awards.map((award, index) => (
-                <article
-                  key={`award-${index}`}
-                  className="space-y-2 rounded-xl border border-slate-200 bg-white p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium text-slate-800">
-                      {formatAwardRule({ ...award, title: award.title || "New award" })}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        update({
-                          awards: state.awards.filter((_, item) => item !== index),
-                        })
-                      }
-                      className="text-xs font-semibold text-red-700"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <label className="block text-xs text-slate-600">
-                    Title
-                    <input
-                      value={award.title}
-                      onChange={(event) => patchAward(index, { title: event.target.value })}
-                      placeholder="Overall, Masters…"
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
-                    />
-                  </label>
-                  <GenderChips
-                    value={award.genders}
-                    onChange={(genders) => patchAward(index, { genders })}
-                  />
-                  <div className="grid grid-cols-2 gap-3">
-                    <AgeInput
-                      label="Min age"
-                      value={award.minAge}
-                      onChange={(minAge) => patchAward(index, { minAge })}
-                    />
-                    <AgeInput
-                      label="Max age"
-                      value={award.maxAge}
-                      onChange={(maxAge) => patchAward(index, { maxAge })}
-                    />
-                  </div>
-                </article>
-              ))}
-              {!state.awards.length ? (
-                <p className="text-sm text-slate-500">
-                  Overall, Masters, and similar awards that sit outside age groups.
-                </p>
-              ) : null}
-            </div>
           </section>
 
           <label className="block text-sm">

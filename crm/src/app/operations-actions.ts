@@ -16,9 +16,16 @@ import {
 import {
   formatAgeGroupsField,
   formatAwardsField,
+  isContactTimerBand,
   parseRaceScoring,
 } from "@/lib/crm/race-scoring";
+import {
+  ageBandsForFileEvent,
+  parseAgeGroupFile,
+  scoringWithImportedAgeGroups,
+} from "@/lib/crm/age-group-file";
 import { refreshOccurrenceFromOnlineListing } from "@/lib/crm/online-listings";
+import { actionFailureResult } from "@/lib/next-control-flow";
 
 const uuid = z.string().uuid();
 const optionalText = (maximum: number) =>
@@ -266,6 +273,134 @@ export async function saveOccurrenceRaceAction(formData: FormData) {
     client.release();
   }
   refreshBooking(input.bookingId);
+}
+
+export async function importRaceAgeGroupsAction(formData: FormData) {
+  try {
+    const bookingId = uuid.parse(formData.get("bookingId"));
+    const occurrenceId = uuid.parse(formData.get("occurrenceId"));
+    const { user } = await requireBookingOperator(bookingId);
+    let parsedFile: unknown;
+    try {
+      parsedFile = JSON.parse(String(formData.get("ageGroupFile") ?? ""));
+    } catch {
+      throw new Error("That Age Groups file could not be read.");
+    }
+    const file = parseAgeGroupFile(parsedFile);
+    let rawMappings: unknown = {};
+    try {
+      rawMappings = JSON.parse(String(formData.get("eventMappings") ?? "{}"));
+    } catch {
+      throw new Error("Could not read the event mapping.");
+    }
+    if (!rawMappings || typeof rawMappings !== "object" || Array.isArray(rawMappings)) {
+      throw new Error("Could not read the event mapping.");
+    }
+    const mappings = Object.fromEntries(
+      Object.entries(rawMappings).map(([key, value]) => [
+        key,
+        value ? uuid.parse(value) : "",
+      ]),
+    );
+    const assigned = new Map<string, number>();
+    const updates = file.scoredEvents.flatMap((event) => {
+      const raceId = mappings[String(event.scored_event_id)] ?? "";
+      if (!raceId) return [];
+      assigned.set(raceId, (assigned.get(raceId) ?? 0) + 1);
+      return [
+        {
+          raceId,
+          eventName: event.scored_event_name,
+          ageGroups: ageBandsForFileEvent(file, event.scored_event_id),
+        },
+      ];
+    });
+    if (!updates.length) {
+      throw new Error("Map at least one file event to a race.");
+    }
+    if ([...assigned.values()].some((count) => count > 1)) {
+      throw new Error("Each CRM race can only receive one file event.");
+    }
+
+    const client = await getPool().connect();
+    try {
+      await client.query("BEGIN");
+      const validOccurrence = await client.query(
+        `
+          SELECT 1 FROM crm.bookings
+          WHERE id = $1::uuid AND occurrence_id = $2::uuid
+        `,
+        [bookingId, occurrenceId],
+      );
+      if (!validOccurrence.rows[0]) throw new Error("Booking occurrence not found.");
+      const imported: { raceId: string; raceName: string; ageGroupCount: number }[] = [];
+      for (const update of updates) {
+        const current = await client.query<{
+          name: string;
+          scoring: unknown;
+        }>(
+          `
+            SELECT name, scoring
+            FROM crm.occurrence_races
+            WHERE id = $1::uuid AND occurrence_id = $2::uuid
+          `,
+          [update.raceId, occurrenceId],
+        );
+        if (!current.rows[0]) throw new Error("Race not found.");
+        const scoring = scoringWithImportedAgeGroups(
+          current.rows[0].scoring,
+          update.ageGroups,
+        );
+        await client.query(
+          `
+            UPDATE crm.occurrence_races
+            SET age_groups = $3, scoring = $4::jsonb, updated_at = now()
+            WHERE id = $1::uuid AND occurrence_id = $2::uuid
+          `,
+          [
+            update.raceId,
+            occurrenceId,
+            formatAgeGroupsField(scoring.ageGroups),
+            JSON.stringify(scoring),
+          ],
+        );
+        imported.push({
+          raceId: update.raceId,
+          raceName: current.rows[0].name,
+          ageGroupCount: scoring.ageGroups.filter((band) => !isContactTimerBand(band))
+            .length,
+        });
+      }
+      await appendAuditActivity(
+        client,
+        { bookingId },
+        user,
+        `Imported age groups for ${imported
+          .map((item) => item.raceName)
+          .join(", ")}`,
+      );
+      await client.query("COMMIT");
+      refreshBooking(bookingId);
+      return {
+        ok: true as const,
+        imported,
+        message: imported
+          .map((item) =>
+            item.ageGroupCount === 1
+              ? `Imported 1 age group into ${item.raceName}.`
+              : `Imported ${item.ageGroupCount} age groups into ${item.raceName}.`,
+          )
+          .join(" "),
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    return actionFailureResult(error, "Could not import age groups.");
+  }
 }
 
 export async function deleteOccurrenceRaceAction(formData: FormData) {

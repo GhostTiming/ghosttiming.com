@@ -2,7 +2,6 @@ import {
   ArrowLeft,
   CalendarClock,
   CalendarDays,
-  CheckCircle2,
   Clock3,
   Flag,
   ListChecks,
@@ -26,8 +25,6 @@ import {
   saveCoursePointAction,
   saveOccurrenceRaceAction,
   updateOccurrenceOperationsAction,
-  updatePrepItemDetailsAction,
-  updatePrepItemAction,
 } from "@/app/operations-actions";
 import {
   permanentlyDeleteBookingAction,
@@ -47,6 +44,7 @@ import { CatalogEventOverview } from "@/components/prospecting/event-overview";
 import { ScheduleOverrideEditor } from "@/components/schedule-override-editor";
 import { ActivityTimelineItem } from "@/components/activity-timeline-item";
 import { CrewAssignmentPanel } from "@/components/crew-assignment-panel";
+import { AgeGroupFileTools } from "@/components/age-group-file-tools";
 import { RaceScoringEditor } from "@/components/race-scoring-editor";
 import { BookingCalendarCard } from "@/components/google/booking-calendar-card";
 import { TaskCalendarSyncControl } from "@/components/google/task-calendar-sync-control";
@@ -69,7 +67,12 @@ import {
 } from "@/lib/crm/catalog-link";
 import { eventMatchKey } from "@/lib/crm/event-matching";
 import { buildGoogleCalendarUrl } from "@/lib/crm/google-calendar";
-import { formatTaskHeadline } from "@/lib/crm/domain";
+import {
+  closedLostReasonLabels,
+  formatCalendarDate,
+  formatTaskHeadline,
+  isClosedLostReason,
+} from "@/lib/crm/domain";
 import { isMeetingActivity, parseMeetingMetadata } from "@/lib/crm/outreach-activity";
 import { getCatalogOverview } from "@/lib/crm/queries";
 import { parseRouteUuid } from "@/lib/crm/route-id";
@@ -121,6 +124,9 @@ type BookingDetail = {
   assigned_user_id: string | null;
   assignee: string | null;
   stage_key: string;
+  closed_lost_reason: string | null;
+  closed_lost_note: string | null;
+  circle_back_on: string | null;
   expected_revenue: string | null;
   actual_revenue: string | null;
   amount_paid: string | null;
@@ -215,6 +221,9 @@ export default async function BookingDetailPage({
         b.assigned_user_id::text,
         assignee.name AS assignee,
         stage.key AS stage_key,
+        b.closed_lost_reason,
+        b.closed_lost_note,
+        b.circle_back_on::text,
         b.expected_revenue::text,
         b.actual_revenue::text,
         b.amount_paid::text,
@@ -585,7 +594,6 @@ export default async function BookingDetailPage({
   const activityById = new Map(activities.rows.map((activity) => [activity.id, activity]));
   const taskById = new Map(tasks.rows.map((task) => [task.id, task]));
   const feedActivityCount = feed.filter((item) => item.kind === "activity").length;
-  const prepPendingCount = prepItems.rows.filter((item) => item.status === "pending").length;
 
   return (
     <div className="space-y-6">
@@ -650,7 +658,36 @@ export default async function BookingDetailPage({
         bookingId={booking.id}
         currentStageKey={booking.stage_key}
         stages={stages.rows}
+        prepItems={prepItems.rows}
       />
+
+      {booking.stage_key === "closed_lost" ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">
+            Close lost
+          </h2>
+          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-slate-500">Reason</dt>
+              <dd>
+                {booking.closed_lost_reason && isClosedLostReason(booking.closed_lost_reason)
+                  ? closedLostReasonLabels[booking.closed_lost_reason]
+                  : booking.closed_lost_reason ?? "Not recorded"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Circle back</dt>
+              <dd>{formatCalendarDate(booking.circle_back_on) ?? "None"}</dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-slate-500">Notes</dt>
+              <dd className="whitespace-pre-wrap">
+                {booking.closed_lost_note || "None"}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
 
       <div className="space-y-6">
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -892,12 +929,30 @@ export default async function BookingDetailPage({
                   </PendingSubmitButton>
                 </form>
                 <div className="mt-5 border-t border-slate-200 pt-4">
-                  <h3 className="flex items-center gap-2 text-sm font-bold text-slate-950">
-                    <Flag className="size-4 text-cyan-700" /> Races
-                  </h3>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <h3 className="flex items-center gap-2 text-sm font-bold text-slate-950">
+                      <Flag className="size-4 text-cyan-700" /> Races
+                    </h3>
+                    <AgeGroupFileTools
+                      bookingId={booking.id}
+                      occurrenceId={booking.occurrence_id}
+                      eventName={booking.event_name}
+                      races={races.rows.map((race) => ({
+                        id: race.id,
+                        name: race.name,
+                        scoring: race.scoring,
+                        ageGroups: race.age_groups,
+                        awards: race.awards,
+                      }))}
+                    />
+                  </div>
                   <div className="mt-3 space-y-3">
                     {races.rows.map((race) => (
-                      <details key={race.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                      <details
+                        id={`occurrence-race-${race.id}`}
+                        key={race.id}
+                        className="rounded-xl border border-slate-200 bg-white p-4"
+                      >
                         <summary className="cursor-pointer font-semibold">
                           {race.name} · {race.start_time?.slice(0, 16).replace("T", " ") ?? "Start TBD"}
                           <span className="ml-2 text-sm font-normal text-slate-500">
@@ -921,6 +976,7 @@ export default async function BookingDetailPage({
                           <label className="text-sm">Miles<input type="number" min="0" step="0.001" name="distanceMiles" defaultValue={race.distance_miles ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
                           <label className="text-sm">Meters<input type="number" min="1" name="distanceMeters" defaultValue={race.distance_meters ?? ""} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
                           <RaceScoringEditor
+                            key={`${race.id}:${JSON.stringify(race.scoring ?? null)}`}
                             scoring={race.scoring}
                             legacyAgeGroups={race.age_groups}
                             legacyAwards={race.awards}
@@ -1080,47 +1136,6 @@ export default async function BookingDetailPage({
                     Save expectations
                   </PendingSubmitButton>
                 </form>
-              </CollapsibleCard>
-
-              <CollapsibleCard
-                nested
-                defaultOpen={false}
-                title="Pre-event prep"
-                icon={<CheckCircle2 className="size-4 text-cyan-700" />}
-                meta={prepPendingCount ? `· ${prepPendingCount} pending` : "· Ready"}
-              >
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {prepItems.rows.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-slate-100 p-3">
-                      <form action={updatePrepItemAction}>
-                        <input type="hidden" name="bookingId" value={booking.id} />
-                        <input type="hidden" name="itemId" value={item.id} />
-                        <label className="block text-sm font-medium">
-                          {item.label}
-                          <select key={item.status} name="status" defaultValue={item.status} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
-                            <option value="pending">Pending</option>
-                            <option value="complete">Complete</option>
-                            <option value="not_applicable">Not Applicable</option>
-                          </select>
-                        </label>
-                        <PendingSubmitButton className="mt-2 text-sm font-semibold text-cyan-700">Save</PendingSubmitButton>
-                      </form>
-                      <details className="mt-2 text-sm">
-                        <summary className="cursor-pointer text-slate-500">Edit item details</summary>
-                        <form action={updatePrepItemDetailsAction} className="mt-2 space-y-2">
-                          <input type="hidden" name="bookingId" value={booking.id} />
-                          <input type="hidden" name="itemId" value={item.id} />
-                          <label className="block">Label<input required name="label" defaultValue={item.label} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                          <label className="block">Notes<textarea name="notes" defaultValue={item.notes ?? ""} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
-                          <PendingSubmitButton className="font-semibold text-cyan-700">Save details</PendingSubmitButton>
-                        </form>
-                      </details>
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-3 text-xs text-slate-500">
-                  Both items must be complete or not applicable before Ready.
-                </p>
               </CollapsibleCard>
             </div>
           </CollapsibleCard>

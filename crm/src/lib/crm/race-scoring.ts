@@ -46,12 +46,42 @@ function uniqueGenders(genders: RaceGender[]) {
   return GENDER_ORDER.filter((gender) => unique.includes(gender));
 }
 
+export const CONTACT_TIMER_AGE_BAND: AgeBand = {
+  genders: ["combined"],
+  minAge: 0,
+  maxAge: 0,
+  awardDepth: null,
+};
+
+export function isOpenEndedMax(maxAge: number | null | undefined) {
+  return maxAge == null || maxAge === 99;
+}
+
+export function isContactTimerBand(band: AgeBand) {
+  return (
+    band.genders.includes("combined") &&
+    (band.minAge == null || band.minAge === 0) &&
+    band.maxAge === 0 &&
+    (band.awardDepth == null || band.awardDepth < 1)
+  );
+}
+
+export function withContactTimerAgeGroup(bands: readonly AgeBand[]): AgeBand[] {
+  return [
+    ...bands.filter((band) => !isContactTimerBand(band)),
+    CONTACT_TIMER_AGE_BAND,
+  ];
+}
+
 export function emptyRaceScoring(): RaceScoring {
-  return { ageGroups: [], awards: [], notes: null };
+  return { ageGroups: withContactTimerAgeGroup([]), awards: [], notes: null };
 }
 
 export function hasStructuredScoring(scoring: RaceScoring) {
-  return scoring.ageGroups.length > 0 || scoring.awards.length > 0;
+  return (
+    scoring.ageGroups.some((band) => !isContactTimerBand(band)) ||
+    scoring.awards.length > 0
+  );
 }
 
 export function toggleRaceGender(current: RaceGender[], gender: RaceGender): RaceGender[] {
@@ -66,11 +96,16 @@ export function toggleRaceGender(current: RaceGender[], gender: RaceGender): Rac
 }
 
 export function formatAgeRange(minAge: number | null, maxAge: number | null) {
-  if (maxAge != null && (minAge == null || minAge === 0)) {
-    return `${maxAge} and under`;
-  }
-  if (minAge != null && minAge > 0 && maxAge == null) {
+  if (isOpenEndedMax(maxAge) && minAge != null && minAge > 0) {
     return `${minAge} and over`;
+  }
+  if (
+    maxAge != null &&
+    !isOpenEndedMax(maxAge) &&
+    (minAge == null || minAge === 0 || minAge === 1) &&
+    minAge !== maxAge
+  ) {
+    return `${maxAge} and under`;
   }
   if (minAge != null && maxAge != null) {
     return minAge === maxAge ? `${minAge}` : `${minAge}–${maxAge}`;
@@ -96,6 +131,7 @@ export function formatAwardDepth(depth: number | null | undefined) {
 }
 
 export function formatAgeBand(band: AgeBand) {
+  if (isContactTimerBand(band)) return "All · Contact Timer";
   const detail = [formatAgeRange(band.minAge, band.maxAge), formatAwardDepth(band.awardDepth)]
     .filter(Boolean)
     .join(" · ");
@@ -112,7 +148,10 @@ export function formatAwardRule(award: AwardRule) {
 }
 
 export function formatAgeGroupsField(bands: AgeBand[]) {
-  const lines = bands.map(formatAgeBand).filter(Boolean);
+  const lines = bands
+    .filter((band) => !isContactTimerBand(band))
+    .map(formatAgeBand)
+    .filter(Boolean);
   return lines.length ? lines.join("\n") : null;
 }
 
@@ -152,9 +191,11 @@ export function buildAgeBandSeries(input: {
 
 export function copyAwardDepthToOtherBands(bands: AgeBand[], fromIndex: number): AgeBand[] {
   const source = bands[fromIndex];
-  if (!source) return bands;
+  if (!source || isContactTimerBand(source)) return bands;
   return bands.map((band, index) =>
-    index === fromIndex ? band : { ...band, awardDepth: source.awardDepth },
+    index === fromIndex || isContactTimerBand(band)
+      ? band
+      : { ...band, awardDepth: source.awardDepth },
   );
 }
 
@@ -186,7 +227,8 @@ function parseAgeBand(value: unknown): AgeBand | null {
   return {
     genders,
     minAge,
-    maxAge,
+    maxAge:
+      maxAge != null ? maxAge : minAge != null && minAge > 0 ? 99 : null,
     awardDepth: asPositiveIntOrNull(row.awardDepth),
   };
 }
@@ -212,12 +254,14 @@ export function parseRaceScoring(value: unknown): RaceScoring {
   const notes =
     typeof row.notes === "string" && row.notes.trim() ? row.notes.trim() : null;
   return {
-    ageGroups: Array.isArray(row.ageGroups)
-      ? row.ageGroups.flatMap((item) => {
-          const band = parseAgeBand(item);
-          return band ? [band] : [];
-        })
-      : [],
+    ageGroups: withContactTimerAgeGroup(
+      Array.isArray(row.ageGroups)
+        ? row.ageGroups.flatMap((item) => {
+            const band = parseAgeBand(item);
+            return band ? [band] : [];
+          })
+        : [],
+    ),
     awards: Array.isArray(row.awards)
       ? row.awards.flatMap((item) => {
           const award = parseAwardRule(item);
@@ -234,20 +278,31 @@ export function scoringFromLegacyText(input: {
   awards?: string | null;
 }): RaceScoring {
   const scoring = parseRaceScoring(input.scoring);
-  if (hasStructuredScoring(scoring) || scoring.notes) return scoring;
+  if (hasStructuredScoring(scoring) || scoring.notes) {
+    return {
+      ...scoring,
+      ageGroups: withContactTimerAgeGroup(scoring.ageGroups),
+    };
+  }
   const leftover = [input.ageGroups, input.awards]
     .map((value) => (value ?? "").trim())
     .filter(Boolean)
     .join("\n\n");
-  return { ...scoring, notes: leftover || null };
+  return {
+    ...scoring,
+    ageGroups: withContactTimerAgeGroup(scoring.ageGroups),
+    notes: leftover || null,
+  };
 }
 
 export function serializeRaceScoring(scoring: RaceScoring): RaceScoring {
   const notes = scoring.notes?.trim() || null;
   return {
-    ageGroups: scoring.ageGroups
-      .map((band) => parseAgeBand(band))
-      .filter((band): band is AgeBand => Boolean(band)),
+    ageGroups: withContactTimerAgeGroup(
+      scoring.ageGroups
+        .map((band) => parseAgeBand(band))
+        .filter((band): band is AgeBand => Boolean(band)),
+    ),
     awards: scoring.awards
       .map((award) => parseAwardRule(award))
       .filter((award): award is AwardRule => Boolean(award)),

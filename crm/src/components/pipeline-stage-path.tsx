@@ -2,6 +2,7 @@
 
 import type { FormEvent, ReactNode } from "react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   FormSaveFailedContext,
   PendingSubmitButton,
@@ -19,6 +20,11 @@ export type PipelineStageOption = {
 };
 
 export type PipelineKind = "booking" | "prospect";
+
+export type PipelineStageActionResult = {
+  ok?: boolean;
+  message?: string;
+} | void;
 
 const toneClass: Record<PipelineStageTone, string> = {
   live: "peer-checked:bg-cyan-700",
@@ -44,7 +50,9 @@ export function PipelineStagePath({
   variant = "card",
   onSubmit,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (
+    formData: FormData,
+  ) => PipelineStageActionResult | Promise<PipelineStageActionResult>;
   hiddenFields: Record<string, string>;
   currentStageKey: string;
   stages: readonly PipelineStageOption[];
@@ -55,6 +63,7 @@ export function PipelineStagePath({
   variant?: "card" | "embedded";
   onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
 
@@ -62,7 +71,13 @@ export function PipelineStagePath({
     setError(null);
     setSaveFailed(false);
     try {
-      await action(formData);
+      const result = await action(formData);
+      if (result && result.ok === false) {
+        setSaveFailed(true);
+        setError(result.message ?? "Could not save stage.");
+        return;
+      }
+      router.refresh();
     } catch (cause) {
       rethrowNextControlFlow(cause);
       setSaveFailed(true);

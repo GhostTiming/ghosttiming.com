@@ -34,7 +34,12 @@ import {
   recalculateOccurrenceTimes,
   shiftOccurrenceRaceTimes,
 } from "@/lib/crm/race-operations";
+import {
+  BOOKING_READY_PREP_REQUIRED,
+  parseClosedLostDetails,
+} from "@/lib/crm/domain";
 import { refreshCatalogLinkedViews } from "@/lib/crm/revalidate";
+import { actionFailureResult } from "@/lib/next-control-flow";
 
 const uuid = z.string().uuid();
 const money = z
@@ -60,9 +65,7 @@ export async function assertBookingStageRequirements(
       [bookingId],
     );
     if ((prep.rows[0]?.pending_count ?? 0) > 0) {
-      throw new Error(
-        "Complete or mark every prep item Not Applicable before moving to Ready.",
-      );
+      throw new Error(BOOKING_READY_PREP_REQUIRED);
     }
   }
   if (stageKey === "paid") {
@@ -348,76 +351,179 @@ const bookingStageKeys = [
 ] as const;
 
 export async function changeBookingStageAction(formData: FormData) {
-  const bookingId = uuid.parse(formData.get("bookingId"));
-  const { user } = await requireBookingOperator(bookingId);
-  const stageKey = z.enum(bookingStageKeys).parse(formData.get("stageKey"));
-  const client = await getPool().connect();
   try {
-    await client.query("BEGIN");
-    await assertBookingStageRequirements(client, bookingId, stageKey);
-    const changed = await client.query<{ old_name: string; new_name: string }>(
-      `
-        WITH target AS (
-          SELECT id, key, name FROM crm.pipeline_stages
-          WHERE pipeline = 'booking' AND key = $2 AND is_active = true
-        ),
-        previous AS (
-          SELECT b.stage_id, stage.name AS old_name
-          FROM crm.bookings b
-          JOIN crm.pipeline_stages stage ON stage.id = b.stage_id
-          WHERE b.id = $1::uuid
-        ),
-        updated AS (
-          UPDATE crm.bookings
-          SET stage_id = target.id,
-              completed_at = CASE
-                WHEN target.key IN ('completed', 'paid')
-                  THEN COALESCE(bookings.completed_at, now())
-                ELSE bookings.completed_at
-              END,
-              payment_due_at = CASE
-                WHEN target.key IN ('completed', 'paid')
-                  THEN COALESCE(bookings.payment_due_at, now() + interval '30 days')
-                ELSE bookings.payment_due_at
-              END,
-              payment_at = CASE
-                WHEN target.key = 'paid' THEN COALESCE(bookings.payment_at, now())
-                ELSE bookings.payment_at
-              END,
-              updated_at = now()
-          FROM target, previous
-          WHERE bookings.id = $1::uuid AND bookings.stage_id <> target.id
-          RETURNING previous.old_name, target.name AS new_name
-        )
-        SELECT old_name, new_name FROM updated
-      `,
-      [bookingId, stageKey],
-    );
-    if (changed.rows[0]) {
+    const bookingId = uuid.parse(formData.get("bookingId"));
+    const { user } = await requireBookingOperator(bookingId);
+    const stageKey = z.enum(bookingStageKeys).parse(formData.get("stageKey"));
+    const closedLost =
+      stageKey === "closed_lost"
+        ? parseClosedLostDetails({
+            reason: String(formData.get("closedLostReason") ?? "") || null,
+            note: String(formData.get("closedLostNote") ?? "") || null,
+            circleBackOn: String(formData.get("circleBackOn") ?? "") || null,
+          })
+        : null;
+    const client = await getPool().connect();
+    try {
+      await client.query("BEGIN");
+      await assertBookingStageRequirements(client, bookingId, stageKey);
+      const changed = await client.query<{ old_name: string; new_name: string }>(
+        `
+          WITH target AS (
+            SELECT id, key, name FROM crm.pipeline_stages
+            WHERE pipeline = 'booking' AND key = $2 AND is_active = true
+          ),
+          previous AS (
+            SELECT b.stage_id, stage.name AS old_name
+            FROM crm.bookings b
+            JOIN crm.pipeline_stages stage ON stage.id = b.stage_id
+            WHERE b.id = $1::uuid
+          ),
+          updated AS (
+            UPDATE crm.bookings
+            SET stage_id = target.id,
+                completed_at = CASE
+                  WHEN target.key IN ('completed', 'paid')
+                    THEN COALESCE(bookings.completed_at, now())
+                  ELSE bookings.completed_at
+                END,
+                payment_due_at = CASE
+                  WHEN target.key IN ('completed', 'paid')
+                    THEN COALESCE(bookings.payment_due_at, now() + interval '30 days')
+                  ELSE bookings.payment_due_at
+                END,
+                payment_at = CASE
+                  WHEN target.key = 'paid' THEN COALESCE(bookings.payment_at, now())
+                  ELSE bookings.payment_at
+                END,
+                closed_lost_reason = CASE
+                  WHEN target.key = 'closed_lost' THEN $3
+                  ELSE bookings.closed_lost_reason
+                END,
+                closed_lost_note = CASE
+                  WHEN target.key = 'closed_lost' THEN $4
+                  ELSE bookings.closed_lost_note
+                END,
+                circle_back_on = CASE
+                  WHEN target.key = 'closed_lost' THEN $5::date
+                  ELSE bookings.circle_back_on
+                END,
+                updated_at = now()
+            FROM target, previous
+            WHERE bookings.id = $1::uuid AND bookings.stage_id <> target.id
+            RETURNING previous.old_name, target.name AS new_name
+          )
+          SELECT old_name, new_name FROM updated
+        `,
+        [
+          bookingId,
+          stageKey,
+          closedLost?.reason ?? null,
+          closedLost?.note ?? null,
+          closedLost?.circleBackOn ?? null,
+        ],
+      );
+      if (changed.rows[0]) {
+        await client.query(
+          `
+            INSERT INTO crm.activities
+              (booking_id, type, body, actor_type, actor_user_id, actor_name)
+            VALUES ($1::uuid, 'stage_change', $2, 'human', $3::uuid, $4)
+          `,
+          [
+            bookingId,
+            `Booking changed from ${changed.rows[0].old_name} to ${changed.rows[0].new_name}`,
+            user.id,
+            user.name,
+          ],
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    refreshCatalogLinkedViews({ bookingId });
+    return { ok: true as const };
+  } catch (error) {
+    return actionFailureResult(error, "Could not save stage.");
+  }
+}
+
+export async function saveBookingPrepItemsAction(formData: FormData) {
+  try {
+    const bookingId = uuid.parse(formData.get("bookingId"));
+    const { user } = await requireBookingOperator(bookingId);
+    const itemIds = formData
+      .getAll("itemId")
+      .map((value) => uuid.parse(value));
+    if (itemIds.length === 0) {
+      throw new Error("Add at least one prep item before saving.");
+    }
+    const items = itemIds.map((itemId) => ({
+      itemId,
+      status: z
+        .enum(["pending", "complete", "not_applicable"])
+        .parse(formData.get(`status_${itemId}`)),
+      notes: z
+        .string()
+        .trim()
+        .max(5_000)
+        .optional()
+        .parse(formData.get(`notes_${itemId}`) || undefined),
+    }));
+    const client = await getPool().connect();
+    try {
+      await client.query("BEGIN");
+      for (const item of items) {
+        const changed = await client.query<{ label: string }>(
+          `
+            UPDATE crm.booking_prep_items
+            SET status = $3::crm.prep_item_status,
+                notes = $4,
+                updated_by_user_id = $5::uuid,
+                updated_at = now()
+            WHERE id = $2::uuid AND booking_id = $1::uuid
+            RETURNING label
+          `,
+          [
+            bookingId,
+            item.itemId,
+            item.status,
+            item.notes ?? null,
+            user.id,
+          ],
+        );
+        if (!changed.rows[0]) throw new Error("Prep item not found.");
+      }
       await client.query(
         `
           INSERT INTO crm.activities
             (booking_id, type, body, actor_type, actor_user_id, actor_name)
-          VALUES ($1::uuid, 'stage_change', $2, 'human', $3::uuid, $4)
+          VALUES ($1::uuid, 'note', $2, 'human', $3::uuid, $4)
         `,
-        [
-          bookingId,
-          `Booking changed from ${changed.rows[0].old_name} to ${changed.rows[0].new_name}`,
-          user.id,
-          user.name,
-        ],
+        [bookingId, "Pre-event prep updated", user.id, user.name],
       );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
-    await client.query("COMMIT");
+    if (formData.get("markReady") === "1") {
+      const stageForm = new FormData();
+      stageForm.set("bookingId", bookingId);
+      stageForm.set("stageKey", "ready");
+      return changeBookingStageAction(stageForm);
+    }
+    refreshCatalogLinkedViews({ bookingId });
+    return { ok: true as const };
   } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
+    return actionFailureResult(error, "Could not save prep.");
   }
-  revalidatePath(`/bookings/${bookingId}`);
-  revalidatePath("/bookings");
-  redirect(`/bookings/${bookingId}`);
 }
 
 export async function updateBookingFinancialsAction(formData: FormData) {

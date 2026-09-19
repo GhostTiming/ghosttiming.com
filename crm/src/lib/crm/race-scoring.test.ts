@@ -8,17 +8,21 @@ import {
   formatAwardRule,
   formatAwardsField,
   scoringFromLegacyText,
+  serializeRaceScoring,
   toggleRaceGender,
+  withContactTimerAgeGroup,
 } from "./race-scoring";
 
 describe("age range copy", () => {
-  it("treats 0 as and under", () => {
+  it("treats 0 or 1 as and under", () => {
     expect(formatAgeRange(0, 13)).toBe("13 and under");
+    expect(formatAgeRange(1, 12)).toBe("12 and under");
     expect(formatAgeRange(null, 13)).toBe("13 and under");
   });
 
-  it("prints open-ended max as and over", () => {
+  it("prints open-ended max, including 99, as and over", () => {
     expect(formatAgeRange(80, null)).toBe("80 and over");
+    expect(formatAgeRange(60, 99)).toBe("60 and over");
   });
 
   it("does not treat a zero min with no max as 0 and over", () => {
@@ -28,6 +32,7 @@ describe("age range copy", () => {
   it("prints inclusive spans with an en dash", () => {
     expect(formatAgeRange(14, 16)).toBe("14–16");
     expect(formatAgeRange(20, 24)).toBe("20–24");
+    expect(formatAgeRange(1, 1)).toBe("1");
   });
 });
 
@@ -52,6 +57,30 @@ describe("display lines", () => {
         awardDepth: null,
       }),
     ).toBe("Male, Female · 13 and under");
+    expect(
+      formatAgeBand({
+        genders: ["female"],
+        minAge: 1,
+        maxAge: 12,
+        awardDepth: 3,
+      }),
+    ).toBe("Female · 12 and under · Top 3");
+    expect(
+      formatAgeBand({
+        genders: ["male"],
+        minAge: 60,
+        maxAge: 99,
+        awardDepth: 3,
+      }),
+    ).toBe("Male · 60 and over · Top 3");
+    expect(
+      formatAgeBand({
+        genders: ["combined"],
+        minAge: 0,
+        maxAge: 0,
+        awardDepth: null,
+      }),
+    ).toBe("All · Contact Timer");
   });
 
   it("includes awards depth on the age group line", () => {
@@ -172,13 +201,13 @@ describe("legacy text", () => {
         awards: "Overall M/F",
       }),
     ).toEqual({
-      ageGroups: [],
+      ageGroups: withContactTimerAgeGroup([]),
       awards: [],
       notes: "Overall\n0-9\n\nOverall M/F",
     });
   });
 
-  it("keeps structured scoring when present", () => {
+  it("keeps structured scoring when present and appends Contact Timer", () => {
     const scoring = scoringFromLegacyText({
       scoring: {
         ageGroups: [{ genders: ["male"], minAge: 20, maxAge: 24 }],
@@ -187,8 +216,48 @@ describe("legacy text", () => {
       },
       ageGroups: "old paste",
     });
-    expect(scoring.ageGroups).toHaveLength(1);
+    expect(scoring.ageGroups).toEqual([
+      { genders: ["male"], minAge: 20, maxAge: 24, awardDepth: null },
+      ...withContactTimerAgeGroup([]),
+    ]);
     expect(scoring.notes).toBeNull();
+  });
+
+  it("keeps Contact Timer on serialize even when the editor omitted it", () => {
+    expect(
+      serializeRaceScoring({
+        ageGroups: [{ genders: ["female"], minAge: 1, maxAge: 12, awardDepth: 3 }],
+        awards: [],
+        notes: null,
+      }).ageGroups.at(-1),
+    ).toEqual({
+      genders: ["combined"],
+      minAge: 0,
+      maxAge: 0,
+      awardDepth: null,
+    });
+  });
+
+  it("keeps max age 99 and fills blank open-ended max as 99", () => {
+    expect(
+      serializeRaceScoring({
+        ageGroups: [{ genders: ["male"], minAge: 60, maxAge: 99, awardDepth: 3 }],
+        awards: [],
+        notes: null,
+      }).ageGroups[0],
+    ).toEqual({
+      genders: ["male"],
+      minAge: 60,
+      maxAge: 99,
+      awardDepth: 3,
+    });
+    expect(
+      serializeRaceScoring({
+        ageGroups: [{ genders: ["male"], minAge: 90, maxAge: null, awardDepth: 3 }],
+        awards: [],
+        notes: null,
+      }).ageGroups[0]?.maxAge,
+    ).toBe(99);
   });
 });
 

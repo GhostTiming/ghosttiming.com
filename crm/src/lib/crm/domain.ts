@@ -250,7 +250,7 @@ export function validateClosedLostDetails(input: {
 }): { success: true; data: ClosedLostDetails } | { success: false; error: string } {
   const reason = input.reason?.trim() ?? "";
   if (!reason) {
-    return { success: false, error: "Choose why this prospect was lost." };
+    return { success: false, error: "Choose why this was lost." };
   }
   if (!isClosedLostReason(reason)) {
     return { success: false, error: "Choose a valid lost reason." };
@@ -309,6 +309,8 @@ export function eventHasAlreadyOccurred(
 
 export const closedBookingStageKeys = ["closed_lost"] as const;
 export const wonBookingStageKeys = ["paid"] as const;
+export const BOOKING_READY_PREP_REQUIRED =
+  "Complete or mark every prep item Not Applicable before moving to Ready.";
 
 export type PipelineStageTone = "live" | "won" | "lost";
 
