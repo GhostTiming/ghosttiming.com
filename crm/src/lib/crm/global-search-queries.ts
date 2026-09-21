@@ -16,10 +16,42 @@ import {
   searchLikeNeedle,
   type SearchHit,
 } from "./global-search";
-import { personNameMatchesSql } from "./person-search";
+import { personEmailMatchesSql, personNameMatchesSql } from "./person-search";
 
 const like = (column: string, param: string) =>
   `${column} ILIKE '%' || ${param} || '%' ESCAPE '\\'`;
+
+const linkedContactEmailSql = personEmailMatchesSql("$1", { escape: true });
+
+const contactLinkedRaceNamesSql = `
+  (
+    SELECT string_agg(race_name, ', ' ORDER BY race_name)
+    FROM (
+      SELECT DISTINCT race_name
+      FROM (
+        SELECT COALESCE(linked_event.name, listing.name) AS race_name
+        FROM crm.prospects prospect
+        LEFT JOIN crm.events linked_event ON linked_event.id = prospect.event_id
+        LEFT JOIN catalog.race_listings listing
+          ON listing.id = prospect.race_listing_id
+        WHERE prospect.primary_contact_person_id = person.id
+          AND prospect.archived_at IS NULL
+        UNION
+        SELECT booking_event.name
+        FROM crm.bookings booking
+        JOIN crm.event_occurrences occurrence
+          ON occurrence.id = booking.occurrence_id
+        JOIN crm.events booking_event ON booking_event.id = occurrence.event_id
+        WHERE booking.primary_contact_person_id = person.id
+          AND booking.archived_at IS NULL
+          AND booking_event.archived_at IS NULL
+      ) named
+      WHERE race_name IS NOT NULL AND btrim(race_name) <> ''
+      ORDER BY race_name
+      LIMIT 2
+    ) races
+  )
+`;
 
 function mapHits(
   rows: Array<{ id: string; label: string; secondary: string | null }>,
@@ -89,6 +121,19 @@ export async function searchCrmRecords(access: AccessContext, rawQuery: string) 
                 OR ${like("COALESCE(occurrence.state_override, listing.state, '')", "$1")}
                 OR ${like("COALESCE(occurrence.street_override, listing.street, '')", "$1")}
                 OR ${like("COALESCE(occurrence.zipcode_override, listing.zipcode, '')", "$1")}
+                OR EXISTS (
+                  SELECT 1
+                  FROM crm.people person
+                  WHERE person.id = booking.primary_contact_person_id
+                    AND ${linkedContactEmailSql}
+                )
+                OR EXISTS (
+                  SELECT 1
+                  FROM crm.crew_assignments crew
+                  JOIN crm.people person ON person.id = crew.person_id
+                  WHERE crew.occurrence_id = booking.occurrence_id
+                    AND ${linkedContactEmailSql}
+                )
               )
             ORDER BY occurrence.race_date DESC NULLS LAST, event.name
             LIMIT ${SEARCH_GROUP_LIMIT}
@@ -171,6 +216,35 @@ export async function searchCrmRecords(access: AccessContext, rawQuery: string) 
                 OR ${like("COALESCE(owner.name, '')", "$1")}
                 OR ${like("COALESCE(listing.city, '')", "$1")}
                 OR ${like("COALESCE(listing.state, '')", "$1")}
+                OR EXISTS (
+                  SELECT 1
+                  FROM crm.prospects prospect
+                  JOIN crm.people person
+                    ON person.id = prospect.primary_contact_person_id
+                  WHERE prospect.event_id = event.id
+                    AND prospect.archived_at IS NULL
+                    AND ${linkedContactEmailSql}
+                )
+                OR EXISTS (
+                  SELECT 1
+                  FROM crm.bookings booking
+                  JOIN crm.event_occurrences booked
+                    ON booked.id = booking.occurrence_id
+                  JOIN crm.people person
+                    ON person.id = booking.primary_contact_person_id
+                  WHERE booked.event_id = event.id
+                    AND booking.archived_at IS NULL
+                    AND ${linkedContactEmailSql}
+                )
+                OR EXISTS (
+                  SELECT 1
+                  FROM crm.crew_assignments crew
+                  JOIN crm.event_occurrences crewed
+                    ON crewed.id = crew.occurrence_id
+                  JOIN crm.people person ON person.id = crew.person_id
+                  WHERE crewed.event_id = event.id
+                    AND ${linkedContactEmailSql}
+                )
               )
             ORDER BY event.name
             LIMIT ${SEARCH_GROUP_LIMIT}
@@ -210,6 +284,12 @@ export async function searchCrmRecords(access: AccessContext, rawQuery: string) 
                 ${like("COALESCE(event.name, listing.name, '')", "$1")}
                 OR ${like("COALESCE(occurrence.city_override, listing.city, '')", "$1")}
                 OR ${like("COALESCE(occurrence.state_override, listing.state, '')", "$1")}
+                OR EXISTS (
+                  SELECT 1
+                  FROM crm.people person
+                  WHERE person.id = prospect.primary_contact_person_id
+                    AND ${linkedContactEmailSql}
+                )
               )
             ORDER BY COALESCE(occurrence.race_date, listing.next_start_at) DESC NULLS LAST
             LIMIT ${SEARCH_GROUP_LIMIT}
@@ -244,6 +324,7 @@ export async function searchCrmRecords(access: AccessContext, rawQuery: string) 
               ) AS label,
               NULLIF(concat_ws(' · ',
                 NULLIF(person.email, ''),
+                ${contactLinkedRaceNamesSql},
                 NULLIF(org.name, ''),
                 NULLIF(person.city, ''),
                 NULLIF(person.state, '')

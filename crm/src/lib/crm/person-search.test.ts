@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   matchesPersonNameQuery,
+  personEmailMatchesSql,
   personNameMatchesSql,
   splitPersonSearchTokens,
 } from "./person-search";
@@ -39,5 +40,12 @@ describe("person name search", () => {
     expect(sql).toContain("regexp_split_to_array");
     expect(sql).toContain("person.email");
     expect(sql).toContain("person.phone");
+  });
+
+  it("builds escaped SQL that matches a linked contact email", () => {
+    const sql = personEmailMatchesSql("$1", { escape: true });
+    expect(sql).toContain("person.email");
+    expect(sql).toContain("$1");
+    expect(sql).toContain("ESCAPE '\\'");
   });
 });

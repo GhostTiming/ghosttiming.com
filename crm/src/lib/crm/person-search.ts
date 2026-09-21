@@ -45,6 +45,15 @@ export function matchesPersonNameQuery(person: PersonSearchFields, query: string
   );
 }
 
+export function personEmailMatchesSql(
+  queryExpr: string,
+  options?: { alias?: string; escape?: boolean },
+) {
+  const alias = options?.alias ?? "person";
+  const escape = options?.escape ? " ESCAPE '\\'" : "";
+  return `COALESCE(${alias}.email, '') ILIKE '%' || (${queryExpr})::text || '%'${escape}`;
+}
+
 export function personNameMatchesSql(
   queryExpr: string,
   options?: {
