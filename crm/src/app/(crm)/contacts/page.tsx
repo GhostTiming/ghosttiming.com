@@ -6,7 +6,9 @@ import { FilterChipNav } from "@/components/filter-chip-nav";
 import { MailtoLink } from "@/components/crm-links";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
+import { MobileColumnFilters } from "@/components/mobile-column-filters";
 import { TableColumnHeader } from "@/components/table-column-header";
+import type { TableFilterField } from "@/components/table-column-filter";
 import { requireContactsAccess } from "@/lib/auth/server";
 import { contactBulkFields } from "@/lib/crm/bulk-fields";
 import {
@@ -23,7 +25,7 @@ import {
   contactBulkPersonId,
   type ContactListView,
 } from "@/lib/crm/contacts";
-import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS, TABLE_SCROLL } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Contacts" };
@@ -131,6 +133,37 @@ export default async function ContactsPage({
     view === "crew" && scope ? await listCrewContacts(scope, listQuery) : null;
   const prospectContacts =
     view === "prospects" ? await listProspectContacts(listQuery) : null;
+  const showEvents = view === "event_clients" || view === "crew";
+  const nameFilter: TableFilterField[] = [
+    { type: "text", name: "q", label: "Name", placeholder: "First and last name…" },
+  ];
+  const emailFilter: TableFilterField[] = [
+    { type: "select", name: "email", label: "Email", options: presenceOptions },
+  ];
+  const phoneFilter: TableFilterField[] = [
+    { type: "select", name: "phone", label: "Phone", options: presenceOptions },
+  ];
+  const raceFilter: TableFilterField[] = [
+    { type: "text", name: "race", label: "Race", placeholder: "Filter race…" },
+  ];
+  const organizationFilter: TableFilterField[] = [
+    {
+      type: "text",
+      name: "organization",
+      label: "Organization",
+      placeholder: "Filter organizations…",
+    },
+  ];
+  const eventFilter: TableFilterField[] = [
+    { type: "text", name: "event", label: "Event", placeholder: "Filter events…" },
+  ];
+  const mobileFilters = [
+    ...nameFilter,
+    ...emailFilter,
+    ...phoneFilter,
+    ...(view === "prospects" ? raceFilter : organizationFilter),
+    ...(showEvents ? eventFilter : []),
+  ];
   const column = (
     label: string,
     sortKey: string,
@@ -169,7 +202,6 @@ export default async function ContactsPage({
     { key: "crew", label: "Crew", show: access.canAccessOperations },
     { key: "prospects", label: "Prospects", show: access.canAccessProspecting },
   ];
-  const showEvents = view === "event_clients" || view === "crew";
   const columnCount = (view === "prospects" ? 4 : showEvents ? 5 : 4) +
     (access.canAccessOperations ? 1 : 0);
   const rowCount =
@@ -221,6 +253,7 @@ export default async function ContactsPage({
             href: viewHref(tab.key),
           }))}
       />
+      <MobileColumnFilters pathname="/contacts" params={current} filters={mobileFilters} />
 
       <DatasetBulkRoot>
       <div className="space-y-3">
@@ -325,7 +358,7 @@ export default async function ContactsPage({
       </div>
 
       <section className={DESKTOP_TABLE}>
-        <div className="overflow-x-auto">
+        <div className={TABLE_SCROLL}>
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -335,68 +368,26 @@ export default async function ContactsPage({
                 </th>
                 ) : null}
                 <th className="px-4 py-3">
-                  {column("Name", "name", [
-                    {
-                      type: "text",
-                      name: "q",
-                      label: "Name",
-                      placeholder: "Filter name…",
-                    },
-                  ])}
+                  {column("Name", "name", nameFilter)}
                 </th>
                 <th className="px-4 py-3">
-                  {column("Email", "email", [
-                    {
-                      type: "select",
-                      name: "email",
-                      label: "Email",
-                      options: presenceOptions,
-                    },
-                  ])}
+                  {column("Email", "email", emailFilter)}
                 </th>
                 <th className="px-4 py-3">
-                  {column("Phone", "phone", [
-                    {
-                      type: "select",
-                      name: "phone",
-                      label: "Phone",
-                      options: presenceOptions,
-                    },
-                  ])}
+                  {column("Phone", "phone", phoneFilter)}
                 </th>
                 {view === "prospects" ? (
                   <th className="px-4 py-3">
-                    {column("Race", "race", [
-                      {
-                        type: "text",
-                        name: "race",
-                        label: "Race",
-                        placeholder: "Filter race…",
-                      },
-                    ])}
+                    {column("Race", "race", raceFilter)}
                   </th>
                 ) : (
                   <th className="px-4 py-3">
-                    {column("Organizations", "organizations", [
-                      {
-                        type: "text",
-                        name: "organization",
-                        label: "Organization",
-                        placeholder: "Filter organizations…",
-                      },
-                    ])}
+                    {column("Organizations", "organizations", organizationFilter)}
                   </th>
                 )}
                 {showEvents ? (
                   <th className="px-4 py-3">
-                    {column("Events", "events", [
-                      {
-                        type: "text",
-                        name: "event",
-                        label: "Event",
-                        placeholder: "Filter events…",
-                      },
-                    ])}
+                    {column("Events", "events", eventFilter)}
                   </th>
                 ) : null}
               </tr>

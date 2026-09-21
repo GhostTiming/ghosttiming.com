@@ -5,10 +5,12 @@ import { ExternalHref } from "@/components/crm-links";
 import { EventLogo } from "@/components/event-logo";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
+import { MobileColumnFilters } from "@/components/mobile-column-filters";
 import { TableColumnHeader } from "@/components/table-column-header";
+import type { TableFilterField } from "@/components/table-column-filter";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { getEventDetail, type EventOccurrenceRow } from "@/lib/crm/event-queries";
-import { MOBILE_CARDS } from "@/lib/crm/layout";
+import { MOBILE_CARDS, TABLE_SCROLL } from "@/lib/crm/layout";
 import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
 
@@ -142,6 +144,28 @@ export default async function EventDetailPage({
       );
       return descending ? -comparison : comparison;
     });
+  const yearColumnFilter: TableFilterField[] = [
+    { type: "number", name: "year", label: "Year", placeholder: "2026", min: 1900 },
+  ];
+  const dateColumnFilter: TableFilterField[] = [
+    { type: "date-range", fromName: "dateFrom", toName: "dateTo" },
+  ];
+  const locationFilter: TableFilterField[] = [
+    { type: "text", name: "location", label: "Location", placeholder: "City or state…" },
+  ];
+  const clientFilter: TableFilterField[] = [
+    { type: "text", name: "client", label: "Client or owner", placeholder: "Filter client…" },
+  ];
+  const statusFilter: TableFilterField[] = [
+    { type: "text", name: "status", label: "Status", placeholder: "Booking, lead…" },
+  ];
+  const mobileFilters = [
+    ...yearColumnFilter,
+    ...dateColumnFilter,
+    ...locationFilter,
+    ...clientFilter,
+    ...statusFilter,
+  ];
   const column = (
     label: string,
     sortKey: string,
@@ -201,8 +225,11 @@ export default async function EventDetailPage({
           <h2 className="font-bold">Year history</h2>
           <p className="text-sm text-slate-500">
             Bookings, lost years, and open leads for this race.
-            Use the funnel on a column heading to filter.
+            Use the funnel on a column heading to filter, or Filters on a phone.
           </p>
+        </div>
+        <div className="px-3 pt-3 md:hidden">
+          <MobileColumnFilters pathname={pathname} params={current} filters={mobileFilters} />
         </div>
         <div className={`${MOBILE_CARDS} p-3`}>
           {occurrences.map((row) => {
@@ -231,59 +258,24 @@ export default async function EventDetailPage({
           ) : null}
         </div>
         <div className="hidden md:block">
-        <div className="overflow-x-auto">
+        <div className={TABLE_SCROLL}>
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600">
             <tr>
               <th className="px-4 py-3">
-                {column("Year", "year", [
-                  {
-                    type: "number",
-                    name: "year",
-                    label: "Year",
-                    placeholder: "2026",
-                    min: 1900,
-                  },
-                ])}
+                {column("Year", "year", yearColumnFilter)}
               </th>
               <th className="px-4 py-3">
-                {column("Date", "date", [
-                  {
-                    type: "date-range",
-                    fromName: "dateFrom",
-                    toName: "dateTo",
-                  },
-                ])}
+                {column("Date", "date", dateColumnFilter)}
               </th>
               <th className="px-4 py-3">
-                {column("Location", "location", [
-                  {
-                    type: "text",
-                    name: "location",
-                    label: "Location",
-                    placeholder: "City or state…",
-                  },
-                ])}
+                {column("Location", "location", locationFilter)}
               </th>
               <th className="px-4 py-3">
-                {column("Client / owner", "client", [
-                  {
-                    type: "text",
-                    name: "client",
-                    label: "Client or owner",
-                    placeholder: "Filter client…",
-                  },
-                ])}
+                {column("Client / owner", "client", clientFilter)}
               </th>
               <th className="px-4 py-3">
-                {column("Status", "stage", [
-                  {
-                    type: "text",
-                    name: "status",
-                    label: "Status",
-                    placeholder: "Booking, lead…",
-                  },
-                ], "right")}
+                {column("Status", "stage", statusFilter, "right")}
               </th>
             </tr>
           </thead>

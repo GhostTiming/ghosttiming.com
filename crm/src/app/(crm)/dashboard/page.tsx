@@ -17,6 +17,7 @@ import {
   type DashboardPeriod,
 } from "@/lib/crm/dashboard-period";
 import { formatTaskHeadline } from "@/lib/crm/domain";
+import { TABLE_SCROLL } from "@/lib/crm/layout";
 
 function Metric({
   label,
@@ -115,7 +116,7 @@ function MonthlyBookingChart({ months }: { months: MonthlyBooking[] }) {
         </p>
       </div>
       {months.length ? (
-        <div className="overflow-x-auto p-5">
+        <div className={`${TABLE_SCROLL} p-5`}>
           <div className="flex min-w-max items-end gap-3">
             {months.map((month) => {
               const income = Number(month.expected_income);

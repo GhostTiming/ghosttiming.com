@@ -11,6 +11,7 @@ import {
   personMatchesProspectContactSql,
   uniqueIds,
 } from "./contacts";
+import { personNameMatchesSql } from "./person-search";
 
 export type ContactOrgScope = {
   scopeOrgIds: string[] | null;
@@ -120,15 +121,9 @@ export type ContactListQuery = {
   direction: "ASC" | "DESC";
 };
 
-const personSearchSql = `
-  (
-    $4::text IS NULL
-    OR person.display_name ILIKE '%' || $4::text || '%'
-    OR person.first_name ILIKE '%' || $4::text || '%'
-    OR person.last_name ILIKE '%' || $4::text || '%'
-    OR person.email ILIKE '%' || $4::text || '%'
-  )
-`;
+const personSearchSql = personNameMatchesSql("$4", {
+  includeEmail: true,
+});
 
 const emailPresenceSql = `
   (
@@ -373,14 +368,7 @@ export async function listProspectContacts(query: ContactListQuery) {
           ON listing.id = prospect.race_listing_id
         WHERE ${personMatchesProspectContactSql()}
           AND ${personListStatusSql(1)}
-          AND (
-            $2::text IS NULL
-            OR person.display_name ILIKE '%' || $2::text || '%'
-            OR person.first_name ILIKE '%' || $2::text || '%'
-            OR person.last_name ILIKE '%' || $2::text || '%'
-            OR person.email ILIKE '%' || $2::text || '%'
-            OR person.phone ILIKE '%' || $2::text || '%'
-          )
+          AND ${personNameMatchesSql("$2", { includeEmail: true, includePhone: true })}
         GROUP BY person.id
 
         UNION ALL

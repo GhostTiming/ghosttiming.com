@@ -16,6 +16,7 @@ import {
   searchLikeNeedle,
   type SearchHit,
 } from "./global-search";
+import { personNameMatchesSql } from "./person-search";
 
 const like = (column: string, param: string) =>
   `${column} ILIKE '%' || ${param} || '%' ESCAPE '\\'`;
@@ -253,11 +254,11 @@ export async function searchCrmRecords(access: AccessContext, rawQuery: string) 
               AND person.is_active
               AND ${contactFilter}
               AND (
-                ${like("COALESCE(person.display_name, '')", "$1")}
-                OR ${like("COALESCE(person.first_name, '')", "$1")}
-                OR ${like("COALESCE(person.last_name, '')", "$1")}
-                OR ${like("COALESCE(person.email, '')", "$1")}
-                OR ${like("COALESCE(person.phone, '')", "$1")}
+                ${personNameMatchesSql("$1", {
+                  includeEmail: true,
+                  includePhone: true,
+                  escape: true,
+                })}
                 OR ${like("COALESCE(org.name, '')", "$1")}
               )
             ORDER BY label

@@ -75,9 +75,13 @@ export function ProspectingLocationFilter({
     const popover = popoverRef.current;
     if (!button || !popover) return;
     const rect = button.getBoundingClientRect();
-    const width = 320;
+    const width = Math.min(320, window.innerWidth - 16);
+    const left = Math.min(
+      Math.max(8, rect.left),
+      Math.max(8, window.innerWidth - width - 8),
+    );
     popover.style.top = `${rect.bottom + 6}px`;
-    popover.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+    popover.style.left = `${left}px`;
     popover.style.width = `${width}px`;
   }
 

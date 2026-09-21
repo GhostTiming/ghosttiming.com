@@ -109,6 +109,20 @@ describe("crew search", () => {
     ).toEqual(["1", "2"]);
   });
 
+  it("matches a first and last name even when they are stored separately", () => {
+    const seth = {
+      id: "3",
+      firstName: "Seth",
+      lastName: "Doe",
+      email: "seth@example.com",
+    };
+    expect(matchesCrewSearchQuery(seth, "Seth Doe")).toBe(true);
+    expect(matchesCrewSearchQuery(seth, "Doe Seth")).toBe(true);
+    expect(filterCrewSearchResults([seth, jordan], "Seth Doe").map((person) => person.id)).toEqual([
+      "3",
+    ]);
+  });
+
   it("omits people already assigned to the booking", () => {
     expect(
       filterCrewSearchResults([alex, jordan], "a", {

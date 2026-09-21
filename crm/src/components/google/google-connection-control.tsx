@@ -35,9 +35,8 @@ export function GoogleConnectionControl({
 
   function run(label: string, work: () => Promise<void>) {
     if (label === "connect" || label === "add-account") {
-      const pending = work();
       setBusy(label);
-      pending.then(() => router.refresh()).catch(() => undefined).finally(() => setBusy(null));
+      void work().catch(() => setBusy(null));
       return;
     }
     setBusy(label);

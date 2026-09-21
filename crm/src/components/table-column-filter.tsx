@@ -59,7 +59,7 @@ function FunnelIcon() {
 const fieldInputClass =
   "mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-900";
 
-function fieldNames(fields: TableFilterField[]) {
+export function fieldNames(fields: TableFilterField[]) {
   return fields.flatMap((field) =>
     field.type === "date-range" ? [field.fromName, field.toName] : [field.name],
   );
@@ -74,6 +74,29 @@ export function isFilterActive(
   fields: TableFilterField[],
 ) {
   return fieldNames(fields).some((name) => isMeaningful(params[name]));
+}
+
+export function applyColumnFilters(input: {
+  pathname: string;
+  params: TableQueryParams;
+  fields: TableFilterField[];
+  formValues: Record<string, string>;
+}) {
+  const names = fieldNames(input.fields);
+  const next = new URLSearchParams();
+  for (const [key, value] of Object.entries(input.params)) {
+    if (!value || names.includes(key) || key === "page") continue;
+    if (value === "all") continue;
+    if (key === "direction" && value === "asc") continue;
+    next.set(key, value);
+  }
+  for (const [name, raw] of Object.entries(input.formValues)) {
+    const value = raw.trim();
+    if (!value || value === "all") next.delete(name);
+    else next.set(name, value);
+  }
+  const qs = next.toString();
+  return qs ? `${input.pathname}?${qs}` : input.pathname;
 }
 
 type TableColumnFilterProps = {
@@ -122,13 +145,7 @@ export function TableColumnFilter({
   function applyFilter() {
     const popover = popoverRef.current;
     if (!popover) return;
-    const next = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (!value || names.includes(key) || key === "page") continue;
-      if (value === "all") continue;
-      if (key === "direction" && value === "asc") continue;
-      next.set(key, value);
-    }
+    const formValues: Record<string, string> = {};
     for (const element of Array.from(
       popover.querySelectorAll("input, select"),
     )) {
@@ -138,14 +155,11 @@ export function TableColumnFilter({
       ) {
         continue;
       }
-      const value = element.value.trim();
-      if (!value || value === "all") next.delete(element.name);
-      else next.set(element.name, value);
+      formValues[element.name] = element.value;
     }
-    const qs = next.toString();
     popover.hidePopover();
     window.dispatchEvent(new Event("crm:navigate"));
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    router.push(applyColumnFilters({ pathname, params, fields: filters, formValues }));
   }
 
   return (
@@ -211,7 +225,7 @@ export function TableColumnFilter({
   );
 }
 
-function FilterField({
+export function FilterField({
   field,
   params,
 }: {

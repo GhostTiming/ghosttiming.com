@@ -7,12 +7,14 @@ import { FilterChipNav } from "@/components/filter-chip-nav";
 import { MailtoLink } from "@/components/crm-links";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
+import { MobileColumnFilters } from "@/components/mobile-column-filters";
 import { TableColumnHeader } from "@/components/table-column-header";
+import type { TableFilterField } from "@/components/table-column-filter";
 import { getPool } from "@/db";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { organizationBulkFields } from "@/lib/crm/bulk-fields";
-import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS, TABLE_SCROLL } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 const roleFilters = [
@@ -136,6 +138,40 @@ export default async function OrganizationsPage({
       bookingOrgScopeParam(access),
     ],
   );
+  const nameFilter: TableFilterField[] = [
+    { type: "text", name: "q", label: "Name", placeholder: "Filter name…" },
+  ];
+  const emailFilter: TableFilterField[] = [
+    { type: "select", name: "email", label: "Email", options: presenceOptions },
+  ];
+  const phoneFilter: TableFilterField[] = [
+    { type: "select", name: "phone", label: "Phone", options: presenceOptions },
+  ];
+  const contactsFilter: TableFilterField[] = [
+    {
+      type: "number",
+      name: "contactsMin",
+      label: "At least this many contacts",
+      placeholder: "1",
+      min: 0,
+    },
+  ];
+  const bookingsFilter: TableFilterField[] = [
+    {
+      type: "number",
+      name: "bookingsMin",
+      label: "At least this many bookings",
+      placeholder: "1",
+      min: 0,
+    },
+  ];
+  const mobileFilters = [
+    ...nameFilter,
+    ...emailFilter,
+    ...phoneFilter,
+    ...contactsFilter,
+    ...bookingsFilter,
+  ];
   const column = (
     label: string,
     sortKey: string,
@@ -205,6 +241,7 @@ export default async function OrganizationsPage({
           },
         ]}
       />
+      <MobileColumnFilters pathname="/organizations" params={current} filters={mobileFilters} />
 
       <div className={`grid gap-6 ${access.isSuperAdmin ? "lg:grid-cols-[1fr_23rem]" : ""}`}>
         <DatasetBulkRoot>
@@ -265,7 +302,7 @@ export default async function OrganizationsPage({
           ) : null}
         </div>
         <section className={DESKTOP_TABLE}>
-          <div className="overflow-x-auto">
+          <div className={TABLE_SCROLL}>
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
@@ -277,56 +314,19 @@ export default async function OrganizationsPage({
                   </th>
                   ) : null}
                   <th className="px-4 py-3">
-                    {column("Organization", "name", [
-                      {
-                        type: "text",
-                        name: "q",
-                        label: "Name",
-                        placeholder: "Filter name…",
-                      },
-                    ])}
+                    {column("Organization", "name", nameFilter)}
                   </th>
                   <th className="px-4 py-3">
-                    {column("Email", "email", [
-                      {
-                        type: "select",
-                        name: "email",
-                        label: "Email",
-                        options: presenceOptions,
-                      },
-                    ])}
+                    {column("Email", "email", emailFilter)}
                   </th>
                   <th className="px-4 py-3">
-                    {column("Phone", "phone", [
-                      {
-                        type: "select",
-                        name: "phone",
-                        label: "Phone",
-                        options: presenceOptions,
-                      },
-                    ])}
+                    {column("Phone", "phone", phoneFilter)}
                   </th>
                   <th className="px-4 py-3">
-                    {column("Contacts", "contacts", [
-                      {
-                        type: "number",
-                        name: "contactsMin",
-                        label: "At least this many contacts",
-                        placeholder: "1",
-                        min: 0,
-                      },
-                    ])}
+                    {column("Contacts", "contacts", contactsFilter)}
                   </th>
                   <th className="px-4 py-3">
-                    {column("Bookings", "bookings", [
-                      {
-                        type: "number",
-                        name: "bookingsMin",
-                        label: "At least this many bookings",
-                        placeholder: "1",
-                        min: 0,
-                      },
-                    ], "right")}
+                    {column("Bookings", "bookings", bookingsFilter, "right")}
                   </th>
                 </tr>
               </thead>

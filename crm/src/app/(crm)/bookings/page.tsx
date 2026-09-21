@@ -12,8 +12,10 @@ import { EventLogo } from "@/components/event-logo";
 import { FilterChipNav } from "@/components/filter-chip-nav";
 import { ListRowActions, ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
+import { MobileColumnFilters } from "@/components/mobile-column-filters";
 import { RefreshAllGrvButton } from "@/components/refresh-all-grv-button";
 import { TableColumnHeader } from "@/components/table-column-header";
+import type { TableFilterField } from "@/components/table-column-filter";
 import { getPool } from "@/db";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { redactBookingFinancials } from "@/lib/auth/financials";
@@ -23,7 +25,7 @@ import {
   loadCatalogListingCandidates,
   suggestCatalogMatches,
 } from "@/lib/crm/catalog-link";
-import { DESKTOP_TABLE, MOBILE_CARDS } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS, TABLE_SCROLL } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam } from "@/lib/crm/search-params";
 
 export const maxDuration = 120;
@@ -224,6 +226,33 @@ export default async function BookingsPage({
     { key: "archived", label: "Archived" },
     { key: "needs_listing", label: "Needs listing" },
   ];
+  const eventNameFilter: TableFilterField[] = [
+    { type: "text", name: "q", label: "Event name", placeholder: "Filter event…" },
+  ];
+  const dateFilter: TableFilterField[] = [
+    { type: "date-range", fromName: "dateFrom", toName: "dateTo" },
+  ];
+  const clientFilter: TableFilterField[] = [
+    { type: "text", name: "client", label: "Client", placeholder: "Filter client…" },
+  ];
+  const paymentFilter: TableFilterField[] = showFinancials
+    ? [
+        {
+          type: "select",
+          name: "payment",
+          label: "Payment",
+          options: [
+            { value: "all", label: "Any" },
+            { value: "paid", label: "Paid" },
+            { value: "unpaid", label: "Unpaid" },
+          ],
+        },
+      ]
+    : [];
+  const mobileFilters =
+    stageFilter === "needs_listing"
+      ? [...eventNameFilter, ...dateFilter]
+      : [...eventNameFilter, ...dateFilter, ...clientFilter, ...paymentFilter];
   const column = (
     label: string,
     sortKey: string,
@@ -288,6 +317,7 @@ export default async function BookingsPage({
           href: buildSearchHref("/bookings", current, { stage: key }),
         }))}
       />
+      <MobileColumnFilters pathname="/bookings" params={current} filters={mobileFilters} />
 
       <DatasetBulkRoot>
       <div className="space-y-3">
@@ -359,28 +389,15 @@ export default async function BookingsPage({
           ) : null}
         </div>
         <div className={DESKTOP_TABLE}>
-          <div className="overflow-x-auto">
+          <div className={TABLE_SCROLL}>
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="w-10 px-3 py-3">
                   <DatasetHeaderCheckbox ids={rows.map((row) => row.id)} />
                 </th>
-                <th className="px-4 py-3">{column("Event", "event", [
-                  {
-                    type: "text",
-                    name: "q",
-                    label: "Event name",
-                    placeholder: "Filter event…",
-                  },
-                ])}</th>
-                <th className="px-4 py-3">{column("Date", "date", [
-                  {
-                    type: "date-range",
-                    fromName: "dateFrom",
-                    toName: "dateTo",
-                  },
-                ])}</th>
+                <th className="px-4 py-3">{column("Event", "event", eventNameFilter)}</th>
+                <th className="px-4 py-3">{column("Date", "date", dateFilter)}</th>
                 <th className="px-4 py-3">Location</th>
                 <th className="px-4 py-3">Suggested listings</th>
               </tr>
@@ -551,7 +568,7 @@ export default async function BookingsPage({
           ) : null}
         </div>
         <div className={DESKTOP_TABLE}>
-          <div className="overflow-x-auto">
+          <div className={TABLE_SCROLL}>
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -559,33 +576,13 @@ export default async function BookingsPage({
                   <DatasetHeaderCheckbox ids={rows.map((row) => row.id)} />
                 </th>
                 <th className="px-4 py-3">
-                  {column("Event", "event", [
-                    {
-                      type: "text",
-                      name: "q",
-                      label: "Event name",
-                      placeholder: "Filter event…",
-                    },
-                  ])}
+                  {column("Event", "event", eventNameFilter)}
                 </th>
                 <th className="px-4 py-3">
-                  {column("Date", "date", [
-                    {
-                      type: "date-range",
-                      fromName: "dateFrom",
-                      toName: "dateTo",
-                    },
-                  ])}
+                  {column("Date", "date", dateFilter)}
                 </th>
                 <th className="px-4 py-3">
-                  {column("Direct client", "client", [
-                    {
-                      type: "text",
-                      name: "client",
-                      label: "Client",
-                      placeholder: "Filter client…",
-                    },
-                  ])}
+                  {column("Direct client", "client", clientFilter)}
                 </th>
                 <th className="px-4 py-3">{column("Stage", "stage")}</th>
                 {showFinancials ? (
@@ -593,18 +590,7 @@ export default async function BookingsPage({
                 <th className="px-4 py-3">{column("Expected", "expected")}</th>
                 <th className="px-4 py-3">{column("Actual", "actual")}</th>
                 <th className="px-4 py-3">
-                  {column("Payment", "payment", [
-                    {
-                      type: "select",
-                      name: "payment",
-                      label: "Payment",
-                      options: [
-                        { value: "all", label: "Any" },
-                        { value: "paid", label: "Paid" },
-                        { value: "unpaid", label: "Unpaid" },
-                      ],
-                    },
-                  ], "right")}
+                  {column("Payment", "payment", paymentFilter, "right")}
                 </th>
                   </>
                 ) : null}

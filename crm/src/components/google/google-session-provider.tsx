@@ -47,6 +47,7 @@ import {
   GMAIL_INGEST_BATCH_SIZE,
   GMAIL_SEARCH_BATCH_SIZE,
 } from "@/lib/google/scopes";
+import { googleOAuthStartHref } from "@/lib/google/oauth-start";
 
 export type GoogleProgress = {
   label: string;
@@ -132,15 +133,16 @@ async function fetchGoogleOAuthSession(googleSub?: string | null) {
 }
 
 function startGoogleOAuth(options?: { addAccount?: boolean; loginHint?: string | null }) {
-  const params = new URLSearchParams({
-    returnTo: `${window.location.pathname}${window.location.search}`,
-  });
-  if (options?.addAccount) params.set("addAccount", "1");
-  else if (options?.loginHint) params.set("loginHint", options.loginHint);
   // Full navigation is required so the OAuth start route can set the state cookie
   // and 302 to Google. App Router client routing would not complete that handshake.
-  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- OAuth start must be a full document navigation.
-  window.location.assign(`/api/google/oauth/start?${params}`);
+  window.location.assign(
+    googleOAuthStartHref({
+      returnTo: `${window.location.pathname}${window.location.search}`,
+      addAccount: options?.addAccount,
+      loginHint: options?.loginHint,
+      origin: window.location.origin,
+    }),
+  );
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -520,7 +522,9 @@ export function GoogleSessionProvider({
       addAccount: options?.addAccount,
       loginHint: options?.addAccount ? null : connection?.google_email,
     });
-    return Promise.resolve();
+    // Full-page navigation to Google. Do not resolve so callers cannot
+    // router.refresh() or continue Gmail/Calendar work on this page.
+    return new Promise<void>(() => {});
   }, [clientId, connection?.google_email]);
 
   const disconnect = useCallback(async (googleSub?: string) => {

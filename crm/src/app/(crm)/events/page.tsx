@@ -6,13 +6,15 @@ import { EventLogo } from "@/components/event-logo";
 import { FilterChipNav } from "@/components/filter-chip-nav";
 import { ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
+import { MobileColumnFilters } from "@/components/mobile-column-filters";
 import { TableColumnHeader } from "@/components/table-column-header";
+import type { TableFilterField } from "@/components/table-column-filter";
 import { getPool } from "@/db";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import { eventBulkFields } from "@/lib/crm/bulk-fields";
 import { listEvents } from "@/lib/crm/event-queries";
-import { DESKTOP_TABLE, MOBILE_CARDS, PAGINATION_ROW } from "@/lib/crm/layout";
+import { DESKTOP_TABLE, MOBILE_CARDS, PAGINATION_ROW, TABLE_SCROLL } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Events" };
@@ -89,6 +91,38 @@ export default async function EventsPage({
     [bookingOrgScopeParam(access)],
   );
   const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const eventNameFilter: TableFilterField[] = [
+    { type: "text", name: "q", label: "Event name", placeholder: "Circle K 5K…" },
+  ];
+  const ownerFilter: TableFilterField[] = [
+    { type: "text", name: "owner", label: "Owner", placeholder: "Filter owner…" },
+  ];
+  const yearsFilter: TableFilterField[] = [
+    {
+      type: "number",
+      name: "yearsMin",
+      label: "At least this many years",
+      placeholder: "1",
+      min: 0,
+    },
+  ];
+  const firstYearFilter: TableFilterField[] = [
+    { type: "number", name: "firstYear", label: "First year", placeholder: "2020", min: 1900 },
+  ];
+  const lastYearFilter: TableFilterField[] = [
+    { type: "number", name: "lastYear", label: "Latest year", placeholder: "2026", min: 1900 },
+  ];
+  const nextDateFilter: TableFilterField[] = [
+    { type: "date-range", fromName: "nextFrom", toName: "nextTo" },
+  ];
+  const mobileFilters = [
+    ...eventNameFilter,
+    ...ownerFilter,
+    ...yearsFilter,
+    ...firstYearFilter,
+    ...lastYearFilter,
+    ...nextDateFilter,
+  ];
   const column = (
     label: string,
     sortKey: string,
@@ -145,6 +179,7 @@ export default async function EventsPage({
         ]}
       />
       ) : null}
+      <MobileColumnFilters pathname="/events" params={current} filters={mobileFilters} />
 
       <DatasetBulkRoot>
       <div className="space-y-3">
@@ -188,7 +223,7 @@ export default async function EventsPage({
         ) : null}
       </div>
       <section className={DESKTOP_TABLE}>
-        <div className="overflow-x-auto">
+        <div className={TABLE_SCROLL}>
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600">
             <tr>
@@ -196,66 +231,22 @@ export default async function EventsPage({
                 <DatasetHeaderCheckbox ids={result.rows.map((event) => event.id)} />
               </th>
               <th className="px-4 py-3">
-                {column("Event", "name", [
-                  {
-                    type: "text",
-                    name: "q",
-                    label: "Event name",
-                    placeholder: "Circle K 5K…",
-                  },
-                ])}
+                {column("Event", "name", eventNameFilter)}
               </th>
               <th className="px-4 py-3">
-                {column("Owner", "owner", [
-                  {
-                    type: "text",
-                    name: "owner",
-                    label: "Owner",
-                    placeholder: "Filter owner…",
-                  },
-                ])}
+                {column("Owner", "owner", ownerFilter)}
               </th>
               <th className="px-4 py-3">
-                {column("Years", "years", [
-                  {
-                    type: "number",
-                    name: "yearsMin",
-                    label: "At least this many years",
-                    placeholder: "1",
-                    min: 0,
-                  },
-                ])}
+                {column("Years", "years", yearsFilter)}
               </th>
               <th className="px-4 py-3">
-                {column("First", "first_year", [
-                  {
-                    type: "number",
-                    name: "firstYear",
-                    label: "First year",
-                    placeholder: "2020",
-                    min: 1900,
-                  },
-                ])}
+                {column("First", "first_year", firstYearFilter)}
               </th>
               <th className="px-4 py-3">
-                {column("Latest", "last_year", [
-                  {
-                    type: "number",
-                    name: "lastYear",
-                    label: "Latest year",
-                    placeholder: "2026",
-                    min: 1900,
-                  },
-                ])}
+                {column("Latest", "last_year", lastYearFilter)}
               </th>
               <th className="px-4 py-3">
-                {column("Next date", "next_date", [
-                  {
-                    type: "date-range",
-                    fromName: "nextFrom",
-                    toName: "nextTo",
-                  },
-                ], "right")}
+                {column("Next date", "next_date", nextDateFilter, "right")}
               </th>
             </tr>
           </thead>

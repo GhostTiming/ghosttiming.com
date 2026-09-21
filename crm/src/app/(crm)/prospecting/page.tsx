@@ -11,10 +11,12 @@ import { EventLogo } from "@/components/event-logo";
 import { FilterChipNav } from "@/components/filter-chip-nav";
 import { ListRowActions, ListRowLink } from "@/components/list-row";
 import { listRowClassName } from "@/components/list-row-class";
+import { MobileColumnFilters } from "@/components/mobile-column-filters";
 import { ContactExtractionButton } from "@/components/prospecting/contact-extraction-button";
 import { ProspectListStageBubbles } from "@/components/prospecting/list-stage-bubbles";
 import { ProspectingLocationFilter } from "@/components/prospecting-location-filter";
 import { TableColumnHeader } from "@/components/table-column-header";
+import type { TableFilterField } from "@/components/table-column-filter";
 import { getPool } from "@/db";
 import { requireProspectingUser } from "@/lib/auth/server";
 import {
@@ -23,7 +25,7 @@ import {
 } from "@/app/cadence-actions";
 import { formatNextStep } from "@/lib/crm/domain";
 import { filePastProspectsWithPool, listProspects } from "@/lib/crm/queries";
-import { MOBILE_CARDS } from "@/lib/crm/layout";
+import { MOBILE_CARDS, TABLE_SCROLL } from "@/lib/crm/layout";
 import { buildSearchHref, firstParam, parseOptionalInteger } from "@/lib/crm/search-params";
 
 export const metadata = { title: "Prospecting" };
@@ -144,6 +146,27 @@ export default async function ProspectingPage({
     { key: "all", label: "All" },
     { key: "archived", label: "Archived" },
   ];
+  const raceFilter: TableFilterField[] = [
+    { type: "text", name: "q", label: "Race name", placeholder: "Filter race…" },
+  ];
+  const eventDateFilter: TableFilterField[] = [
+    { type: "date-range", fromName: "eventFrom", toName: "eventTo" },
+  ];
+  const phoneFilter: TableFilterField[] = [
+    { type: "select", name: "phone", label: "Phone", options: presenceOptions },
+  ];
+  const emailFilter: TableFilterField[] = [
+    { type: "select", name: "email", label: "Email", options: presenceOptions },
+  ];
+  const touchesFilter: TableFilterField[] = [
+    { type: "number", name: "touches", label: "Exact touches", placeholder: "0", min: 0 },
+  ];
+  const mobileFilters = [
+    ...raceFilter,
+    ...phoneFilter,
+    ...emailFilter,
+    ...touchesFilter,
+  ];
   const column = (
     label: string,
     sortKey: string,
@@ -211,6 +234,7 @@ export default async function ProspectingPage({
       >
         <ProspectingLocationFilter params={current} />
       </FilterChipNav>
+      <MobileColumnFilters pathname="/prospecting" params={current} filters={mobileFilters} />
 
       <DatasetBulkRoot>
       <div className="space-y-3">
@@ -317,7 +341,7 @@ export default async function ProspectingPage({
           })}
         </div>
         <div className="hidden md:block">
-          <div className="overflow-x-auto">
+          <div className={TABLE_SCROLL}>
           <table className="w-full min-w-[1024px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -325,55 +349,20 @@ export default async function ProspectingPage({
                   <DatasetHeaderCheckbox ids={bulkIds} />
                 </th>
                 <th className="px-4 py-3">
-                  {column("Race", "race", [
-                    {
-                      type: "text",
-                      name: "q",
-                      label: "Race name",
-                      placeholder: "Filter race…",
-                    },
-                  ])}
+                  {column("Race", "race", raceFilter)}
                 </th>
                 <th className="px-4 py-3">
-                  {column("Event date", "event_date", [
-                    {
-                      type: "date-range",
-                      fromName: "eventFrom",
-                      toName: "eventTo",
-                    },
-                  ])}
+                  {column("Event date", "event_date", eventDateFilter)}
                 </th>
                 <th className="px-4 py-3">{column("Stage", "stage")}</th>
                 <th className="px-4 py-3">
-                  {column("Phone", "phone", [
-                    {
-                      type: "select",
-                      name: "phone",
-                      label: "Phone",
-                      options: presenceOptions,
-                    },
-                  ])}
+                  {column("Phone", "phone", phoneFilter)}
                 </th>
                 <th className="px-4 py-3">
-                  {column("Email", "email", [
-                    {
-                      type: "select",
-                      name: "email",
-                      label: "Email",
-                      options: presenceOptions,
-                    },
-                  ])}
+                  {column("Email", "email", emailFilter)}
                 </th>
                 <th className="px-4 py-3">
-                  {column("Touches", "touches", [
-                    {
-                      type: "number",
-                      name: "touches",
-                      label: "Exact touches",
-                      placeholder: "0",
-                      min: 0,
-                    },
-                  ])}
+                  {column("Touches", "touches", touchesFilter)}
                 </th>
                 <th className="px-4 py-3">{column("Last touch", "last_touch")}</th>
                 <th className="px-4 py-3">{column("Next step", "next_step")}</th>

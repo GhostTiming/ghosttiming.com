@@ -1,3 +1,5 @@
+import { matchesPersonNameQuery } from "./person-search";
+
 export function personIsTaggedToOrganization(input: {
   organizationId?: string | null;
   membershipOrgIds?: readonly string[];
@@ -54,11 +56,7 @@ export function matchesCrewSearchQuery(
   const normalized = query.trim().toLowerCase();
   if (!normalized) return false;
   return (
-    matchesQuery(person.displayName, normalized) ||
-    matchesQuery(person.firstName, normalized) ||
-    matchesQuery(person.lastName, normalized) ||
-    matchesQuery(person.email, normalized) ||
-    matchesQuery(person.phone, normalized) ||
+    matchesPersonNameQuery(person, normalized) ||
     matchesQuery(person.organizationName ?? organizationName, normalized)
   );
 }

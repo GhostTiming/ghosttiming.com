@@ -28,19 +28,20 @@ export function FilterChipNav({
   if (!options.length) return null;
 
   return (
-    <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
-      <label className="block md:hidden">
+    <div className="flex min-w-0 max-w-full flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+      <label className="block min-w-0 md:hidden">
         <span className="sr-only">{ariaLabel}</span>
         <select
-          value={selected?.href ?? ""}
+          value={selected?.value ?? ""}
           aria-label={ariaLabel}
           onChange={(event) => {
-            if (event.target.value) router.push(event.target.value);
+            const next = options.find((option) => option.value === event.target.value);
+            if (next) router.push(next.href);
           }}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-slate-900 shadow-sm"
+          className="w-full max-w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-slate-900 shadow-sm"
         >
           {options.map((option) => (
-            <option key={option.value} value={option.href}>
+            <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
