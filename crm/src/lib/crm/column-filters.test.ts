@@ -3,7 +3,7 @@ import {
   applyColumnFilters,
   isFilterActive,
   type TableFilterField,
-} from "./table-column-filter";
+} from "./column-filters";
 
 const fields: TableFilterField[] = [
   { type: "text", name: "q", label: "Name" },
