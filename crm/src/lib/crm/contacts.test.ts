@@ -7,6 +7,8 @@ import {
   formatContactEventNames,
   mergeVisibleOrganizationIds,
   parseContactListStatus,
+  formatPersonFirstLastName,
+  leadContactIdentity,
   parseContactListView,
   personIsCrewContact,
   personIsCrewContactSql,
@@ -40,6 +42,32 @@ describe("contact organization memberships", () => {
         lastName: "Doe",
       }),
     ).toBe("Lead Timer");
+  });
+
+  it("prefers first and last on the prospect contact line", () => {
+    expect(
+      formatPersonFirstLastName({
+        displayName: "Lead Timer",
+        firstName: "Chantal",
+        lastName: "Butler",
+      }),
+    ).toBe("Chantal Butler");
+    expect(
+      leadContactIdentity({
+        person: {
+          firstName: "Chantal",
+          lastName: "Butler",
+          displayName: "Chantal Butler",
+          email: "chantalbutler@enlightenedfl.com",
+          phone: null,
+        },
+        phone: "813-555-0100",
+      }),
+    ).toEqual({
+      name: "Chantal Butler",
+      email: "chantalbutler@enlightenedfl.com",
+      phone: "813-555-0100",
+    });
   });
 
   it("expands assigned client orgs with related event-owner orgs", () => {

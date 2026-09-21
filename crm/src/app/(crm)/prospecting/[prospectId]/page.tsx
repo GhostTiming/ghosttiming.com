@@ -324,7 +324,22 @@ export default async function ProspectDetailPage({
         </div>
       }
       contacts={
-        <LeadContactPanel prospectId={prospect.id} contacts={data.contactMethods} />
+        <LeadContactPanel
+          prospectId={prospect.id}
+          contacts={data.contactMethods}
+          person={
+            prospect.primary_contact_person_id
+              ? {
+                  id: prospect.primary_contact_person_id,
+                  firstName: prospect.primary_contact_first_name,
+                  lastName: prospect.primary_contact_last_name,
+                  displayName: prospect.primary_contact_display_name,
+                  email: prospect.primary_contact_email,
+                  phone: prospect.primary_contact_phone,
+                }
+              : null
+          }
+        />
       }
       glance={
         <>

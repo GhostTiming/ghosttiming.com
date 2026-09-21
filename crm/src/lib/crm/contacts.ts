@@ -9,11 +9,40 @@ export function resolvePersonDisplayName(input: {
 }) {
   const displayName = input.displayName?.trim();
   if (displayName) return displayName;
+  return formatPersonFirstLastName(input);
+}
+
+export function formatPersonFirstLastName(input: {
+  displayName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}) {
   return [input.firstName, input.lastName]
     .map((value) => value?.trim())
     .filter(Boolean)
     .join(" ")
     .trim();
+}
+
+export function leadContactIdentity(input: {
+  person?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    displayName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
+  email?: string | null;
+  phone?: string | null;
+}) {
+  const firstLast = input.person ? formatPersonFirstLastName(input.person) : "";
+  const name =
+    firstLast || resolvePersonDisplayName(input.person ?? {}) || null;
+  return {
+    name,
+    email: input.person?.email?.trim() || input.email?.trim() || null,
+    phone: input.person?.phone?.trim() || input.phone?.trim() || null,
+  };
 }
 
 export function expandContactOrgScope(input: {

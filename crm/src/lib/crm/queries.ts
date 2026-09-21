@@ -468,6 +468,11 @@ export type ProspectDetail = {
   owner_name: string | null;
   assigned_user_id: string | null;
   primary_contact_person_id: string | null;
+  primary_contact_first_name: string | null;
+  primary_contact_last_name: string | null;
+  primary_contact_display_name: string | null;
+  primary_contact_email: string | null;
+  primary_contact_phone: string | null;
   touch_count: number;
   last_step: string | null;
   last_step_at: string | null;
@@ -603,6 +608,11 @@ export async function getProspectDetail(prospectId: string) {
           owner.name AS owner_name,
           p.assigned_user_id::text,
           p.primary_contact_person_id::text,
+          primary_contact.first_name AS primary_contact_first_name,
+          primary_contact.last_name AS primary_contact_last_name,
+          primary_contact.display_name AS primary_contact_display_name,
+          primary_contact.email AS primary_contact_email,
+          primary_contact.phone AS primary_contact_phone,
           queue.touch_count,
           queue.last_step,
           queue.last_step_at::text,
@@ -629,6 +639,8 @@ export async function getProspectDetail(prospectId: string) {
         LEFT JOIN crm.event_occurrences occurrence ON occurrence.id = p.occurrence_id
         JOIN crm.prospect_work_queue queue ON queue.prospect_id = p.id
         LEFT JOIN crm.users owner ON owner.id = p.assigned_user_id
+        LEFT JOIN crm.people primary_contact
+          ON primary_contact.id = p.primary_contact_person_id
         LEFT JOIN catalog.lead_notes notes ON notes.race_listing_id = p.race_listing_id
         LEFT JOIN catalog.race_listing_ai_enrichment enrich
           ON enrich.race_listing_id = rl.id AND enrich.is_current = true
