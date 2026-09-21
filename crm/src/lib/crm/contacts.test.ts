@@ -16,6 +16,7 @@ import {
   personIsDirectClientContactSql,
   personIsEventClientContact,
   personIsEventClientContactSql,
+  personInContactScopeSql,
   personIsInContactScope,
   personIsProspectContact,
   prospectContactHref,
@@ -115,6 +116,17 @@ describe("contact organization memberships", () => {
         bookingLinked: false,
       }),
     ).toBe(false);
+  });
+
+  it("lets org members open untagged prospect contacts", () => {
+    expect(
+      personIsInContactScope({
+        isSuperAdmin: false,
+        personOrgIds: [],
+        scopedOrgIds: [orgA],
+        bookingLinked: false,
+      }),
+    ).toBe(true);
   });
 
   it("keeps hidden org ties when an org member edits visible memberships", () => {
@@ -392,6 +404,11 @@ describe("contact list views", () => {
     expect(parseContactListStatus()).toBe("active");
     expect(parseContactListStatus(undefined, "1")).toBe("inactive");
     expect(parseContactListStatus("1", "1")).toBe("archived");
+  });
+
+  it("encodes untagged people in contact scope SQL", () => {
+    expect(personInContactScopeSql(1, 2)).toContain("organization_id IS NOT NULL");
+    expect(personInContactScopeSql(1, 2)).toContain("person_organizations");
   });
 
   it("encodes Direct clients, Event clients, and Crew in SQL filters", () => {

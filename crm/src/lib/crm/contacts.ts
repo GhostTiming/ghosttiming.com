@@ -60,6 +60,7 @@ export function personIsInContactScope(input: {
 }) {
   if (input.isSuperAdmin) return true;
   if (input.bookingLinked) return true;
+  if (input.personOrgIds.length === 0) return true;
   return input.personOrgIds.some((id) => input.scopedOrgIds.includes(id));
 }
 
@@ -282,6 +283,7 @@ export function personInContactScopeSql(
   return `
     (
       $${scopeParam}::uuid[] IS NULL
+      OR NOT ${personHasOrganizationTagSql(personAlias)}
       OR ${personAlias}.organization_id = ANY($${scopeParam}::uuid[])
       OR EXISTS (
         SELECT 1 FROM crm.person_organizations membership

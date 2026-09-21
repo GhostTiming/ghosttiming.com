@@ -304,12 +304,9 @@ export async function searchCrmRecords(access: AccessContext, rawQuery: string) 
 
   if (visibility.contacts) {
     const operations = access.canAccessOperations;
-    const prospecting = access.canAccessProspecting;
     const contactFilter = operations
-      ? prospecting
-        ? `(${personInContactScopeSql(2, 3)} OR ${personMatchesProspectContactSql()})`
-        : personInContactScopeSql(2, 3)
-      : personMatchesProspectContactSql();
+      ? personInContactScopeSql(2, 3)
+      : `(${personInContactScopeSql(2, 3)} OR ${personMatchesProspectContactSql()})`;
     searches.push(
       pool
         .query<{ id: string; label: string; secondary: string | null }>(

@@ -476,7 +476,10 @@ export type ContactAssociatedEventRow = {
   stage_name: string | null;
 };
 
-export async function listContactAssociatedEvents(personId: string) {
+export async function listContactAssociatedEvents(
+  personId: string,
+  assignedClientOrgIds: string[] | null = null,
+) {
   return getPool().query<ContactAssociatedEventRow>(
     `
       SELECT
@@ -510,6 +513,10 @@ export async function listContactAssociatedEvents(personId: string) {
         JOIN crm.events event ON event.id = occurrence.event_id
         JOIN crm.pipeline_stages stage ON stage.id = booking.stage_id
         WHERE booking.primary_contact_person_id = $1::uuid
+          AND (
+            $2::uuid[] IS NULL
+            OR booking.direct_client_organization_id = ANY($2::uuid[])
+          )
 
         UNION ALL
 
@@ -536,6 +543,11 @@ export async function listContactAssociatedEvents(personId: string) {
         LEFT JOIN crm.pipeline_stages booking_stage
           ON booking_stage.id = booking.stage_id
         WHERE crew.person_id = $1::uuid
+          AND (
+            $2::uuid[] IS NULL
+            OR booking.id IS NULL
+            OR booking.direct_client_organization_id = ANY($2::uuid[])
+          )
 
         UNION ALL
 
@@ -565,7 +577,7 @@ export async function listContactAssociatedEvents(personId: string) {
       ) linked
       ORDER BY sort_date DESC NULLS LAST, sort_name
     `,
-    [personId],
+    [personId, assignedClientOrgIds],
   );
 }
 

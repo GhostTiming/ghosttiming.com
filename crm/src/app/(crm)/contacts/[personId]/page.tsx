@@ -95,7 +95,7 @@ export default async function ContactDetailPage({
       [scope.scopeOrgIds, scope.assignedOrgIds, personId],
     ),
     listAttachableOrganizations(scope.scopeOrgIds),
-    listContactAssociatedEvents(personId),
+    listContactAssociatedEvents(personId, scope.assignedOrgIds),
   ]);
   const contact = contactResult.rows[0];
   if (!contact) notFound();
