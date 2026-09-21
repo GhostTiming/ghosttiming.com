@@ -6,7 +6,12 @@ viewer that mirrors workspace layout/state.
 
 ## Architecture
 
-- API ingest:
+- Crew live (preferred race-day feed):
+  - Desktop Chip Streamer overwrites one analytics snapshot per event once per second.
+  - `POST /api/crew/live/ingest` and `POST /api/crew/live/index` upsert those rows only.
+  - Crews open `https://ghosttiming.com/crew/live` with the shared crew password.
+  - This path must not write individual chip reads.
+- Legacy API ingest (expensive; do not use for crew live):
   - `POST /api/ingest/<shortId>/reads` writes reads + aggregate counters.
   - `POST /api/ingest/<shortId>/state` updates event/workspace/mapping state.
 - API read paths:
@@ -48,6 +53,9 @@ Set these in Vercel (**Settings → Environment Variables**) and locally in `web
 | `SESSION_SECRET` | Yes | Long random string used to sign viewer session cookies (min ~16 chars). |
 | `CRON_SECRET` | Optional | If set, `/api/cron/cleanup` requires `Authorization: Bearer <CRON_SECRET>`. Omit for development; protect in production or remove cron in `vercel.json`. |
 | `NEXT_PUBLIC_APP_URL` | Optional | Public site URL (e.g. `https://your-app.vercel.app`). Returned in `POST /api/events` as `shareUrl`; viewers can use any valid base URL in the desktop app regardless. |
+| `CREW_LIVE_PASSWORD` | Yes for `/crew/live` | Shared crew-view password. |
+| `CREW_LIVE_WRITE_TOKEN` | Yes for desktop publish | Bearer token Chip Streamer uses to overwrite snapshots. Generate a long random string. |
+| `BLOB_READ_WRITE_TOKEN` | Yes for `/crew/live` | Vercel Blob token. Crew live overwrites one JSON snapshot per event; it does not write chip reads. |
 
 Copy from `.env.example` and fill values.
 
@@ -78,6 +86,7 @@ npx drizzle-kit push
 
 Alternatively apply the SQL under `drizzle/` manually in the Neon SQL editor.
 Latest cleanup migration: `drizzle/0001_race_day_cleanup.sql`.
+Crew live snapshots are stored in Vercel Blob, not Neon.
 
 ## Local development
 
