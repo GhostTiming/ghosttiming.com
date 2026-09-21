@@ -187,6 +187,46 @@ export function formatContactEventNames(names: string[], limit = 2) {
   return `${cleaned.slice(0, limit).join(", ")} + ${cleaned.length - limit} more`;
 }
 
+export type ContactEventAssociation =
+  | "booking_primary"
+  | "crew"
+  | "prospect_primary";
+
+export function contactAssociationLabel(
+  association: ContactEventAssociation,
+  crewRole?: string | null,
+) {
+  if (association === "booking_primary") return "Primary contact";
+  if (association === "prospect_primary") return "Prospect contact";
+  const role = crewRole?.trim();
+  return role || "Crew";
+}
+
+export function contactAssociatedEventHref(input: {
+  association: ContactEventAssociation;
+  bookingId?: string | null;
+  prospectId?: string | null;
+  eventId?: string | null;
+  canAccessProspecting: boolean;
+}) {
+  if (input.association === "prospect_primary") {
+    if (input.canAccessProspecting && input.prospectId) {
+      return `/prospecting/${input.prospectId}`;
+    }
+    return input.eventId ? `/events/${input.eventId}` : null;
+  }
+  if (input.bookingId) return `/bookings/${input.bookingId}`;
+  return input.eventId ? `/events/${input.eventId}` : null;
+}
+
+export function formatContactEventDate(value: string | null) {
+  if (!value) return "Date TBD";
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeZone: "America/New_York",
+  }).format(new Date(value));
+}
+
 export function prospectContactHref(input: {
   prospectId?: string | null;
   personId?: string | null;

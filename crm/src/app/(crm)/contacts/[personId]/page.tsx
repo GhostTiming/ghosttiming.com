@@ -7,14 +7,23 @@ import {
   updateContactAction,
 } from "@/app/contact-actions";
 import { MailtoLink } from "@/components/crm-links";
+import { ListRowLink } from "@/components/list-row";
+import { listRowClassName } from "@/components/list-row-class";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
 import { getPool } from "@/db";
 import { requireOperationsAccess } from "@/lib/auth/server";
 import {
   listAttachableOrganizations,
+  listContactAssociatedEvents,
   loadContactOrgScope,
 } from "@/lib/crm/contact-queries";
-import { personInContactScopeSql } from "@/lib/crm/contacts";
+import {
+  contactAssociatedEventHref,
+  contactAssociationLabel,
+  formatContactEventDate,
+  personInContactScopeSql,
+} from "@/lib/crm/contacts";
+import { MOBILE_CARDS, TABLE_SCROLL } from "@/lib/crm/layout";
 import { parseRouteUuid } from "@/lib/crm/route-id";
 import { firstParam } from "@/lib/crm/search-params";
 
@@ -35,7 +44,7 @@ export default async function ContactDetailPage({
   const access = await requireOperationsAccess();
   const scope = await loadContactOrgScope(access);
   const edit = firstParam((await searchParams).edit) === "details";
-  const [contactResult, organizations] = await Promise.all([
+  const [contactResult, organizations, associatedEvents] = await Promise.all([
     getPool().query<{
       id: string;
       display_name: string | null;
@@ -86,6 +95,7 @@ export default async function ContactDetailPage({
       [scope.scopeOrgIds, scope.assignedOrgIds, personId],
     ),
     listAttachableOrganizations(scope.scopeOrgIds),
+    listContactAssociatedEvents(personId),
   ]);
   const contact = contactResult.rows[0];
   if (!contact) notFound();
@@ -258,6 +268,125 @@ export default async function ContactDetailPage({
             </div>
           </dl>
         )}
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-5 py-4">
+          <h2 className="text-lg font-bold">Events</h2>
+          <p className="text-sm text-slate-500">
+            Bookings, crew assignments, and prospect races linked to this contact.
+          </p>
+        </div>
+        <div className={`${MOBILE_CARDS} p-3`}>
+          {associatedEvents.rows.map((row, index) => {
+            const href = contactAssociatedEventHref({
+              association: row.association,
+              bookingId: row.booking_id,
+              prospectId: row.prospect_id,
+              eventId: row.event_id,
+              canAccessProspecting: access.canAccessProspecting,
+            });
+            const key = [
+              row.association,
+              row.event_id,
+              row.occurrence_id,
+              row.booking_id,
+              row.prospect_id,
+              index,
+            ].join(":");
+            return (
+              <article
+                key={key}
+                className="relative rounded-xl border border-slate-200 bg-slate-50 p-3"
+              >
+                {href ? (
+                  <ListRowLink href={href} className="font-semibold">
+                    {row.event_name}
+                  </ListRowLink>
+                ) : (
+                  <p className="font-semibold">{row.event_name}</p>
+                )}
+                <p className="mt-1 text-sm text-slate-600">
+                  {row.occurrence_year ?? "—"} · {formatContactEventDate(row.race_date)}
+                </p>
+                <p className="text-sm text-slate-500">
+                  {contactAssociationLabel(row.association, row.role)}
+                </p>
+                <p className="mt-1 text-sm font-medium">{row.stage_name ?? "—"}</p>
+              </article>
+            );
+          })}
+          {associatedEvents.rows.length === 0 ? (
+            <p className="p-6 text-center text-slate-500">
+              No events linked to this contact yet.
+            </p>
+          ) : null}
+        </div>
+        {associatedEvents.rows.length ? (
+        <div className="hidden md:block">
+          <div className={TABLE_SCROLL}>
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600">
+                <tr>
+                  <th className="px-4 py-3">Event</th>
+                  <th className="px-4 py-3">Year</th>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Role</th>
+                  <th className="px-4 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {associatedEvents.rows.map((row, index) => {
+                  const href = contactAssociatedEventHref({
+                    association: row.association,
+                    bookingId: row.booking_id,
+                    prospectId: row.prospect_id,
+                    eventId: row.event_id,
+                    canAccessProspecting: access.canAccessProspecting,
+                  });
+                  const key = [
+                    row.association,
+                    row.event_id,
+                    row.occurrence_id,
+                    row.booking_id,
+                    row.prospect_id,
+                    index,
+                  ].join(":");
+                  return (
+                    <tr
+                      key={key}
+                      className={href ? listRowClassName() : "hover:bg-slate-50"}
+                    >
+                      <td className="px-4 py-3 font-semibold">
+                        {href ? (
+                          <ListRowLink href={href} className="font-semibold">
+                            {row.event_name}
+                          </ListRowLink>
+                        ) : (
+                          row.event_name
+                        )}
+                      </td>
+                      <td className="px-4 py-3">{row.occurrence_year ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        {formatContactEventDate(row.race_date)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {contactAssociationLabel(row.association, row.role)}
+                      </td>
+                      <td className="px-4 py-3">{row.stage_name ?? "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        ) : null}
+        {associatedEvents.rows.length === 0 ? (
+          <p className="hidden p-10 text-center text-slate-500 md:block">
+            No events linked to this contact yet.
+          </p>
+        ) : null}
       </section>
 
       {!contact.archived_at ? (

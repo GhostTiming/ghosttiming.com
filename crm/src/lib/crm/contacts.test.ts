@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  contactAssociatedEventHref,
+  contactAssociationLabel,
   expandContactOrgScope,
+  formatContactEventDate,
   formatContactEventNames,
   mergeVisibleOrganizationIds,
   parseContactListStatus,
@@ -298,6 +301,57 @@ describe("contact list views", () => {
     expect(
       formatContactEventNames(["AAO 5K", "Heart Health 5K", "Kissimmee 5K"]),
     ).toBe("AAO 5K, Heart Health 5K + 1 more");
+  });
+
+  it("labels contact-event associations", () => {
+    expect(contactAssociationLabel("booking_primary")).toBe("Primary contact");
+    expect(contactAssociationLabel("prospect_primary")).toBe("Prospect contact");
+    expect(contactAssociationLabel("crew")).toBe("Crew");
+    expect(contactAssociationLabel("crew", "Lead timer")).toBe("Lead timer");
+  });
+
+  it("routes contact-event rows to the matching record", () => {
+    const eventId = "11111111-1111-4111-8111-111111111111";
+    const bookingId = "22222222-2222-4222-8222-222222222222";
+    const prospectId = "33333333-3333-4333-8333-333333333333";
+    expect(
+      contactAssociatedEventHref({
+        association: "booking_primary",
+        bookingId,
+        eventId,
+        canAccessProspecting: true,
+      }),
+    ).toBe(`/bookings/${bookingId}`);
+    expect(
+      contactAssociatedEventHref({
+        association: "crew",
+        eventId,
+        canAccessProspecting: false,
+      }),
+    ).toBe(`/events/${eventId}`);
+    expect(
+      contactAssociatedEventHref({
+        association: "prospect_primary",
+        prospectId,
+        eventId,
+        canAccessProspecting: true,
+      }),
+    ).toBe(`/prospecting/${prospectId}`);
+    expect(
+      contactAssociatedEventHref({
+        association: "prospect_primary",
+        prospectId,
+        eventId,
+        canAccessProspecting: false,
+      }),
+    ).toBe(`/events/${eventId}`);
+  });
+
+  it("formats contact event dates in Eastern time", () => {
+    expect(formatContactEventDate(null)).toBe("Date TBD");
+    expect(formatContactEventDate("2026-12-05T05:00:00.000Z")).toBe(
+      "Dec 5, 2026",
+    );
   });
 
   it("prefers a prospect page for imported listing contacts", () => {

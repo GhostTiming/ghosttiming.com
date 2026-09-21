@@ -10,6 +10,7 @@ import {
   personListStatusSql,
   personMatchesProspectContactSql,
   uniqueIds,
+  type ContactEventAssociation,
 } from "./contacts";
 import { personNameMatchesSql } from "./person-search";
 
@@ -459,6 +460,112 @@ export async function listProspectContacts(query: ContactListQuery) {
       query.phone,
       query.race?.trim() || null,
     ],
+  );
+}
+
+export type ContactAssociatedEventRow = {
+  event_id: string | null;
+  event_name: string;
+  occurrence_id: string | null;
+  occurrence_year: number | null;
+  race_date: string | null;
+  booking_id: string | null;
+  prospect_id: string | null;
+  association: ContactEventAssociation;
+  role: string | null;
+  stage_name: string | null;
+};
+
+export async function listContactAssociatedEvents(personId: string) {
+  return getPool().query<ContactAssociatedEventRow>(
+    `
+      SELECT
+        event_id,
+        event_name,
+        occurrence_id,
+        occurrence_year,
+        race_date,
+        booking_id,
+        prospect_id,
+        association,
+        role,
+        stage_name
+      FROM (
+        SELECT
+          event.id::text AS event_id,
+          event.name AS event_name,
+          occurrence.id::text AS occurrence_id,
+          occurrence.occurrence_year,
+          occurrence.race_date::text,
+          booking.id::text AS booking_id,
+          NULL::text AS prospect_id,
+          'booking_primary'::text AS association,
+          NULL::text AS role,
+          stage.name AS stage_name,
+          occurrence.race_date AS sort_date,
+          event.name AS sort_name
+        FROM crm.bookings booking
+        JOIN crm.event_occurrences occurrence
+          ON occurrence.id = booking.occurrence_id
+        JOIN crm.events event ON event.id = occurrence.event_id
+        JOIN crm.pipeline_stages stage ON stage.id = booking.stage_id
+        WHERE booking.primary_contact_person_id = $1::uuid
+
+        UNION ALL
+
+        SELECT
+          event.id::text,
+          event.name,
+          occurrence.id::text,
+          occurrence.occurrence_year,
+          occurrence.race_date::text,
+          booking.id::text,
+          NULL::text,
+          'crew'::text,
+          crew.role,
+          booking_stage.name,
+          occurrence.race_date,
+          event.name
+        FROM crm.crew_assignments crew
+        JOIN crm.event_occurrences occurrence
+          ON occurrence.id = crew.occurrence_id
+        JOIN crm.events event ON event.id = occurrence.event_id
+        LEFT JOIN crm.bookings booking
+          ON booking.occurrence_id = crew.occurrence_id
+         AND booking.archived_at IS NULL
+        LEFT JOIN crm.pipeline_stages booking_stage
+          ON booking_stage.id = booking.stage_id
+        WHERE crew.person_id = $1::uuid
+
+        UNION ALL
+
+        SELECT
+          event.id::text,
+          COALESCE(event.name, listing.name),
+          occurrence.id::text,
+          occurrence.occurrence_year,
+          occurrence.race_date::text,
+          prospect.converted_booking_id::text,
+          prospect.id::text,
+          'prospect_primary'::text,
+          NULL::text,
+          stage.name,
+          occurrence.race_date,
+          COALESCE(event.name, listing.name)
+        FROM crm.prospects prospect
+        JOIN crm.pipeline_stages stage ON stage.id = prospect.stage_id
+        LEFT JOIN crm.events event ON event.id = prospect.event_id
+        LEFT JOIN catalog.race_listings listing
+          ON listing.id = prospect.race_listing_id
+        LEFT JOIN crm.event_occurrences occurrence
+          ON occurrence.id = prospect.occurrence_id
+        WHERE prospect.primary_contact_person_id = $1::uuid
+          AND prospect.archived_at IS NULL
+          AND COALESCE(event.name, listing.name) IS NOT NULL
+      ) linked
+      ORDER BY sort_date DESC NULLS LAST, sort_name
+    `,
+    [personId],
   );
 }
 
