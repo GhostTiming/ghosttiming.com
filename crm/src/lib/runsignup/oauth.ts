@@ -7,8 +7,9 @@ export const RUNSIGNUP_OAUTH_STATE_COOKIE = "gt_runsignup_oauth";
 export const RUNSIGNUP_OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60;
 export const RUNSIGNUP_OAUTH_SCOPE = "rsu_api_read";
 
-const AUTHORIZE_URL = "https://runsignup.com/OAuth/Authorize";
-const TOKEN_URL = "https://runsignup.com/OAuth/Token";
+const AUTHORIZE_URL = "https://runsignup.com/Profile/OAuth2/RequestGrant";
+const TOKEN_URL = "https://runsignup.com/rest/v2/auth/auth-code-redemption.json";
+const REFRESH_URL = "https://runsignup.com/rest/v2/auth/refresh-token.json";
 
 export type RunSignupOAuthState = {
   state: string;
@@ -97,8 +98,8 @@ export function readRunSignupOAuthState(value: string | undefined | null): RunSi
   return parsed;
 }
 
-async function runSignupTokenRequest(body: URLSearchParams): Promise<RunSignupTokenSet> {
-  const response = await fetch(TOKEN_URL, {
+async function runSignupTokenRequest(url: string, body: URLSearchParams): Promise<RunSignupTokenSet> {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body,
@@ -135,6 +136,7 @@ export function exchangeRunSignupAuthorizationCode(input: {
   redirectUri: string;
 }) {
   return runSignupTokenRequest(
+    TOKEN_URL,
     new URLSearchParams({
       grant_type: "authorization_code",
       code: input.code,
@@ -148,6 +150,7 @@ export function exchangeRunSignupAuthorizationCode(input: {
 
 export function refreshRunSignupAccessToken(refreshToken: string) {
   return runSignupTokenRequest(
+    REFRESH_URL,
     new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
