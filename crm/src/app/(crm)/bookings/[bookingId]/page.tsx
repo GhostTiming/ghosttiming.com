@@ -805,8 +805,9 @@ export default async function BookingDetailPage({
                   Match online listing
                 </h3>
                 <p className="mt-1 mb-3 text-sm text-slate-600">
-                  Search the online catalog or RunSignUp, or paste a registration
-                  link, then match so event details and distances fill in.
+                  Search the online catalog or RunSignUp, including unpublished races from
+                  a linked RunSignUp account, or paste a registration link, then match so
+                  event details and distances fill in.
                 </p>
                 <CatalogMatchControls
                   bookingId={booking.id}

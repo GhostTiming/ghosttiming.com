@@ -2,7 +2,7 @@
 
 import { Calendar, Check, Loader2, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ListRowActions } from "@/components/list-row";
 import { useOptionalGoogleSession } from "@/components/google/google-session-provider";
 
@@ -21,13 +21,18 @@ export function TaskCalendarSyncControl({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [optimisticSynced, setOptimisticSynced] = useState(false);
+  const [syncState, setSyncState] = useState({
+    status: syncStatus,
+    optimistic: false,
+  });
+  if (syncStatus !== syncState.status) {
+    setSyncState({
+      status: syncStatus,
+      optimistic: syncStatus === "synced" ? syncState.optimistic : false,
+    });
+  }
   const syncStarted = useRef(false);
-  const synced = optimisticSynced || isTaskCalendarSynced(syncStatus);
-
-  useEffect(() => {
-    if (syncStatus !== "synced") setOptimisticSynced(false);
-  }, [syncStatus]);
+  const synced = syncState.optimistic || isTaskCalendarSynced(syncStatus);
 
   async function performSync() {
     if (!google) throw new Error("Google is not available.");
@@ -50,7 +55,7 @@ export function TaskCalendarSyncControl({
     setBusy(true);
     try {
       await performSync();
-      setOptimisticSynced(true);
+      setSyncState((current) => ({ ...current, optimistic: true }));
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Calendar sync failed.");

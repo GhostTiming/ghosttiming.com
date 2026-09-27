@@ -73,9 +73,10 @@ export function CreateFromOnlineEvent({
       <header>
         <h2 className="text-lg font-bold text-slate-950">Create from online event</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Search the online catalog or RunSignUp, or paste a RunSignUp or Race
-          Roster link. Choose the Direct client, click the event, and the
-          booking fields fill in from that listing.
+          Search the online catalog or RunSignUp, including unpublished races from
+          a linked RunSignUp account, or paste a RunSignUp or Race Roster link.
+          Choose the Direct client, click the event, and the booking fields fill
+          in from that listing.
         </p>
       </header>
       <div className="grid gap-4 md:grid-cols-2">

@@ -13,23 +13,28 @@ type RelatedRecord =
 export async function appendAuditActivity(
   client: PoolClient,
   record: RelatedRecord,
-  actor: { id: string; name: string },
+  actor: { id: string | null; name: string; type?: "human" | "ai" | "system" },
   body: string,
   metadata: Record<string, unknown> = {},
 ) {
+  const actorType = actor.type ?? "human";
+  if (actorType === "human" && !actor.id) {
+    throw new Error("A person is required for this note.");
+  }
   await client.query(
     `
       INSERT INTO crm.activities
         (prospect_id, booking_id, organization_id, type, body, actor_type,
          actor_user_id, actor_name, metadata)
-      VALUES ($1::uuid, $2::uuid, $3::uuid, 'note', $4, 'human',
-        $5::uuid, $6, $7::jsonb)
+      VALUES ($1::uuid, $2::uuid, $3::uuid, 'note', $4, $5,
+        $6::uuid, $7, $8::jsonb)
     `,
     [
       record.prospectId ?? null,
       record.bookingId ?? null,
       record.organizationId ?? null,
       body,
+      actorType,
       actor.id,
       actor.name,
       JSON.stringify(metadata),

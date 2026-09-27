@@ -17,6 +17,7 @@ import { RefreshAllGrvButton } from "@/components/refresh-all-grv-button";
 import { TableColumnHeader } from "@/components/table-column-header";
 import type { TableFilterField } from "@/components/table-column-filter";
 import { getPool } from "@/db";
+import { ensureUpcomingDecisionBookings } from "@/lib/crm/upcoming-decision";
 import { bookingOrgScopeParam } from "@/lib/auth/access";
 import { redactBookingFinancials } from "@/lib/auth/financials";
 import { requireOperationsAccess } from "@/lib/auth/server";
@@ -86,6 +87,20 @@ export default async function BookingsPage({
 }) {
   const access = await requireOperationsAccess();
   const orgScope = bookingOrgScopeParam(access);
+  const decisionClient = await getPool().connect();
+  try {
+    await decisionClient.query("BEGIN");
+    await ensureUpcomingDecisionBookings(decisionClient, {
+      actor: { id: access.user.id, name: access.user.name },
+      organizationIds: orgScope,
+    });
+    await decisionClient.query("COMMIT");
+  } catch (error) {
+    await decisionClient.query("ROLLBACK");
+    throw error;
+  } finally {
+    decisionClient.release();
+  }
   const params = await searchParams;
   const current = {
     view: firstParam(params.view) === "kanban" ? "kanban" : "list",

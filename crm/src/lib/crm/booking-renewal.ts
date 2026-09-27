@@ -10,6 +10,7 @@ import {
 } from "./race-operations";
 
 export const RENEWAL_BOOKING_STAGE_KEY = "confirmed";
+export const UPCOMING_DECISION_STAGE_KEY = "awaiting_decision";
 
 export type RenewalFieldPolicy = {
   copyBooking: string[];
@@ -158,9 +159,13 @@ export function shouldOpenNewStandingEvent(input: {
 
 export type RenewBookingInput = {
   bookingId: string;
-  actor: { id: string; name: string };
+  actor: { id: string | null; name: string; type?: "human" | "ai" | "system" };
   targetYear: number;
   refreshFromCatalog: boolean;
+  /** Manual renewal confirms the year. An upcoming posting stays awaiting decision. */
+  stageKey?: typeof RENEWAL_BOOKING_STAGE_KEY | typeof UPCOMING_DECISION_STAGE_KEY;
+  /** Keep the standing event instead of opening a separate event for the new year. */
+  reuseStandingEvent?: boolean;
   eventName?: string;
   raceDateLocal?: string | null;
   timezone?: string;
@@ -463,25 +468,29 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
   if (refreshFromCatalog && source.catalog_race_listing_id) {
     listing = await loadCatalogListing(client, source.catalog_race_listing_id);
     if (!listing) throw new Error("Online listing was not found.");
-    const yearListing = await findYearSpecificListing(
-      client,
-      listing,
-      input.targetYear,
-    );
-    if (yearListing) listing = yearListing;
+    if (!input.reuseStandingEvent) {
+      const yearListing = await findYearSpecificListing(
+        client,
+        listing,
+        input.targetYear,
+      );
+      if (yearListing) listing = yearListing;
+    }
     edition = await loadCatalogEditionForYear(client, listing.id, input.targetYear);
   }
 
   const nextEventName = refreshFromCatalog
     ? (listing?.name ?? source.event_name)
     : (input.eventName?.trim() || source.event_name);
-  const openNewEvent = shouldOpenNewStandingEvent({
-    refreshFromCatalog,
-    currentListingId: source.catalog_race_listing_id,
-    nextListingId: listing?.id ?? null,
-    currentEventName: source.event_name,
-    nextEventName,
-  });
+  const openNewEvent = input.reuseStandingEvent
+    ? false
+    : shouldOpenNewStandingEvent({
+        refreshFromCatalog,
+        currentListingId: source.catalog_race_listing_id,
+        nextListingId: listing?.id ?? null,
+        currentEventName: source.event_name,
+        nextEventName,
+      });
 
   let eventId = source.event_id;
   if (openNewEvent) {
@@ -505,7 +514,7 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
       ],
     );
     eventId = created.rows[0].id;
-  } else if (refreshFromCatalog && listing) {
+  } else if (refreshFromCatalog && listing && !input.reuseStandingEvent) {
     await client.query(
       `
         UPDATE crm.events
@@ -608,11 +617,14 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
   if (!occurrence) throw new Error("Could not create the renewed occurrence.");
 
   if (refreshFromCatalog && listing && openNewEvent) {
+    if (!input.actor.id) {
+      throw new Error("A person is required to open a new event.");
+    }
     await linkEventToCatalogListing(client, {
       eventId,
       listingId: listing.id,
       occurrenceId: occurrence.id,
-      actor: input.actor,
+      actor: { id: input.actor.id, name: input.actor.name },
       archiveProspects: true,
     });
   } else if (refreshFromCatalog) {
@@ -650,11 +662,14 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
       source.assigned_user_id,
       source.expected_revenue,
       source.booking_notes,
-      RENEWAL_BOOKING_STAGE_KEY,
+      input.stageKey === UPCOMING_DECISION_STAGE_KEY
+        ? UPCOMING_DECISION_STAGE_KEY
+        : RENEWAL_BOOKING_STAGE_KEY,
     ],
   );
   if (!booking.rows[0]) throw new Error("Booking stage not found.");
   const bookingId = booking.rows[0].id;
+  const awaitingDecision = input.stageKey === UPCOMING_DECISION_STAGE_KEY;
 
   await client.query(
     `
@@ -670,7 +685,9 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
     client,
     { bookingId },
     input.actor,
-    `Renewed from booking ${source.booking_id.slice(0, 8)} for ${input.targetYear}`,
+    awaitingDecision
+      ? `Upcoming ${input.targetYear} race is posted online. Added as awaiting decision so you can confirm whether you are timing it again.`
+      : `Renewed from booking ${source.booking_id.slice(0, 8)} for ${input.targetYear}`,
     {
       sourceBookingId: source.booking_id,
       refreshFromCatalog,
@@ -681,7 +698,9 @@ export async function renewBooking(client: PoolClient, input: RenewBookingInput)
     client,
     { bookingId: source.booking_id },
     input.actor,
-    `Created ${input.targetYear} renewal booking`,
+    awaitingDecision
+      ? `Added an awaiting-decision booking for the upcoming ${input.targetYear} race.`
+      : `Created ${input.targetYear} renewal booking`,
     { renewedBookingId: bookingId, refreshFromCatalog },
   );
 

@@ -78,6 +78,16 @@ export async function refreshBookingFromCatalog(
     eventId: row.event_id,
     occurrenceId: row.occurrence_id,
   });
+  if (
+    "preservedHistoricalDate" in result &&
+    result.preservedHistoricalDate
+  ) {
+    return {
+      bookingId: input.bookingId,
+      status: "skipped",
+      error: "Paid and completed bookings keep their original race date.",
+    };
+  }
   await appendAuditActivity(
     client,
     { bookingId: input.bookingId },

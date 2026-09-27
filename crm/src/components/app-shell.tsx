@@ -1,5 +1,6 @@
 import { stopViewAsUserAction } from "@/app/admin-actions";
 import { GlobalSearch } from "@/components/global-search";
+import { GmailAutoSync } from "@/components/google/gmail-auto-sync";
 import { GoogleConnectionControl } from "@/components/google/google-connection-control";
 import { GoogleSessionProvider } from "@/components/google/google-session-provider";
 import { HeaderMoreNav } from "@/components/header-more-nav";
@@ -57,6 +58,7 @@ export function AppShell({
       initialSendGoogleSub={user.defaultSendGoogleSub}
       initialCalendarGoogleSub={user.defaultCalendarGoogleSub}
     >
+      {canAccessGoogle ? <GmailAutoSync /> : null}
     <div className="min-h-screen min-w-0 overflow-x-clip bg-slate-100">
       <NavigationProgress />
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950 text-white">

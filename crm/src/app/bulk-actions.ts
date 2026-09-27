@@ -21,6 +21,7 @@ import {
   formatCatalogRefreshSummary,
   refreshBookingsFromCatalog,
 } from "@/lib/crm/catalog-refresh";
+import { ensureUpcomingDecisionBookings } from "@/lib/crm/upcoming-decision";
 import { loadContactOrgScope } from "@/lib/crm/contact-queries";
 import { personInContactScopeSql } from "@/lib/crm/contacts";
 import { assertBookingStageRequirements } from "@/app/booking-actions";
@@ -436,13 +437,23 @@ export async function refreshAllLinkedBookingsFromCatalogAction(): Promise<BulkA
       bookingIds: linked.rows.map((row) => row.id),
       actor: access.user,
     });
+    const opened = await ensureUpcomingDecisionBookings(client, {
+      actor: { id: access.user.id, name: access.user.name },
+      organizationIds: orgScope,
+    });
     await client.query("COMMIT");
     refreshCatalogLinkedViews({});
+    const added = opened.created.length;
+    const addedMessage = added
+      ? `${added} upcoming ${added === 1 ? "year" : "years"} added as awaiting decision`
+      : null;
     return result(
       summary.updated,
       summary.skipped,
       summary.failed,
-      formatCatalogRefreshSummary(summary),
+      addedMessage
+        ? `${formatCatalogRefreshSummary(summary)}. ${addedMessage}.`
+        : formatCatalogRefreshSummary(summary),
     );
   } catch (error) {
     await client.query("ROLLBACK");

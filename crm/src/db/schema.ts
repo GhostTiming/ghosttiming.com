@@ -1096,6 +1096,35 @@ export const googleConnections = crm.table("google_connections", {
   uniqueIndex("google_connections_user_google_sub_uidx").on(table.userId, table.googleSub),
 ]);
 
+export const runsignupAccounts = crm.table(
+  "runsignup_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    runsignupUserId: text("runsignup_user_id").notNull(),
+    email: text("email"),
+    displayName: text("display_name"),
+    status: text("status").notNull().default("connected"),
+    lastError: text("last_error"),
+    accessTokenCiphertext: text("access_token_ciphertext"),
+    refreshTokenCiphertext: text("refresh_token_ciphertext"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    grantedScopes: text("granted_scopes"),
+    connectedByUserId: uuid("connected_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("runsignup_accounts_user_id_key").on(table.runsignupUserId),
+    index("runsignup_accounts_status_idx").on(table.status),
+    check(
+      "runsignup_accounts_status_check",
+      sql`${table.status} IN ('connected', 'expired', 'disconnected')`,
+    ),
+  ],
+);
+
 export const googleEmailMessages = crm.table(
   "google_email_messages",
   {

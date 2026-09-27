@@ -8,6 +8,7 @@ import { EmailSignatureManager } from "@/components/email-signature-manager";
 import { EmailTemplateManager } from "@/components/email-template-manager";
 import { GoogleConnectionControl } from "@/components/google/google-connection-control";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
+import { disconnectRunSignupAccountAction } from "@/app/runsignup-actions";
 import { getPool } from "@/db";
 import { getAccessContext } from "@/lib/auth/server";
 import { listUserEmailSignatures } from "@/lib/crm/email-signatures";
@@ -16,13 +17,20 @@ import {
   GOOGLE_PUBLIC_CONNECTION_SELECT,
   type GoogleConnectionRow,
 } from "@/lib/crm/google-sync";
+import { listRunSignupAccounts } from "@/lib/runsignup/accounts";
+import { runSignupOAuthConfigured } from "@/lib/runsignup/oauth";
 
 export const metadata = { title: "Settings" };
 
 const field = "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ runsignup_oauth?: string; runsignup_oauth_error?: string }>;
+}) {
   const access = await getAccessContext();
+  const params = await searchParams;
   const googleRows = access.canAccessGoogle
     ? (
         await getPool().query<GoogleConnectionRow>(
@@ -42,9 +50,10 @@ export default async function SettingsPage() {
     linked.find((row) => row.google_sub === access.user.defaultCalendarGoogleSub)?.google_sub ??
     linked[0]?.google_sub ??
     "";
-  const [emailTemplates, emailSignatures] = await Promise.all([
+  const [emailTemplates, emailSignatures, runSignupAccounts] = await Promise.all([
     listUserEmailTemplates(access.user.id),
     listUserEmailSignatures(access.user.id),
+    access.canAccessAdminConsole ? listRunSignupAccounts() : Promise.resolve([]),
   ]);
 
   return (
@@ -180,6 +189,64 @@ export default async function SettingsPage() {
           </Link>
         </p>
       )}
+
+      {access.canAccessAdminConsole ? (
+        <section id="runsignup" className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-950">RunSignUp accounts</h2>
+          <p className="text-sm text-slate-600">
+            Sign in to a RunSignUp account that can see unpublished races. Catalog
+            search then includes those private races along with the public ones.
+          </p>
+          {params.runsignup_oauth === "error" && params.runsignup_oauth_error ? (
+            <p className="text-sm text-red-700" role="alert">
+              {params.runsignup_oauth_error}
+            </p>
+          ) : null}
+          {params.runsignup_oauth === "connected" ? (
+            <p className="text-sm text-emerald-800">RunSignUp account linked.</p>
+          ) : null}
+          {runSignupAccounts.length ? (
+            <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+              {runSignupAccounts.map((account) => (
+                <li key={account.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div>
+                    <p className="font-medium text-slate-950">
+                      {account.display_name || account.email || "RunSignUp account"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {account.email ? `${account.email} · ` : ""}
+                      {account.status}
+                      {account.last_error ? ` · ${account.last_error}` : ""}
+                    </p>
+                  </div>
+                  <form action={disconnectRunSignupAccountAction}>
+                    <input type="hidden" name="accountId" value={account.id} />
+                    <PendingSubmitButton className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-700">
+                      Disconnect
+                    </PendingSubmitButton>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-slate-600">No RunSignUp account is linked yet.</p>
+          )}
+          {runSignupOAuthConfigured() ? (
+            <a
+              href="/api/runsignup/oauth/start?returnTo=/settings"
+              className="inline-flex rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
+            >
+              {runSignupAccounts.length ? "Add another RunSignUp account" : "Connect RunSignUp"}
+            </a>
+          ) : (
+            <p className="text-sm text-slate-600">
+              Create an OAuth client at runsignup.com/Profile/OAuth2/ListClients with read
+              access, then set RUNSIGNUP_OAUTH_CLIENT_ID and RUNSIGNUP_OAUTH_CLIENT_SECRET.
+              Register the redirect https://crm.ghosttiming.com/api/runsignup/oauth/callback.
+            </p>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }

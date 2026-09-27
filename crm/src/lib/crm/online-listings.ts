@@ -10,14 +10,15 @@ import {
 import type { OnlineListing } from "./online-listing-types";
 import { eventMatchKey } from "./event-matching";
 import {
+  catalogSyncMayReplaceRaceDate,
   estimateRaceDurationMinutes,
+  loadOccurrenceCatalogGuard,
   recalculateOccurrenceTimes,
   syncOccurrenceRacesFromCatalog,
 } from "./race-operations";
 import {
   currentRunSignupEvents,
   earliestRunSignupStart,
-  fetchRunSignupRace,
   looksLikeEventUrl,
   parseRaceRosterUrl,
   parseRunSignupDistance,
@@ -28,7 +29,12 @@ import {
   searchRunSignupRaces,
   type RunSignupRace,
 } from "./runsignup";
+import { mergeRunSignupSearchResults } from "./runsignup-private";
 import { shouldSearchOnlineListings } from "./runsignup-parse";
+import {
+  fetchRunSignupRaceForCrm,
+  searchLinkedRunSignupRaces,
+} from "@/lib/runsignup/accounts";
 
 export type { OnlineListing, OnlineListingSource } from "./online-listing-types";
 export { shouldSearchOnlineListings };
@@ -45,7 +51,7 @@ function asCatalogListing(row: CatalogListingCandidate): OnlineListing {
   };
 }
 
-function asRunSignupListing(race: RunSignupRace): OnlineListing {
+function asRunSignupListing(race: RunSignupRace, unpublished = false): OnlineListing {
   const start = earliestRunSignupStart(race);
   return {
     id: runSignupListingId(race.race_id),
@@ -56,7 +62,7 @@ function asRunSignupListing(race: RunSignupRace): OnlineListing {
     next_start_at: start?.local ?? null,
     edition_year: start?.year ?? null,
     source: "runsignup",
-    source_label: "RunSignUp",
+    source_label: unpublished ? "RunSignUp private" : "RunSignUp",
     registration_url: race.url ?? race.external_race_url ?? null,
   };
 }
@@ -140,14 +146,32 @@ export async function searchOnlineListings(query: string): Promise<OnlineListing
       )
     : { listings: [] as CatalogListingCandidate[] };
   const catalogRows = catalog.listings.map(asCatalogListing);
-  let races: RunSignupRace[] = [];
+  let races: Array<{ race: RunSignupRace; unpublished: boolean }> = [];
   try {
     const raceId = rsuUrl?.raceId || numericId;
     if (raceId) {
-      const race = await fetchRunSignupRace(raceId);
-      if (race) races = [race];
+      const found = await fetchRunSignupRaceForCrm(raceId);
+      if (found) races = [found];
     } else if (nameHint.trim().length >= 3) {
-      races = await searchRunSignupRaces(nameHint);
+      let publicRaces: RunSignupRace[] = [];
+      let publicSearchSucceeded = false;
+      try {
+        publicRaces = await searchRunSignupRaces(nameHint);
+        publicSearchSucceeded = true;
+      } catch {
+        publicRaces = [];
+      }
+      let accountRaces: RunSignupRace[] = [];
+      try {
+        accountRaces = await searchLinkedRunSignupRaces(nameHint);
+      } catch {
+        accountRaces = [];
+      }
+      races = mergeRunSignupSearchResults({
+        publicRaces,
+        publicSearchSucceeded,
+        accountRaces,
+      });
     }
   } catch {
     races = [];
@@ -159,11 +183,11 @@ export async function searchOnlineListings(query: string): Promise<OnlineListing
     query: (sql: string, params?: unknown[]) =>
       getPool().query<CatalogListingCandidate>(sql, params),
   };
-  for (const race of races) {
+  for (const item of races) {
     const existing = await findCatalogListingForRunSignup(
       client,
-      String(race.race_id),
-      race,
+      String(item.race.race_id),
+      item.race,
     );
     if (existing) {
       if (!seen.has(existing.id)) {
@@ -172,7 +196,7 @@ export async function searchOnlineListings(query: string): Promise<OnlineListing
       }
       continue;
     }
-    const listing = asRunSignupListing(race);
+    const listing = asRunSignupListing(item.race, item.unpublished);
     if (seen.has(listing.id)) continue;
     seen.add(listing.id);
     merged.push(listing);
@@ -183,8 +207,9 @@ export async function searchOnlineListings(query: string): Promise<OnlineListing
 export async function resolveOnlineListingId(listingId: string) {
   const raceId = parseRunSignupListingId(listingId);
   if (!raceId) return { kind: "catalog" as const, listingId };
-  const race = await fetchRunSignupRace(raceId);
-  if (!race) throw new Error("That RunSignUp race was not found.");
+  const found = await fetchRunSignupRaceForCrm(raceId);
+  if (!found) throw new Error("That RunSignUp race was not found.");
+  const race = found.race;
   const catalog = await findCatalogListingForRunSignup(getPool(), raceId, race);
   if (catalog) return { kind: "catalog" as const, listingId: catalog.id, race };
   return { kind: "runsignup" as const, listingId, race };
@@ -279,6 +304,18 @@ export async function applyRunSignupRaceToEvent(
 ) {
   const timezone = input.race.timezone?.trim() || "America/New_York";
   const start = earliestRunSignupStart(input.race);
+  const guard = await loadOccurrenceCatalogGuard(client, input.occurrenceId);
+  if (
+    guard?.settledYear != null &&
+    !catalogSyncMayReplaceRaceDate({
+      stageKey: guard.stageKey,
+      occurrenceYear: guard.occurrenceYear,
+      raceDate: guard.raceDate,
+      incomingStart: start?.local ?? null,
+    })
+  ) {
+    return { inserted: 0, preservedHistoricalDate: true };
+  }
   const website = input.race.url ?? input.race.external_race_url ?? null;
   await client.query(
     `UPDATE crm.events
@@ -395,13 +432,17 @@ export async function refreshOccurrenceFromOnlineListing(
     return syncOccurrenceRacesFromCatalog(client, input.occurrenceId);
   }
   if (row.source_type === "runsignup" && row.external_source_id) {
-    const race = await fetchRunSignupRace(row.external_source_id);
-    if (!race) throw new Error("That RunSignUp race was not found.");
-    await applyRunSignupRaceToEvent(client, {
+    const found = await fetchRunSignupRaceForCrm(row.external_source_id);
+    if (!found) throw new Error("That RunSignUp race was not found.");
+    const race = found.race;
+    const applied = await applyRunSignupRaceToEvent(client, {
       eventId: input.eventId,
       occurrenceId: input.occurrenceId,
       race,
     });
+    if (applied?.preservedHistoricalDate) {
+      return { inserted: 0, preservedHistoricalDate: true as const };
+    }
     return { inserted: currentRunSignupEvents(race).length };
   }
   throw new Error("Match an online listing before re-syncing races.");

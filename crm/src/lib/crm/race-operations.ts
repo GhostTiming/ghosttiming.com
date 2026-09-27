@@ -281,6 +281,55 @@ export function preferredCatalogEditionId<
   return ranked[0]?.id ?? null;
 }
 
+export function isSettledBookingStage(stageKey?: string | null) {
+  return stageKey === "paid" || stageKey === "completed";
+}
+
+export function catalogCalendarYear(
+  value?: Date | string | number | null,
+) {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value >= 1900 && value <= 3000 ? value : null;
+  }
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) {
+    return value.getUTCFullYear();
+  }
+  if (typeof value === "string") {
+    const match = value.trim().match(/^(\d{4})/);
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
+/** Year already stored on a paid or completed booking. Active bookings return null. */
+export function settledBookingCalendarYear(input: {
+  stageKey?: string | null;
+  occurrenceYear?: number | null;
+  raceDate?: Date | string | null;
+}) {
+  if (!isSettledBookingStage(input.stageKey)) return null;
+  return (
+    catalogCalendarYear(input.raceDate) ??
+    catalogCalendarYear(input.occurrenceYear)
+  );
+}
+
+/**
+ * Paid and completed bookings keep the race date already stored.
+ * Active bookings can still take the catalog's current start.
+ * A settled booking with no date yet can be filled in.
+ */
+export function catalogSyncMayReplaceRaceDate(input: {
+  stageKey?: string | null;
+  occurrenceYear?: number | null;
+  raceDate?: Date | string | null;
+  incomingStart?: Date | string | null;
+}) {
+  if (!input.incomingStart) return false;
+  if (settledBookingCalendarYear(input) != null) return false;
+  return true;
+}
+
 export function preferredCatalogEditionSql(
   listingIdExpr: string,
   yearExpr: string | null = null,
@@ -435,6 +484,108 @@ export async function clearOccurrenceScheduleOverrides(
   );
 }
 
+export type OccurrenceCatalogGuard = {
+  stageKey: string | null;
+  occurrenceYear: number | null;
+  raceDate: string | null;
+  editionId: string | null;
+  listingId: string | null;
+  settledYear: number | null;
+  yearEditionId: string | null;
+};
+
+function isUniqueViolation(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      String((error as { code?: unknown }).code) === "23505",
+  );
+}
+
+async function assignOccurrenceCatalogEdition(
+  client: PoolClient,
+  occurrenceId: string,
+  editionId: string,
+) {
+  try {
+    await client.query(
+      `
+        UPDATE crm.event_occurrences
+        SET catalog_race_edition_id = $2, updated_at = now()
+        WHERE id = $1::uuid
+          AND catalog_race_edition_id IS DISTINCT FROM $2
+      `,
+      [occurrenceId, editionId],
+    );
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+  }
+}
+
+export async function loadOccurrenceCatalogGuard(
+  client: PoolClient,
+  occurrenceId: string,
+): Promise<OccurrenceCatalogGuard | null> {
+  const occurrence = await client.query<{
+    stage_key: string | null;
+    occurrence_year: number | null;
+    race_date: string | null;
+    edition_id: string | null;
+    listing_id: string | null;
+  }>(
+    `
+      SELECT stage.key AS stage_key,
+             occurrence.occurrence_year,
+             occurrence.race_date::text,
+             occurrence.catalog_race_edition_id AS edition_id,
+             event.catalog_race_listing_id AS listing_id
+      FROM crm.event_occurrences occurrence
+      JOIN crm.events event ON event.id = occurrence.event_id
+      LEFT JOIN crm.bookings booking
+        ON booking.occurrence_id = occurrence.id
+       AND booking.archived_at IS NULL
+      LEFT JOIN crm.pipeline_stages stage ON stage.id = booking.stage_id
+      WHERE occurrence.id = $1::uuid
+    `,
+    [occurrenceId],
+  );
+  const row = occurrence.rows[0];
+  if (!row) return null;
+  const settledYear = settledBookingCalendarYear({
+    stageKey: row.stage_key,
+    occurrenceYear: row.occurrence_year,
+    raceDate: row.race_date,
+  });
+  let yearEditionId: string | null = null;
+  if (settledYear != null && row.listing_id) {
+    const edition = await client.query<{ id: string }>(
+      `
+        SELECT re.id
+        FROM catalog.race_editions re
+        WHERE re.race_listing_id = $1
+          AND COALESCE(
+            re.edition_year,
+            EXTRACT(YEAR FROM re.starts_at)::integer
+          ) = $2
+        ORDER BY re.starts_at ASC NULLS LAST
+        LIMIT 1
+      `,
+      [row.listing_id, settledYear],
+    );
+    yearEditionId = edition.rows[0]?.id ?? null;
+  }
+  return {
+    stageKey: row.stage_key,
+    occurrenceYear: row.occurrence_year,
+    raceDate: row.race_date,
+    editionId: row.edition_id,
+    listingId: row.listing_id,
+    settledYear,
+    yearEditionId,
+  };
+}
+
 export async function syncOccurrenceRacesFromCatalog(
   client: PoolClient,
   occurrenceId: string,
@@ -443,6 +594,8 @@ export async function syncOccurrenceRacesFromCatalog(
     event_id: string;
     listing_id: string | null;
     race_date: string | null;
+    occurrence_year: number | null;
+    stage_key: string | null;
     catalog_race_edition_id: string | null;
     timezone: string | null;
     listing_timezone: string | null;
@@ -453,6 +606,8 @@ export async function syncOccurrenceRacesFromCatalog(
       SELECT event.id::text AS event_id,
              event.catalog_race_listing_id AS listing_id,
              occurrence.race_date::text,
+             occurrence.occurrence_year,
+             stage.key AS stage_key,
              occurrence.catalog_race_edition_id,
              occurrence.timezone,
              listing.timezone AS listing_timezone,
@@ -460,6 +615,10 @@ export async function syncOccurrenceRacesFromCatalog(
              listing.external_race_url
       FROM crm.event_occurrences occurrence
       JOIN crm.events event ON event.id = occurrence.event_id
+      LEFT JOIN crm.bookings booking
+        ON booking.occurrence_id = occurrence.id
+       AND booking.archived_at IS NULL
+      LEFT JOIN crm.pipeline_stages stage ON stage.id = booking.stage_id
       LEFT JOIN catalog.race_listings listing
         ON listing.id = event.catalog_race_listing_id
       WHERE occurrence.id = $1::uuid
@@ -472,8 +631,39 @@ export async function syncOccurrenceRacesFromCatalog(
     return { inserted: 0, updated: 0, removed: 0 };
   }
 
+  const settledYear = settledBookingCalendarYear({
+    stageKey: occurrence.rows[0]?.stage_key,
+    occurrenceYear: occurrence.rows[0]?.occurrence_year,
+    raceDate: occurrence.rows[0]?.race_date,
+  });
   const existingEdition = occurrence.rows[0]?.catalog_race_edition_id ?? null;
   let editionId = existingEdition;
+  if (settledYear != null) {
+    const yearEdition = await client.query<{ id: string }>(
+      `
+        SELECT re.id
+        FROM catalog.race_editions re
+        WHERE re.race_listing_id = $1
+          AND COALESCE(
+            re.edition_year,
+            EXTRACT(YEAR FROM re.starts_at)::integer
+          ) = $2
+        ORDER BY re.starts_at ASC NULLS LAST
+        LIMIT 1
+      `,
+      [listingId, settledYear],
+    );
+    const yearEditionId = yearEdition.rows[0]?.id ?? null;
+    if (yearEditionId && yearEditionId !== existingEdition) {
+      await assignOccurrenceCatalogEdition(client, occurrenceId, yearEditionId);
+    }
+    return {
+      inserted: 0,
+      updated: 0,
+      removed: 0,
+      preservedHistoricalDate: true,
+    };
+  }
   if (!editionId) {
     const preferredEdition = await client.query<{ id: string | null }>(
       `SELECT ${preferredCatalogEditionSql("$1")} AS id`,

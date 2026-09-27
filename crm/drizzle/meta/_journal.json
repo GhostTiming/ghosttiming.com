@@ -246,6 +246,13 @@
       "when": 1789774000000,
       "tag": "0034_booking_closed_lost",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789780000000,
+      "tag": "0035_runsignup_accounts",
+      "breakpoints": true
     }
   ]
 }

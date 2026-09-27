@@ -27,6 +27,28 @@ export function getGmailProfile(accessToken: string) {
   );
 }
 
+export async function listGmailMessageIdPage(
+  accessToken: string,
+  query: string,
+  pageToken?: string,
+) {
+  const params = new URLSearchParams({
+    q: query,
+    maxResults: "100",
+  });
+  if (pageToken) params.set("pageToken", pageToken);
+  const result = await googleFetch<MessageList>(
+    accessToken,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
+  );
+  return {
+    ids: (result.messages ?? [])
+      .map((message) => message.id)
+      .filter((id): id is string => Boolean(id)),
+    nextPageToken: result.nextPageToken,
+  };
+}
+
 export async function listGmailMessageIds(
   accessToken: string,
   query: string,
@@ -36,19 +58,10 @@ export async function listGmailMessageIds(
   let pageToken: string | undefined;
   let page = 0;
   do {
-    const params = new URLSearchParams({
-      q: query,
-      maxResults: "100",
-    });
-    if (pageToken) params.set("pageToken", pageToken);
-    const result = await googleFetch<MessageList>(
-      accessToken,
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
-    );
-    const pageIds = (result.messages ?? []).map((message) => message.id).filter(Boolean);
-    ids.push(...pageIds);
+    const result = await listGmailMessageIdPage(accessToken, query, pageToken);
+    ids.push(...result.ids);
     page += 1;
-    onPage?.(pageIds, page);
+    onPage?.(result.ids, page);
     pageToken = result.nextPageToken;
   } while (pageToken);
   return ids;

@@ -25,7 +25,7 @@ export function BookingBulkBar({
           label: "Refresh from online listing",
           pendingLabel: "Refreshing…",
           confirm:
-            "Refresh online listing data for {n} selected bookings? This can take a while.",
+            "Refresh online listing data for {n} selected bookings? Paid and completed bookings keep their original race year. This can take a while.",
           action: (ids) => refreshSelectedBookingsFromCatalogAction({ ids }),
         },
       ]}

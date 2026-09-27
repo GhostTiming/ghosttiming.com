@@ -11,7 +11,7 @@ export function RefreshAllGrvButton() {
   async function run() {
     if (
       !window.confirm(
-        "Refresh every booking linked to an online listing? This can take a while.",
+        "Refresh every booking linked to an online listing? Paid and completed bookings keep their original race year. An upcoming year that is not already booked is added as awaiting decision. This can take a while.",
       )
     ) {
       return;

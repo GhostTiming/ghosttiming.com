@@ -7,6 +7,7 @@ import {
 } from "./catalog-search";
 import { eventMatchKey, isGenericEventName, calendarDateInZone } from "./event-matching";
 import {
+  loadOccurrenceCatalogGuard,
   preferredCatalogEditionSql,
   syncOccurrenceRacesFromCatalog,
 } from "./race-operations";
@@ -530,11 +531,18 @@ async function linkOccurrenceEditionIfUnique(
   occurrenceId: string,
   listingId: string,
 ) {
-  const preferred = await client.query<{ id: string | null }>(
-    `SELECT ${preferredCatalogEditionSql("$1")} AS id`,
-    [listingId],
-  );
-  const editionId = preferred.rows[0]?.id;
+  const guard = await loadOccurrenceCatalogGuard(client, occurrenceId);
+  let editionId: string | null = null;
+  if (guard?.settledYear != null) {
+    editionId = guard.yearEditionId;
+    if (!editionId || editionId === guard.editionId) return;
+  } else {
+    const preferred = await client.query<{ id: string | null }>(
+      `SELECT ${preferredCatalogEditionSql("$1")} AS id`,
+      [listingId],
+    );
+    editionId = preferred.rows[0]?.id ?? null;
+  }
   if (!editionId) return;
   try {
     await client.query(

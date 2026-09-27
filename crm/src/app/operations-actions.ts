@@ -839,9 +839,11 @@ export async function resyncBookingCatalogRacesAction(formData: FormData) {
       client,
       { bookingId },
       user,
-      result.inserted
-        ? `Re-synced ${result.inserted} race${result.inserted === 1 ? "" : "s"} from the online listing`
-        : "Re-synced races from the online listing",
+      "preservedHistoricalDate" in result && result.preservedHistoricalDate
+        ? "Kept the original race date. Paid and completed bookings are not moved onto a new year."
+        : result.inserted
+          ? `Re-synced ${result.inserted} race${result.inserted === 1 ? "" : "s"} from the online listing`
+          : "Re-synced races from the online listing",
     );
     await client.query("COMMIT");
   } catch (error) {

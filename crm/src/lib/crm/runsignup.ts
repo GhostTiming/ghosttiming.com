@@ -26,6 +26,13 @@ export type RunSignupRace = {
   description?: string | null;
   address?: RunSignupAddress | null;
   events?: RunSignupEvent[] | null;
+  is_private_race?: string | null;
+  is_draft_race?: string | null;
+  private?: string | null;
+};
+
+export type RunSignupRequestOptions = {
+  accessToken?: string | null;
 };
 
 export {
@@ -55,7 +62,27 @@ function unwrapRace(payload: unknown): RunSignupRace | null {
   return null;
 }
 
-async function runSignupGet(path: string, params: Record<string, string>) {
+function runSignupErrorMessage(payload: unknown) {
+  if (!payload || typeof payload !== "object") return null;
+  const root = payload as {
+    race?: unknown;
+    races?: unknown;
+    error?: string | { error_msg?: string; message?: string };
+    error_msg?: string;
+  };
+  if (root.race || root.races) return null;
+  if (typeof root.error === "string" && root.error.trim()) return root.error.trim();
+  if (root.error && typeof root.error === "object") {
+    return root.error.error_msg?.trim() || root.error.message?.trim() || null;
+  }
+  return root.error_msg?.trim() || null;
+}
+
+async function runSignupGet(
+  path: string,
+  params: Record<string, string>,
+  options?: RunSignupRequestOptions,
+) {
   const url = new URL(`https://runsignup.com/Rest/${path.replace(/^\//, "")}`);
   url.searchParams.set("format", "json");
   for (const [key, value] of Object.entries(params)) {
@@ -70,31 +97,51 @@ async function runSignupGet(path: string, params: Record<string, string>) {
   const callerSecret = process.env.RUNSIGNUP_API_REG_SECRET;
   if (caller) url.searchParams.set("rsu_api_reg", caller);
   if (callerSecret) headers["X-RSU-API-REG-SECRET"] = callerSecret;
+  if (options?.accessToken) headers.Authorization = `Bearer ${options.accessToken}`;
   const response = await fetch(url, {
     headers,
     cache: "no-store",
   });
+  const payload = (await response.json().catch(() => null)) as unknown;
+  if (response.status === 404) return null;
   if (!response.ok) {
-    throw new Error(`RunSignUp request failed (${response.status}).`);
+    throw new Error(
+      runSignupErrorMessage(payload) || `RunSignUp request failed (${response.status}).`,
+    );
   }
-  return response.json() as Promise<unknown>;
+  const errorMessage = runSignupErrorMessage(payload);
+  if (errorMessage) throw new Error(errorMessage);
+  return payload;
 }
 
-export async function fetchRunSignupRace(raceId: string) {
-  const payload = await runSignupGet(`race/${encodeURIComponent(raceId)}`, {
-    events: "T",
-  });
+export async function fetchRunSignupRace(
+  raceId: string,
+  options?: RunSignupRequestOptions,
+) {
+  const payload = await runSignupGet(
+    `race/${encodeURIComponent(raceId)}`,
+    { events: "T" },
+    options,
+  );
   return unwrapRace(payload);
 }
 
-export async function searchRunSignupRaces(name: string, limit = 12) {
-  const payload = await runSignupGet("races", {
-    name: name.trim().slice(0, 120),
-    events: "T",
-    results_per_page: String(Math.min(Math.max(limit, 1), 25)),
-    page: "1",
-    sort: "date ASC",
-  });
+export async function searchRunSignupRaces(
+  name: string,
+  limit = 12,
+  options?: RunSignupRequestOptions,
+) {
+  const payload = await runSignupGet(
+    "races",
+    {
+      name: name.trim().slice(0, 120),
+      events: "T",
+      results_per_page: String(Math.min(Math.max(limit, 1), 25)),
+      page: "1",
+      sort: "date ASC",
+    },
+    options,
+  );
   if (!payload || typeof payload !== "object") return [];
   const rows = (payload as { races?: Array<{ race?: RunSignupRace }> }).races ?? [];
   return rows

@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  catalogCalendarYear,
   catalogListingRegistrationUrl,
   catalogOfferingStartTimestamp,
+  catalogSyncMayReplaceRaceDate,
   earliestNonVirtualCatalogStart,
   estimateRaceDurationMinutes,
   excludeVirtualCatalogOfferings,
+  isSettledBookingStage,
   isVirtualCatalogOffering,
   offeringsMatchingOccurrenceDate,
   parseCatalogClock,
   preferredCatalogEditionId,
   preferredCatalogEditionSql,
+  settledBookingCalendarYear,
   catalogRaceDateMismatch,
   catalogRaceDateMismatchMessage,
 } from "./race-operations";
@@ -236,5 +240,62 @@ describe("preferred catalog edition", () => {
         "2026-11-15 11:45:00+00",
       ),
     ).toBe("2026");
+  });
+});
+
+describe("settled booking race dates", () => {
+  it("reads the year from a stored race date before the occurrence year", () => {
+    expect(catalogCalendarYear("2025-10-04 11:30:00+00")).toBe(2025);
+    expect(isSettledBookingStage("paid")).toBe(true);
+    expect(isSettledBookingStage("completed")).toBe(true);
+    expect(isSettledBookingStage("confirmed")).toBe(false);
+    expect(
+      settledBookingCalendarYear({
+        stageKey: "paid",
+        occurrenceYear: 2026,
+        raceDate: "2025-10-04 11:30:00+00",
+      }),
+    ).toBe(2025);
+    expect(
+      settledBookingCalendarYear({
+        stageKey: "confirmed",
+        occurrenceYear: 2025,
+        raceDate: "2025-10-04 11:30:00+00",
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps a paid booking on its own year when the catalog has rolled forward", () => {
+    expect(
+      catalogSyncMayReplaceRaceDate({
+        stageKey: "paid",
+        raceDate: "2025-10-25 19:00:00+00",
+        incomingStart: "2026-10-24 18:55:00",
+      }),
+    ).toBe(false);
+    expect(
+      catalogSyncMayReplaceRaceDate({
+        stageKey: "completed",
+        occurrenceYear: 2025,
+        incomingStart: "2026-10-25 08:00:00",
+      }),
+    ).toBe(false);
+  });
+
+  it("still lets an active booking take a catalog time correction", () => {
+    expect(
+      catalogSyncMayReplaceRaceDate({
+        stageKey: "confirmed",
+        raceDate: "2026-10-03 00:00:00+00",
+        incomingStart: "2026-10-03 07:30:00",
+      }),
+    ).toBe(true);
+    expect(
+      catalogSyncMayReplaceRaceDate({
+        stageKey: "paid",
+        raceDate: "2026-10-03 00:00:00+00",
+        incomingStart: "2026-10-03 07:30:00",
+      }),
+    ).toBe(false);
   });
 });

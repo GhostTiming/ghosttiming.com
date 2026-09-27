@@ -460,8 +460,9 @@ export default async function ProspectDetailPage({
             Match online listing
           </h2>
           <p className="mt-1 mb-3 text-sm text-slate-600">
-            Search the online catalog or RunSignUp, or paste a registration
-            link, then match so event details, distances, and tags fill in.
+          Search the online catalog or RunSignUp, including unpublished races from
+          a linked RunSignUp account, or paste a registration link, then match so
+          event details, distances, and tags fill in.
           </p>
           <CatalogMatchControls
             prospectId={prospect.id}
