@@ -107,6 +107,13 @@ export function parseRaceRosterUrl(input: string): ParsedRaceRosterUrl | null {
   };
 }
 
+export function raceIdFromRunSignupPage(html: string) {
+  const json = html.match(/"raceId"\s*:\s*(\d{3,})/);
+  if (json) return json[1];
+  const path = html.match(/\/Race\/(\d{3,})(?=["'/?#\s])/);
+  return path?.[1] ?? null;
+}
+
 export function looksLikeEventUrl(input: string) {
   return Boolean(parseRunSignupUrl(input) || parseRaceRosterUrl(input));
 }

@@ -26,6 +26,7 @@ import {
   parseRunSignupLocalDateTime,
   parseRunSignupUrl,
   runSignupListingId,
+  resolveRunSignupRaceId,
   searchRunSignupRaces,
   type RunSignupRace,
 } from "./runsignup";
@@ -148,7 +149,10 @@ export async function searchOnlineListings(query: string): Promise<OnlineListing
   const catalogRows = catalog.listings.map(asCatalogListing);
   let races: Array<{ race: RunSignupRace; unpublished: boolean }> = [];
   try {
-    const raceId = rsuUrl?.raceId || numericId;
+    let raceId = rsuUrl?.raceId || numericId;
+    if (!raceId && rsuUrl) {
+      raceId = (await resolveRunSignupRaceId(search)) ?? undefined;
+    }
     if (raceId) {
       const found = await fetchRunSignupRaceForCrm(raceId);
       if (found) races = [found];

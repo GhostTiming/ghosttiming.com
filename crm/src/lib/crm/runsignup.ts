@@ -43,6 +43,7 @@ export {
   parseRunSignupListingId,
   parseRunSignupLocalDateTime,
   parseRunSignupUrl,
+  raceIdFromRunSignupPage,
   runSignupListingId,
   shouldSearchOnlineListings,
   type ParsedRaceRosterUrl,
@@ -51,6 +52,8 @@ export {
 
 import {
   parseRunSignupLocalDateTime,
+  parseRunSignupUrl,
+  raceIdFromRunSignupPage,
 } from "./runsignup-parse";
 
 function unwrapRace(payload: unknown): RunSignupRace | null {
@@ -88,16 +91,19 @@ async function runSignupGet(
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
-  const apiKey = process.env.RUNSIGNUP_API_KEY;
-  const apiSecret = process.env.RUNSIGNUP_API_SECRET;
-  if (apiKey) url.searchParams.set("api_key", apiKey);
-  if (apiSecret) url.searchParams.set("api_secret", apiSecret);
   const headers: Record<string, string> = { Accept: "application/json" };
   const caller = process.env.RUNSIGNUP_API_REG;
   const callerSecret = process.env.RUNSIGNUP_API_REG_SECRET;
   if (caller) url.searchParams.set("rsu_api_reg", caller);
   if (callerSecret) headers["X-RSU-API-REG-SECRET"] = callerSecret;
-  if (options?.accessToken) headers.Authorization = `Bearer ${options.accessToken}`;
+  if (options?.accessToken) {
+    url.searchParams.set("access_token", options.accessToken);
+  } else {
+    const apiKey = process.env.RUNSIGNUP_API_KEY;
+    const apiSecret = process.env.RUNSIGNUP_API_SECRET;
+    if (apiKey) url.searchParams.set("api_key", apiKey);
+    if (apiSecret) url.searchParams.set("api_secret", apiSecret);
+  }
   const response = await fetch(url, {
     headers,
     cache: "no-store",
@@ -112,6 +118,30 @@ async function runSignupGet(
   const errorMessage = runSignupErrorMessage(payload);
   if (errorMessage) throw new Error(errorMessage);
   return payload;
+}
+
+export async function resolveRunSignupRaceId(input: string) {
+  const parsed = parseRunSignupUrl(input);
+  if (!parsed) return null;
+  if (parsed.raceId) return parsed.raceId;
+  let pageUrl: URL;
+  try {
+    pageUrl = new URL(input.includes("://") ? input.trim() : `https://${input.trim()}`);
+  } catch {
+    return null;
+  }
+  if (!/(^|\.)runsignup\.com$/i.test(pageUrl.hostname)) return null;
+  pageUrl.protocol = "https:";
+  const response = await fetch(pageUrl, {
+    headers: { Accept: "text/html" },
+    redirect: "follow",
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) return null;
+  const finalUrl = new URL(response.url);
+  if (!/(^|\.)runsignup\.com$/i.test(finalUrl.hostname)) return null;
+  return raceIdFromRunSignupPage(await response.text());
 }
 
 export async function fetchRunSignupRace(

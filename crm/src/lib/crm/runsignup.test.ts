@@ -7,6 +7,7 @@ import {
   parseRunSignupListingId,
   parseRunSignupLocalDateTime,
   parseRunSignupUrl,
+  raceIdFromRunSignupPage,
   runSignupListingId,
   shouldSearchOnlineListings,
 } from "./runsignup-parse";
@@ -27,6 +28,14 @@ describe("RunSignUp listing helpers", () => {
     expect(parseRunSignupUrl("https://runsignup.com/Race?raceId=174388")).toEqual({
       raceId: "174388",
     });
+  });
+
+  it("reads a race id from a vanity race page", () => {
+    expect(
+      raceIdFromRunSignupPage(
+        '<script type="application/json" id="runalyticsData">{"raceId": 138506}</script><a href="/Race/138506/RaceInsurance">',
+      ),
+    ).toBe("138506");
   });
 
   it("parses Race Roster event URLs into a searchable name", () => {
