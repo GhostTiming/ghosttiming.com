@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  cronAuthorizationStatus,
   gmailAutoCatchupQuery,
   shouldSaveGmailCursor,
 } from "./gmail-auto-sync-plan";
@@ -58,12 +57,5 @@ describe("automatic Gmail sync plan", () => {
         cap: 40,
       }),
     ).toBe(false);
-  });
-
-  it("requires the cron secret in production", () => {
-    expect(cronAuthorizationStatus(null, undefined, "production")).toBe(503);
-    expect(cronAuthorizationStatus("Bearer secret", "secret", "production")).toBeNull();
-    expect(cronAuthorizationStatus("Bearer wrong", "secret", "production")).toBe(401);
-    expect(cronAuthorizationStatus(null, undefined, "development")).toBeNull();
   });
 });

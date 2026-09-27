@@ -23,12 +23,11 @@ export function GmailAutoSync() {
     let followUpTimer = 0;
     const interval = window.setInterval(() => {
       followUps = 0;
-      void sync(false);
+      void sync();
     }, SYNC_INTERVAL_MS);
 
-    async function sync(isFollowUp: boolean) {
+    async function sync() {
       if (cancelled || running) return;
-      if (!isFollowUp && document.visibilityState === "hidden") return;
       running = true;
       try {
         const response = await fetch("/api/google/gmail/auto-sync", { method: "POST" });
@@ -41,7 +40,7 @@ export function GmailAutoSync() {
         if ((body.createdActivities ?? 0) > 0) router.refresh();
         if (body.more && followUps < MAX_FOLLOW_UPS) {
           followUps += 1;
-          followUpTimer = window.setTimeout(() => void sync(true), FOLLOW_UP_MS);
+          followUpTimer = window.setTimeout(() => void sync(), FOLLOW_UP_MS);
         }
       } catch {
         // The next interval tries again. A missed sync should not interrupt the page.
@@ -53,11 +52,11 @@ export function GmailAutoSync() {
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         followUps = 0;
-        void sync(false);
+        void sync();
       }
     };
 
-    void sync(false);
+    void sync();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;

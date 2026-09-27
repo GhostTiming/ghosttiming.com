@@ -28,13 +28,3 @@ export function shouldSaveGmailCursor(input: {
   if (input.reachedEnd) return true;
   return input.pagesScanned >= input.pageBudget && input.unknownCount === 0;
 }
-
-export function cronAuthorizationStatus(
-  authorization: string | null,
-  secret: string | undefined,
-  nodeEnv: string,
-): 401 | 503 | null {
-  if (nodeEnv === "production" && !secret) return 503;
-  if (secret && authorization !== `Bearer ${secret}`) return 401;
-  return null;
-}

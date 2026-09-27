@@ -195,8 +195,9 @@ export function GoogleConnectionControl({
                 ) : null}
               </div>
               <p className="text-[11px] leading-snug text-slate-500">
-                Connect Google once. New Gmail from people already in the CRM is pulled in
-                automatically. Backfill still loads older mail. Choose default send and calendar
+                Connect Google once. While the CRM is open on this device, new Gmail from
+                people already in the CRM is pulled in automatically. Backfill still loads older
+                mail. Choose default send and calendar
                 accounts in{" "}
                 <Link href="/settings#google" className="font-semibold text-cyan-800">
                   Settings
