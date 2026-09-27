@@ -223,7 +223,6 @@ async function syncOccurrenceRacesFromRunSignup(
   client: PoolClient,
   occurrenceId: string,
   race: RunSignupRace,
-  timezone: string,
 ) {
   const events = currentRunSignupEvents(race);
   let sortOrder = 0;
@@ -252,11 +251,11 @@ async function syncOccurrenceRacesFromRunSignup(
              distance_miles = COALESCE($3, distance_miles),
              distance_meters = COALESCE($4, distance_meters),
              start_time = CASE
-               WHEN $5::text IS NOT NULL THEN $5::timestamp AT TIME ZONE $6
+               WHEN $5::text IS NOT NULL THEN $5::timestamp
                ELSE start_time
              END,
-             estimated_duration_minutes = COALESCE($7, estimated_duration_minutes),
-             sort_order = $8,
+             estimated_duration_minutes = COALESCE($6, estimated_duration_minutes),
+             sort_order = $7,
              updated_at = now()
          WHERE id = $1::uuid`,
         [
@@ -265,7 +264,6 @@ async function syncOccurrenceRacesFromRunSignup(
           distance.miles,
           distance.meters,
           start?.local ?? null,
-          timezone,
           duration,
           sortOrder,
         ],
@@ -277,8 +275,8 @@ async function syncOccurrenceRacesFromRunSignup(
            start_time, estimated_duration_minutes, sort_order)
          VALUES (
            $1::uuid, $2, $3, $4, $5,
-           CASE WHEN $6::text IS NOT NULL THEN $6::timestamp AT TIME ZONE $7 ELSE NULL END,
-           $8, $9
+           CASE WHEN $6::text IS NOT NULL THEN $6::timestamp ELSE NULL END,
+           $7, $8
          )`,
         [
           occurrenceId,
@@ -287,7 +285,6 @@ async function syncOccurrenceRacesFromRunSignup(
           distance.miles,
           distance.meters,
           start?.local ?? null,
-          timezone,
           duration,
           sortOrder,
         ],
@@ -366,7 +363,6 @@ export async function applyRunSignupRaceToEvent(
     client,
     input.occurrenceId,
     input.race,
-    timezone,
   );
 }
 
