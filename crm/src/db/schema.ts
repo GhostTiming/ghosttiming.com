@@ -1125,6 +1125,33 @@ export const runsignupAccounts = crm.table(
   ],
 );
 
+export const raceRosterAccounts = crm.table(
+  "race_roster_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    username: text("username").notNull(),
+    displayName: text("display_name"),
+    status: text("status").notNull().default("connected"),
+    lastError: text("last_error"),
+    accessTokenCiphertext: text("access_token_ciphertext"),
+    refreshTokenCiphertext: text("refresh_token_ciphertext"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    connectedByUserId: uuid("connected_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("race_roster_accounts_username_key").on(table.username),
+    index("race_roster_accounts_status_idx").on(table.status),
+    check(
+      "race_roster_accounts_status_check",
+      sql`${table.status} IN ('connected', 'expired', 'disconnected')`,
+    ),
+  ],
+);
+
 export const googleEmailMessages = crm.table(
   "google_email_messages",
   {

@@ -14,9 +14,9 @@ export function SyncRaceRosterPanel() {
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-bold text-slate-950">Race Roster catalog sync</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Pull timer-accessible Race Roster events into the shared catalog. Matching
-        a booking or prospect still uses the normal catalog search — Race Roster
-        and Get Run Vibes listings appear together.
+        Pull timer-accessible Race Roster events into the shared catalog. Connect the
+        timer account under Settings → Race Roster first. Matching a booking still uses
+        the normal catalog search — Race Roster and Get Run Vibes listings appear together.
       </p>
       <form
         className="mt-4 grid gap-3 md:grid-cols-[1fr_auto_auto]"

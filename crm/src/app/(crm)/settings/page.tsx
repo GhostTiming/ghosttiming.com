@@ -8,7 +8,9 @@ import { EmailSignatureManager } from "@/components/email-signature-manager";
 import { EmailTemplateManager } from "@/components/email-template-manager";
 import { GoogleConnectionControl } from "@/components/google/google-connection-control";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
+import { disconnectRaceRosterAccountAction } from "@/app/race-roster-connect-actions";
 import { disconnectRunSignupAccountAction } from "@/app/runsignup-actions";
+import { ConnectRaceRosterForm } from "@/components/connect-race-roster-form";
 import { getPool } from "@/db";
 import { getAccessContext } from "@/lib/auth/server";
 import { listUserEmailSignatures } from "@/lib/crm/email-signatures";
@@ -17,6 +19,10 @@ import {
   GOOGLE_PUBLIC_CONNECTION_SELECT,
   type GoogleConnectionRow,
 } from "@/lib/crm/google-sync";
+import {
+  listRaceRosterAccounts,
+  raceRosterConnectConfigured,
+} from "@/lib/race-roster/accounts";
 import { listRunSignupAccounts } from "@/lib/runsignup/accounts";
 import { runSignupOAuthConfigured } from "@/lib/runsignup/oauth";
 
@@ -50,11 +56,13 @@ export default async function SettingsPage({
     linked.find((row) => row.google_sub === access.user.defaultCalendarGoogleSub)?.google_sub ??
     linked[0]?.google_sub ??
     "";
-  const [emailTemplates, emailSignatures, runSignupAccounts] = await Promise.all([
-    listUserEmailTemplates(access.user.id),
-    listUserEmailSignatures(access.user.id),
-    access.canAccessAdminConsole ? listRunSignupAccounts() : Promise.resolve([]),
-  ]);
+  const [emailTemplates, emailSignatures, runSignupAccounts, raceRosterAccounts] =
+    await Promise.all([
+      listUserEmailTemplates(access.user.id),
+      listUserEmailSignatures(access.user.id),
+      access.canAccessAdminConsole ? listRunSignupAccounts() : Promise.resolve([]),
+      access.canAccessAdminConsole ? listRaceRosterAccounts() : Promise.resolve([]),
+    ]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -243,6 +251,49 @@ export default async function SettingsPage({
               Create an OAuth client at runsignup.com/Profile/OAuth2/ListClients with read
               access, then set RUNSIGNUP_OAUTH_CLIENT_ID and RUNSIGNUP_OAUTH_CLIENT_SECRET.
               Register the redirect https://crm.ghosttiming.com/api/runsignup/oauth/callback.
+            </p>
+          )}
+        </section>
+      ) : null}
+
+      {access.canAccessAdminConsole ? (
+        <section id="race-roster" className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-950">Race Roster account</h2>
+          <p className="text-sm text-slate-600">
+            Connect the Race Roster timer login so Admin can sync Race Roster events into
+            the catalog. Matching a booking still uses the normal catalog search.
+          </p>
+          {raceRosterAccounts.length ? (
+            <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200">
+              {raceRosterAccounts.map((account) => (
+                <li key={account.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div>
+                    <p className="font-medium text-slate-950">
+                      {account.display_name || account.username}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {account.username} · {account.status}
+                      {account.last_error ? ` · ${account.last_error}` : ""}
+                    </p>
+                  </div>
+                  <form action={disconnectRaceRosterAccountAction}>
+                    <input type="hidden" name="accountId" value={account.id} />
+                    <PendingSubmitButton className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-700">
+                      Disconnect
+                    </PendingSubmitButton>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-slate-600">No Race Roster account is linked yet.</p>
+          )}
+          {raceRosterConnectConfigured() ? (
+            <ConnectRaceRosterForm hasAccount={raceRosterAccounts.length > 0} />
+          ) : (
+            <p className="text-sm text-slate-600">
+              Set RACE_ROSTER_CLIENT_ID and RACE_ROSTER_CLIENT_SECRET on the server, then
+              connect the timer account email and password here.
             </p>
           )}
         </section>

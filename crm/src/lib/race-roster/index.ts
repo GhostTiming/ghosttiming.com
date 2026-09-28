@@ -1,4 +1,16 @@
-export { authorizeRaceRoster, readRaceRosterCredentialsFromEnv } from "./auth";
+export {
+  authorizeRaceRoster,
+  raceRosterClientConfigured,
+  readRaceRosterClientFromEnv,
+  readRaceRosterCredentialsFromEnv,
+} from "./auth";
+export {
+  connectRaceRosterAccount,
+  disconnectRaceRosterAccount,
+  listRaceRosterAccounts,
+  raceRosterConnectConfigured,
+  resolveRaceRosterCredentials,
+} from "./accounts";
 export {
   getRaceRosterEvent,
   listRaceRosterEvents,
