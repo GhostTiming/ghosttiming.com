@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
   connectRaceRosterAccountAction,
@@ -9,6 +10,7 @@ import {
 const field = "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
 
 export function ConnectRaceRosterForm({ hasAccount }: { hasAccount: boolean }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<ConnectRaceRosterActionResult | null>(null);
 
@@ -17,11 +19,15 @@ export function ConnectRaceRosterForm({ hasAccount }: { hasAccount: boolean }) {
       className="grid gap-3 sm:grid-cols-2"
       onSubmit={(event) => {
         event.preventDefault();
-        const formData = new FormData(event.currentTarget);
+        const form = event.currentTarget;
+        const formData = new FormData(form);
         startTransition(async () => {
           const outcome = await connectRaceRosterAccountAction(formData);
           setResult(outcome);
-          if (outcome.ok) event.currentTarget.reset();
+          if (outcome.ok) {
+            form.reset();
+            router.refresh();
+          }
         });
       }}
     >
