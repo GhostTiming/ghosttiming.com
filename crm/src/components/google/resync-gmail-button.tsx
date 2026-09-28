@@ -57,7 +57,7 @@ export function ResyncGmailButton({
     <div className="space-y-1">
       <button
         type="button"
-        disabled={busy || !hasEmails || !google.clientId}
+        disabled={busy || !hasEmails}
         title={
           hasEmails
             ? `Search Gmail for ${emails.join(", ")}`

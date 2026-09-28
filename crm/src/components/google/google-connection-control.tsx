@@ -62,12 +62,7 @@ export function GoogleConnectionControl({
           ? "rounded-xl bg-white p-4 text-slate-950"
           : "absolute right-0 z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-4 text-slate-950 shadow-lg"}>
           <h2 className="text-sm font-bold">Google</h2>
-          {!google.clientId ? (
-            <p className="mt-2 text-sm text-red-700">
-              Add NEXT_PUBLIC_GOOGLE_CLIENT_ID to enable Gmail and Calendar.
-            </p>
-          ) : (
-            <div className="mt-3 space-y-3 text-sm">
+          <div className="mt-3 space-y-3 text-sm">
               {google.connections.length ? (
                 <ul className="space-y-1 text-xs">
                   {google.connections.map((item) => {
@@ -205,7 +200,6 @@ export function GoogleConnectionControl({
                 .
               </p>
             </div>
-          )}
         </section>
   );
 

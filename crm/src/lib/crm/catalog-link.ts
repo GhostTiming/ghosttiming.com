@@ -1,7 +1,9 @@
 import type { PoolClient } from "pg";
 import { appendAuditActivity } from "./audit";
 import {
+  catalogListingSearchIdWhereSql,
   catalogListingSearchWhereSql,
+  catalogSearchIdNeedle,
   catalogSearchLikeNeedles,
   listingMatchesSearch,
 } from "./catalog-search";
@@ -44,6 +46,9 @@ export type CatalogListingCandidate = {
   zipcode?: string | null;
   next_start_at?: string | Date | null;
   edition_year?: number | null;
+  source_provider?: string | null;
+  registration_url?: string | null;
+  external_race_url?: string | null;
 };
 
 export type CatalogListingSuggestion = CatalogListingCandidate & {
@@ -335,13 +340,19 @@ export async function loadCatalogListingCandidates(
     ...new Set((options.names ?? []).map((name) => eventMatchKey(name)).filter(Boolean)),
   ];
   const listingSql = `SELECT id, name, city, state, zipcode, next_start_at::text,
-          ${listingYearSubselectSql()} AS edition_year
+          ${listingYearSubselectSql()} AS edition_year,
+          source_provider, registration_url, external_race_url
      FROM catalog.race_listings`;
-  const searchNeedles = catalogSearchLikeNeedles(search);
+  const idNeedle = catalogSearchIdNeedle(search);
+  const searchNeedles = idNeedle ? [idNeedle] : catalogSearchLikeNeedles(search);
   const listings = searchNeedles.length
     ? await query<CatalogListingCandidate>(
         `${listingSql}
-         WHERE ${catalogListingSearchWhereSql(searchNeedles.length)}
+         WHERE ${
+           idNeedle
+             ? catalogListingSearchIdWhereSql()
+             : catalogListingSearchWhereSql(searchNeedles.length)
+         }
          ORDER BY next_start_at DESC NULLS LAST
          LIMIT 50`,
         searchNeedles,
@@ -381,7 +392,8 @@ async function loadCatalogListingsForNames(
   if (!keys.length) return [] as CatalogListingCandidate[];
   const result = await client.query<CatalogListingCandidate>(
     `SELECT id, name, city, state, zipcode, next_start_at::text,
-            ${listingYearSubselectSql()} AS edition_year
+            ${listingYearSubselectSql()} AS edition_year,
+            source_provider, registration_url, external_race_url
      FROM catalog.race_listings
      WHERE ${catalogNameMatchKeySql} = ANY($1::text[])`,
     [keys],

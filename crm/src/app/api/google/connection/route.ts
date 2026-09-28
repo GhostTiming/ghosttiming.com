@@ -6,6 +6,7 @@ import {
   type GoogleConnectionRow,
 } from "@/lib/crm/google-sync";
 import { disconnectGoogleOfflineGrant } from "@/lib/google/google-tokens";
+import { readGoogleOAuthClientId } from "@/lib/google/oauth";
 
 function rethrowNextControlFlow(error: unknown) {
   if (
@@ -36,7 +37,7 @@ export async function GET() {
       [user.id],
     );
     return NextResponse.json({
-      clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "",
+      clientId: readGoogleOAuthClientId(),
       connections: result.rows,
       connection: result.rows[0] ?? null,
     });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  catalogListingExternalUrl,
+  catalogProviderLabel,
   formatOfferingClock,
   getRunVibesEventUrl,
   htmlToPlainText,
@@ -43,6 +45,17 @@ describe("catalog display helpers", () => {
       "fun",
       "cause_driven",
     ]);
+  });
+
+  it("labels catalog providers for match UI", () => {
+    expect(catalogProviderLabel("race_roster")).toBe("Race Roster");
+    expect(catalogProviderLabel("runsignup")).toBe("Get Run Vibes");
+    expect(
+      catalogListingExternalUrl({
+        sourceProvider: "race_roster",
+        registrationUrl: "https://raceroster.com/events/2026/761/example",
+      }),
+    ).toBe("https://raceroster.com/events/2026/761/example");
   });
 
   it("builds a Get Run Vibes event URL from the listing slug", () => {
