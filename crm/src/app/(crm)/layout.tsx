@@ -11,6 +11,7 @@ import {
   GOOGLE_PUBLIC_CONNECTION_SELECT,
   type GoogleConnectionRow,
 } from "@/lib/crm/google-sync";
+import { readGoogleOAuthClientId } from "@/lib/google/oauth";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export default async function CrmLayout({ children }: { children: ReactNode }) {
           ? { email: access.viewingAs.email, role: displayAccessRole(access) }
           : null
       }
-      googleClientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ""}
+      googleClientId={readGoogleOAuthClientId()}
       googleConnections={connections.rows}
     >
       {children}

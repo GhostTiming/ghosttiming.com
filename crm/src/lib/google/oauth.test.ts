@@ -1,12 +1,30 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { buildGoogleAuthorizeRedirect, createPkcePair, safeOAuthReturnTo } from "./oauth";
+import {
+  buildGoogleAuthorizeRedirect,
+  createPkcePair,
+  isGoogleOAuthConfigured,
+  readGoogleOAuthClientId,
+  safeOAuthReturnTo,
+} from "./oauth";
 
 describe("Google OAuth helpers", () => {
   afterEach(() => {
     delete process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
     delete process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
     delete process.env.GOOGLE_OAUTH_REDIRECT_URI;
+  });
+
+  it("reads the Google client id dynamically, including a runtime-only alias", () => {
+    expect(readGoogleOAuthClientId()).toBe("");
+    expect(isGoogleOAuthConfigured()).toBe(false);
+    process.env.GOOGLE_CLIENT_ID = "runtime-only.apps.googleusercontent.com";
+    process.env.GOOGLE_CLIENT_SECRET = "secret";
+    expect(readGoogleOAuthClientId()).toBe("runtime-only.apps.googleusercontent.com");
+    expect(isGoogleOAuthConfigured()).toBe(true);
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID = "public.apps.googleusercontent.com";
+    expect(readGoogleOAuthClientId()).toBe("public.apps.googleusercontent.com");
   });
 
   it("rejects open redirects", () => {

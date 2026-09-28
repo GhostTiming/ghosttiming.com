@@ -203,7 +203,7 @@ export function GoogleSessionProvider({
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   const [restoring, setRestoring] = useState(
-    () => Boolean(clientId) && restorableGoogleConnections(initialConnections).length > 0,
+    () => restorableGoogleConnections(initialConnections).length > 0,
   );
   const [progress, setProgress] = useState<GoogleProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -514,9 +514,6 @@ export function GoogleSessionProvider({
   );
 
   const connect = useCallback((options?: { addAccount?: boolean }) => {
-    if (!clientId) {
-      return Promise.reject(new Error("NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured."));
-    }
     setError(null);
     startGoogleOAuth({
       addAccount: options?.addAccount,
@@ -525,7 +522,7 @@ export function GoogleSessionProvider({
     // Full-page navigation to Google. Do not resolve so callers cannot
     // router.refresh() or continue Gmail/Calendar work on this page.
     return new Promise<void>(() => {});
-  }, [clientId, connection?.google_email]);
+  }, [connection?.google_email]);
 
   const disconnect = useCallback(async (googleSub?: string) => {
     tokenRef.current = null;
@@ -541,9 +538,6 @@ export function GoogleSessionProvider({
   }, [connection, persistConnection, userId]);
 
   const ensureGmailSendAccess = useCallback(async () => {
-    if (!clientId) {
-      throw new Error("NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.");
-    }
     const account = sendConnection ?? connection;
     if (!account) {
       startGoogleOAuth();
@@ -576,7 +570,7 @@ export function GoogleSessionProvider({
       }
       throw error;
     }
-  }, [applyServerSession, clientId, connection, sendConnection]);
+  }, [applyServerSession, connection, sendConnection]);
 
   useEffect(() => {
     sendGoogleSubRef.current = sendGoogleSub;

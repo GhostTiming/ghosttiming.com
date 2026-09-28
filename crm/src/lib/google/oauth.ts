@@ -21,7 +21,7 @@ export type GoogleTokenSet = {
 };
 
 function requiredEnv(name: "NEXT_PUBLIC_GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET") {
-  const value = process.env[name]?.trim();
+  const value = readEnv(name);
   if (!value) {
     throw new Error(
       `${name} is not set. Add the Google OAuth web client ${name === "GOOGLE_CLIENT_SECRET" ? "secret" : "ID"} to the server environment.`,
@@ -30,8 +30,32 @@ function requiredEnv(name: "NEXT_PUBLIC_GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRE
   return value;
 }
 
+/** Dynamic lookup so Next does not bake an empty NEXT_PUBLIC_* value into the server bundle. */
+function readEnv(name: string) {
+  return process.env[name]?.trim() || "";
+}
+
+/**
+ * Public Google OAuth web client ID for CRM Gmail/Calendar.
+ * Prefer NEXT_PUBLIC_GOOGLE_CLIENT_ID; accept GOOGLE_CLIENT_ID as a runtime-only alias
+ * when the public var was not present at build time.
+ */
+export function readGoogleOAuthClientId() {
+  return (
+    readEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID") ||
+    readEnv("GOOGLE_CLIENT_ID") ||
+    ""
+  );
+}
+
 export function googleOAuthClientId() {
-  return requiredEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID");
+  const value = readGoogleOAuthClientId();
+  if (!value) {
+    throw new Error(
+      "NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set. Add the Google OAuth web client ID to the server environment.",
+    );
+  }
+  return value;
 }
 
 export function googleOAuthClientSecret() {
@@ -41,6 +65,10 @@ export function googleOAuthClientSecret() {
 export function assertGoogleOAuthServerConfig() {
   googleOAuthClientId();
   googleOAuthClientSecret();
+}
+
+export function isGoogleOAuthConfigured() {
+  return Boolean(readGoogleOAuthClientId() && readEnv("GOOGLE_CLIENT_SECRET"));
 }
 
 export function googleOAuthRedirectUri(request: Request) {

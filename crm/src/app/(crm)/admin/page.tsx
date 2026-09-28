@@ -8,6 +8,7 @@ import {
   upsertOrgMembershipAction,
 } from "@/app/admin-actions";
 import { PendingSubmitButton } from "@/components/pending-submit-button";
+import { SyncRaceRosterPanel } from "@/components/sync-race-roster-panel";
 import { getPool } from "@/db";
 import { canImpersonateUser } from "@/lib/auth/access";
 import { requireAdminConsole } from "@/lib/auth/server";
@@ -123,6 +124,8 @@ export default async function AdminPage() {
           </div>
         ) : null}
       </header>
+
+      <SyncRaceRosterPanel />
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-slate-950">Grant access by email</h2>

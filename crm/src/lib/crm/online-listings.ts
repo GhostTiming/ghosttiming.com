@@ -7,6 +7,7 @@ import {
   unlinkEventFromCatalogListing,
   type CatalogListingCandidate,
 } from "./catalog-link";
+import { catalogProviderLabel } from "./catalog-display";
 import type { OnlineListing } from "./online-listing-types";
 import { eventMatchKey } from "./event-matching";
 import {
@@ -48,7 +49,7 @@ function asCatalogListing(row: CatalogListingCandidate): OnlineListing {
   return {
     ...row,
     source: "catalog",
-    source_label: "Online catalog",
+    source_label: catalogProviderLabel(row.source_provider),
   };
 }
 
@@ -84,7 +85,8 @@ export async function findCatalogListingForRunSignup(
                SELECT MAX(edition_year)
                FROM catalog.race_editions
                WHERE race_listing_id = catalog.race_listings.id
-             ) AS edition_year
+             ) AS edition_year,
+             source_provider, registration_url, external_race_url
       FROM catalog.race_listings
       WHERE id = $1
          OR slug = $1
@@ -118,7 +120,8 @@ export async function findCatalogListingForRunSignup(
                SELECT MAX(edition_year)
                FROM catalog.race_editions
                WHERE race_listing_id = catalog.race_listings.id
-             ) AS edition_year
+             ) AS edition_year,
+             source_provider, registration_url, external_race_url
       FROM catalog.race_listings
       WHERE btrim(regexp_replace(lower(name), '[^a-z0-9]+', ' ', 'g'))
         = btrim(regexp_replace(lower($1), '[^a-z0-9]+', ' ', 'g'))

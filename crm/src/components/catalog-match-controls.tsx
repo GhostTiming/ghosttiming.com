@@ -15,6 +15,7 @@ import type {
   CatalogListingCandidate,
   CatalogListingSuggestion,
 } from "@/lib/crm/catalog-link";
+import { catalogProviderLabel } from "@/lib/crm/catalog-display";
 import {
   listingEventYear,
   listingMatchesSearch,
@@ -23,6 +24,7 @@ import { looksLikeEventUrl, shouldSearchOnlineListings } from "@/lib/crm/runsign
 
 type SearchableListing = CatalogListingCandidate & {
   source_label?: string;
+  source_provider?: string | null;
   reason?: CatalogListingSuggestion["reason"];
   score?: number;
 };
@@ -34,11 +36,15 @@ function listingPlace(listing: {
   next_start_at?: string | Date | null;
   edition_year?: number | null;
   source_label?: string;
+  source_provider?: string | null;
 }) {
   const cityState = [listing.city, listing.state].filter(Boolean).join(", ");
   const place = [cityState, listing.zipcode].filter(Boolean).join(" ") || "Location unknown";
   const year = listingEventYear(listing.next_start_at, listing.edition_year);
-  const source = listing.source_label ? ` · ${listing.source_label}` : "";
+  const sourceLabel =
+    listing.source_label ||
+    (listing.source_provider ? catalogProviderLabel(listing.source_provider) : "");
+  const source = sourceLabel ? ` · ${sourceLabel}` : "";
   return year ? `${place} · ${year}${source}` : `${place}${source}`;
 }
 
