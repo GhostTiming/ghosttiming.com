@@ -4,7 +4,16 @@ import { RaceRosterAuthError, readRaceRosterCredentialsFromEnv } from "./auth";
 
 describe("readRaceRosterCredentialsFromEnv", () => {
   it("requires client id and secret", () => {
-    expect(() => readRaceRosterCredentialsFromEnv({})).toThrow(RaceRosterAuthError);
+    expect(() => readRaceRosterCredentialsFromEnv({})).toThrow(/RACE_ROSTER_CLIENT_ID/);
+  });
+
+  it("tells operators to connect in Settings when only the client is set", () => {
+    expect(() =>
+      readRaceRosterCredentialsFromEnv({
+        RACE_ROSTER_CLIENT_ID: "id",
+        RACE_ROSTER_CLIENT_SECRET: "secret",
+      }),
+    ).toThrow(/Connect Race Roster in Settings/);
   });
 
   it("accepts username/password with client credentials", () => {

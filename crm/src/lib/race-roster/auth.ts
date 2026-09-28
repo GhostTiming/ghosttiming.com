@@ -66,35 +66,51 @@ async function postAuthorize(body: URLSearchParams) {
   return unwrapToken(payload as TokenEnvelope);
 }
 
-export function readRaceRosterCredentialsFromEnv(
-  env: NodeJS.Dict<string> = process.env,
-): RaceRosterCredentials {
-  const clientId = env.RACE_ROSTER_CLIENT_ID?.trim();
-  const clientSecret = env.RACE_ROSTER_CLIENT_SECRET?.trim();
+/** Dynamic env reads so Next does not bake empty Race Roster secrets into the bundle. */
+function readEnv(name: string, env: NodeJS.Dict<string> = process.env) {
+  return env[name]?.trim() || "";
+}
+
+export function raceRosterClientConfigured(env: NodeJS.Dict<string> = process.env) {
+  return Boolean(readEnv("RACE_ROSTER_CLIENT_ID", env) && readEnv("RACE_ROSTER_CLIENT_SECRET", env));
+}
+
+export function readRaceRosterClientFromEnv(env: NodeJS.Dict<string> = process.env) {
+  const clientId = readEnv("RACE_ROSTER_CLIENT_ID", env);
+  const clientSecret = readEnv("RACE_ROSTER_CLIENT_SECRET", env);
   if (!clientId || !clientSecret) {
     throw new RaceRosterAuthError(
       "Set RACE_ROSTER_CLIENT_ID and RACE_ROSTER_CLIENT_SECRET.",
       400,
     );
   }
+  return {
+    clientId,
+    clientSecret,
+    clientName: readEnv("RACE_ROSTER_CLIENT_NAME", env) || undefined,
+  };
+}
 
-  const username = env.RACE_ROSTER_USERNAME?.trim();
-  const password = env.RACE_ROSTER_PASSWORD?.trim();
-  const refreshToken = env.RACE_ROSTER_REFRESH_TOKEN?.trim();
+export function readRaceRosterCredentialsFromEnv(
+  env: NodeJS.Dict<string> = process.env,
+): RaceRosterCredentials {
+  const client = readRaceRosterClientFromEnv(env);
+
+  const username = readEnv("RACE_ROSTER_USERNAME", env) || undefined;
+  const password = readEnv("RACE_ROSTER_PASSWORD", env) || undefined;
+  const refreshToken = readEnv("RACE_ROSTER_REFRESH_TOKEN", env) || undefined;
   if (!refreshToken && (!username || !password)) {
     throw new RaceRosterAuthError(
-      "Set RACE_ROSTER_REFRESH_TOKEN, or RACE_ROSTER_USERNAME and RACE_ROSTER_PASSWORD.",
+      "Connect Race Roster in Settings, or set RACE_ROSTER_REFRESH_TOKEN / USERNAME+PASSWORD.",
       400,
     );
   }
 
   return {
-    clientId,
-    clientSecret,
+    ...client,
     username,
     password,
     refreshToken,
-    clientName: env.RACE_ROSTER_CLIENT_NAME?.trim(),
   };
 }
 

@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
 
+import { authorizeRaceRoster } from "./auth";
 import {
-  authorizeRaceRoster,
-  readRaceRosterCredentialsFromEnv,
-} from "./auth";
+  persistRaceRosterRefreshToken,
+  resolveRaceRosterCredentials,
+} from "./accounts";
 import { getRaceRosterEvent, listRaceRosterEvents } from "./api";
 import { mapRaceRosterEvent } from "./map-event";
 import { RACE_ROSTER_PROVIDER } from "./types";
@@ -421,8 +422,14 @@ export async function syncRaceRosterEventsToCatalog(
   client: PoolClient,
   options: RaceRosterSyncOptions = {},
 ): Promise<RaceRosterSyncResult> {
-  const credentials = readRaceRosterCredentialsFromEnv();
+  const credentials = await resolveRaceRosterCredentials();
+  if (!credentials.refreshToken && !(credentials.username && credentials.password)) {
+    throw new Error(
+      "Connect Race Roster in Settings (timer email + password), or set RACE_ROSTER env credentials.",
+    );
+  }
   const token = await authorizeRaceRoster(credentials);
+  await persistRaceRosterRefreshToken(credentials.username, token);
 
   let events: RaceRosterEvent[];
   if (options.eventIds?.length === 1) {

@@ -260,6 +260,13 @@
       "when": 1789784000000,
       "tag": "0036_race_roster_catalog_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789788000000,
+      "tag": "0037_race_roster_accounts",
+      "breakpoints": true
     }
   ]
 }
