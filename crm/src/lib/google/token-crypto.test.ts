@@ -36,6 +36,14 @@ describe("Google token encryption", () => {
     expect(googleTokenEncryptionKeyBytes(TEST_KEY)).toHaveLength(32);
   });
 
+  it("reads GOOGLE_TOKEN_ENCRYPTION_KEY dynamically from the environment", () => {
+    expect(() => googleTokenEncryptionKeyBytes()).toThrow(/GOOGLE_TOKEN_ENCRYPTION_KEY/);
+    process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = TEST_KEY;
+    expect(googleTokenEncryptionKeyBytes()).toHaveLength(32);
+    const envelope = encryptSecret("runtime-key");
+    expect(decryptSecret(envelope)).toBe("runtime-key");
+  });
+
   it("signs and verifies OAuth state", () => {
     process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = TEST_KEY;
     const token = signOAuthState(JSON.stringify({ state: "abc" }));

@@ -61,6 +61,7 @@ async function runSignupGetProfile(accessToken: string) {
 }
 
 export async function listRunSignupAccounts() {
+  await repairStaleEncryptionKeyFailures();
   const result = await getPool().query<RunSignupAccountSummary>(
     `
       SELECT id::text, email, display_name, status, last_error, connected_at::text
@@ -70,6 +71,32 @@ export async function listRunSignupAccounts() {
     `,
   );
   return result.rows;
+}
+
+/**
+ * Yesterday's RunSignUp search briefly hit a build-time-empty encryption key and
+ * stamped accounts "expired" even though the tokens are still valid. If decrypt
+ * works now, clear that stale failure so Settings stops showing a fake outage.
+ */
+async function repairStaleEncryptionKeyFailures() {
+  const result = await getPool().query<TokenRow & { last_error: string | null }>(
+    `
+      SELECT id::text, access_token_ciphertext, refresh_token_ciphertext,
+             access_token_expires_at::text, last_error
+      FROM crm.runsignup_accounts
+      WHERE status = 'expired'
+        AND refresh_token_ciphertext IS NOT NULL
+        AND last_error ILIKE '%GOOGLE_TOKEN_ENCRYPTION_KEY%'
+    `,
+  );
+  for (const row of result.rows) {
+    try {
+      await accessTokenFor(row);
+      await markAccount(row.id, "connected", null);
+    } catch {
+      // Still broken — leave the expired row alone.
+    }
+  }
 }
 
 export async function saveRunSignupAccount(input: {
