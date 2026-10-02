@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { exitCadencesOutsideContacting } from "./cadence-exit";
 import { closedProspectStageKeys } from "./domain";
 
 export const PAST_EVENT_STAGE_KEY = "past_event";
@@ -123,5 +124,10 @@ export async function filePastProspects(
     client,
     moved.rows.map((row) => row.id),
   );
+  if (moved.rows.length) {
+    await exitCadencesOutsideContacting(client, {
+      prospectIds: moved.rows.map((row) => row.id),
+    });
+  }
   return { filed: moved.rows.length, canceledTasks };
 }

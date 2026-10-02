@@ -19,11 +19,16 @@ import {
   greetingLine,
   isAutomaticReply,
   renderCadenceTemplate,
+  formatCadenceEventDate,
   timingModeLine,
   type CadenceEnrollmentSummary,
   type CadenceRow,
   type PendingCadenceSend,
 } from "./cadence-copy";
+import {
+  CADENCE_CONTACTING_STAGE_KEY,
+  exitCadencesOutsideContacting,
+} from "./cadence-exit";
 
 export {
   CADENCE_TEMPLATE_KIND,
@@ -144,6 +149,7 @@ type MergeContext = {
   prospect_id: string;
   archived_at: string | null;
   do_not_contact: boolean;
+  stage_key: string;
   assigned_user_id: string | null;
   event_name: string;
   state: string | null;
@@ -158,6 +164,7 @@ async function loadMergeContext(client: Queryable, prospectId: string) {
         prospect.id::text AS prospect_id,
         prospect.archived_at::text,
         queue.do_not_contact,
+        stage.key AS stage_key,
         prospect.assigned_user_id::text,
         COALESCE(event.name, listing.name, 'this event') AS event_name,
         COALESCE(NULLIF(occurrence.state_override, ''), listing.state) AS state,
@@ -178,6 +185,7 @@ async function loadMergeContext(client: Queryable, prospectId: string) {
         ), ARRAY[]::text[]) AS to_addresses
       FROM crm.prospects prospect
       JOIN crm.prospect_work_queue queue ON queue.prospect_id = prospect.id
+      JOIN crm.pipeline_stages stage ON stage.id = prospect.stage_id
       LEFT JOIN crm.events event ON event.id = prospect.event_id
       LEFT JOIN catalog.race_listings listing
         ON listing.id = COALESCE(prospect.race_listing_id, event.catalog_race_listing_id)
@@ -217,16 +225,19 @@ export async function countPendingCadenceSends(input: {
   client?: Queryable;
 }) {
   const client = input.client ?? getPool();
+  await exitCadencesOutsideContacting(client);
   const result = await client.query<{ count: string }>(
     `
       SELECT count(*)::text AS count
       FROM crm.cadence_step_sends send
       JOIN crm.cadence_enrollments enrollment ON enrollment.id = send.enrollment_id
       JOIN crm.prospects prospect ON prospect.id = enrollment.prospect_id
+      JOIN crm.pipeline_stages stage ON stage.id = prospect.stage_id
       WHERE send.status = 'scheduled'
         AND send.scheduled_for <= now()
         AND enrollment.status = 'active'
         AND prospect.archived_at IS NULL
+        AND stage.key = '${CADENCE_CONTACTING_STAGE_KEY}'
         AND ${pendingScopeSql("prospect")}
     `,
     [input.userId, input.includeUnassigned],
@@ -240,6 +251,7 @@ export async function listPendingCadenceSends(input: {
   client?: Queryable;
 }): Promise<PendingCadenceSend[]> {
   const client = input.client ?? getPool();
+  await exitCadencesOutsideContacting(client);
   const rows = await client.query<{
     send_id: string;
     enrollment_id: string;
@@ -256,6 +268,7 @@ export async function listPendingCadenceSends(input: {
     state: string | null;
     to_addresses: string[];
     signature_html: string | null;
+    event_date: string | null;
   }>(
     `
       SELECT
@@ -274,6 +287,7 @@ export async function listPendingCadenceSends(input: {
         template.body_html AS template_body_html,
         person.first_name,
         COALESCE(event.name, listing.name, 'this event') AS event_name,
+        COALESCE(occurrence.race_date, edition.starts_at, listing.next_start_at)::text AS event_date,
         COALESCE(NULLIF(occurrence.state_override, ''), listing.state) AS state,
         COALESCE((
           SELECT array_agg(email ORDER BY email)
@@ -296,9 +310,11 @@ export async function listPendingCadenceSends(input: {
       JOIN crm.cadence_steps step ON step.id = send.cadence_step_id
       JOIN crm.email_templates template ON template.id = step.email_template_id
       JOIN crm.prospects prospect ON prospect.id = enrollment.prospect_id
+      JOIN crm.pipeline_stages stage ON stage.id = prospect.stage_id
       LEFT JOIN crm.events event ON event.id = prospect.event_id
       LEFT JOIN catalog.race_listings listing
         ON listing.id = COALESCE(prospect.race_listing_id, event.catalog_race_listing_id)
+      LEFT JOIN catalog.race_editions edition ON edition.id = prospect.race_edition_id
       LEFT JOIN crm.event_occurrences occurrence ON occurrence.id = prospect.occurrence_id
       LEFT JOIN crm.people person ON person.id = prospect.primary_contact_person_id
       LEFT JOIN LATERAL (
@@ -312,6 +328,7 @@ export async function listPendingCadenceSends(input: {
         AND send.scheduled_for <= now()
         AND enrollment.status = 'active'
         AND prospect.archived_at IS NULL
+        AND stage.key = '${CADENCE_CONTACTING_STAGE_KEY}'
         AND ${pendingScopeSql("prospect")}
       ORDER BY send.scheduled_for ASC, step.step_order ASC
     `,
@@ -338,6 +355,7 @@ export async function listPendingCadenceSends(input: {
       subject: rendered.subject,
       body_html: rendered.bodyHtml,
       to_addresses: row.to_addresses,
+      event_date: formatCadenceEventDate(row.event_date),
     };
   });
 }
@@ -658,6 +676,9 @@ export async function enrollProspectInCadence(input: {
     if (context.do_not_contact) {
       throw new Error("This lead is marked Do Not Contact.");
     }
+    if (context.stage_key !== CADENCE_CONTACTING_STAGE_KEY) {
+      throw new Error("Only leads in Contacting can be on the cadence.");
+    }
     if (!uniqueNormalizedEmails(context.to_addresses).length) {
       throw new Error("Add an email address before starting the cadence.");
     }
@@ -922,11 +943,7 @@ export async function processCadenceReplies(client?: PoolClient) {
         JOIN crm.google_email_messages message ON message.id = link.message_id
         WHERE enrollment.status = 'active'
           AND message.direction = 'incoming'
-          AND message.occurred_at > (
-            SELECT max(latest.sent_at)
-            FROM crm.cadence_step_sends latest
-            WHERE latest.enrollment_id = enrollment.id AND latest.status = 'sent'
-          )
+          AND message.occurred_at > enrollment.enrolled_at
         ORDER BY enrollment.id, message.occurred_at ASC
       `,
     );
@@ -1019,6 +1036,7 @@ export async function processCadenceReplies(client?: PoolClient) {
       });
       exited += 1;
     }
+    await exitCadencesOutsideContacting(owned);
     return { exited, automatic, scanned: candidates.rows.length };
   });
 }

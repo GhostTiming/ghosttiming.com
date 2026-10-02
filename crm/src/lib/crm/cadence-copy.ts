@@ -98,7 +98,20 @@ export type PendingCadenceSend = {
   subject: string;
   body_html: string;
   to_addresses: string[];
+  event_date: string | null;
 };
+
+export function formatCadenceEventDate(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/New_York",
+  }).format(date);
+}
 
 export function cadenceStepLabel(stepOrder: number, stepCount: number) {
   return `Touch ${stepOrder} of ${stepCount}`;

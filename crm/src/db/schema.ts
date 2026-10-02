@@ -918,7 +918,8 @@ export const cadenceEnrollments = crm.table(
       sql`${table.exitedReason} IS NULL OR ${table.exitedReason} IN (
         'declined_by_user',
         'reply_detected',
-        'completed_cadence'
+        'completed_cadence',
+        'left_contacting'
       )`,
     ),
   ],

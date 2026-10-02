@@ -267,6 +267,13 @@
       "when": 1789788000000,
       "tag": "0037_race_roster_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789792000000,
+      "tag": "0038_cadence_leave_contacting",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import {
   addOffsetDays,
   cadenceSendableContactStatusSql,
   cadenceStepLabel,
+  formatCadenceEventDate,
   greetingLine,
   isAutomaticReply,
   normalizeUsState,
@@ -111,6 +112,14 @@ describe("cadence contact status SQL", () => {
     const sql = cadenceSendableContactStatusSql("method");
     expect(sql).toBe("method.status IN ('valid', 'unknown')");
     expect(sql).not.toContain("opted_out");
+  });
+});
+
+describe("cadence event date", () => {
+  it("shows the event date in Eastern time beside the draft", () => {
+    expect(formatCadenceEventDate("2026-10-18T16:00:00.000Z")).toBe("Oct 18, 2026");
+    expect(formatCadenceEventDate(null)).toBeNull();
+    expect(formatCadenceEventDate("not-a-date")).toBeNull();
   });
 });
 

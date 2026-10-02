@@ -60,12 +60,17 @@ export function PendingEmailsReview({ rows }: { rows: PendingCadenceSend[] }) {
               <p className="text-xs font-semibold uppercase tracking-wider text-cyan-700">
                 {cadenceStepLabel(row.step_order, row.step_count)} · {row.cadence_name}
               </p>
-              <Link
-                href={`/prospecting/${row.prospect_id}`}
-                className="mt-1 block text-lg font-bold text-slate-950 hover:text-cyan-800"
-              >
-                {row.race_name}
-              </Link>
+              <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
+                <Link
+                  href={`/prospecting/${row.prospect_id}`}
+                  className="text-lg font-bold text-slate-950 hover:text-cyan-800"
+                >
+                  {row.race_name}
+                </Link>
+                {row.event_date ? (
+                  <span className="text-sm font-medium text-slate-500">{row.event_date}</span>
+                ) : null}
+              </p>
               <p className="mt-1 text-sm text-slate-600">
                 To: {row.to_addresses.join(", ") || "No recipient"}
               </p>

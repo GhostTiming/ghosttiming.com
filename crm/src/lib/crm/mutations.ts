@@ -9,6 +9,7 @@ import {
   type UserActivityType,
 } from "./domain";
 import { eventMatchKey, isGenericEventName } from "./event-matching";
+import { exitCadencesOutsideContacting } from "./cadence-exit";
 import { cancelOpenProspectTasks, PAST_EVENT_STAGE_KEY } from "./past-events";
 
 export type RecordActivityInput = {
@@ -302,6 +303,16 @@ export async function changeProspectStage(
   );
   if (stageKey === PAST_EVENT_STAGE_KEY) {
     await cancelOpenProspectTasks(client, [prospectId]);
+  }
+  if (stageKey !== "cold") {
+    await exitCadencesOutsideContacting(client, {
+      prospectIds: [prospectId],
+      actor: {
+        actorType: actor.actorType,
+        actorName: actor.actorName,
+        actorUserId: actor.actorUserId ?? null,
+      },
+    });
   }
   return true;
 }

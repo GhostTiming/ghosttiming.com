@@ -31,6 +31,7 @@ export default async function PendingCadenceEmailsPage() {
         <p className="mt-1 text-sm text-slate-600">
           Due touches wait here until you approve or decline them. Declining
           removes the lead from the cadence and does not change pipeline stage.
+          A reply, or moving the lead out of Contacting, also removes them.
         </p>
       </div>
       <PendingEmailsReview rows={rows} />

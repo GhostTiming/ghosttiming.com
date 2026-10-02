@@ -358,7 +358,11 @@ export default async function ProspectDetailPage({
         prospectId={prospect.id}
         cadence={cadence}
         enrollment={cadenceEnrollment}
-        canEnroll={!prospect.archived_at && !prospect.do_not_contact}
+        canEnroll={
+          !prospect.archived_at &&
+          !prospect.do_not_contact &&
+          prospect.stage_key === "cold"
+        }
         error={firstParam(cadenceError)}
       />
 

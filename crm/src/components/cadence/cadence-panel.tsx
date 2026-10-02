@@ -6,10 +6,13 @@ import {
 } from "@/lib/crm/cadence-copy";
 import { CadenceEnrollForm } from "@/components/cadence/cadence-enroll-form";
 
-function statusLabel(status: string) {
+function statusLabel(status: string, reason: string | null) {
   if (status === "active") return "Active";
   if (status === "completed") return "Completed";
-  if (status === "exited_reply") return "Stopped after a reply";
+  if (status === "exited_reply" || reason === "reply_detected") {
+    return "Stopped after a reply";
+  }
+  if (reason === "left_contacting") return "Stopped after leaving Contacting";
   if (status === "exited_manual") return "Stopped";
   return status;
 }
@@ -43,7 +46,9 @@ export function CadencePanel({
       {enrollment ? (
         <div className="mt-3 space-y-1 text-sm">
           <p className="font-semibold text-slate-950">{enrollment.cadence_name}</p>
-          <p className="text-slate-600">{statusLabel(enrollment.status)}</p>
+          <p className="text-slate-600">
+            {statusLabel(enrollment.status, enrollment.exited_reason)}
+          </p>
           {active && enrollment.next_step_order ? (
             <p className="text-slate-600">
               Next: {cadenceStepLabel(enrollment.next_step_order, enrollment.step_count)}
